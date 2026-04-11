@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/api/sqsp/:path*", "destination": "https://api.squarespace.com/:path*" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
