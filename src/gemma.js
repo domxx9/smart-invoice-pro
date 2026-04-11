@@ -1,275 +1,415 @@
 /**
- * Gemma 4 On-Device AI — inference engine
- *
- * Uses MediaPipe LLM Inference API with WebGPU backend.
- * Model: Gemma 4 E2B (effective 2B params) — text-only, on-device, zero network after download.
- *
- * Storage: OPFS (web) or Capacitor Filesystem (native).
+ * Gemma on-device inference — Phase 4
+ * Tiered model strategy: Nano / Small (default) / Pro / Alt
+ * Storage:
+ *   Web  → OPFS (Origin Private File System)
+ *   Native (Android/iOS) → @capacitor/filesystem Directory.Data
+ * Backend: WebGPU (required by MediaPipe LLM Inference API)
  */
 
-import { FilesetResolver, LlmInference } from '@mediapipe/tasks-genai'
+// ─── Model registry ───────────────────────────────────────────────────────────
 
-// ─── Constants ───────────────────────────────────────────────────────────────
-
-const MODEL_URL =
-  'https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it-web.task'
-
-const MODEL_FILENAME = 'gemma-4-E2B-it-web.task'
-const MODEL_SIZE_APPROX = 2.58 * 1024 * 1024 * 1024 // ~2.58 GB
+export const MODELS = {
+  nano: {
+    id: 'nano',
+    label: 'Gemma 3 Nano',
+    description: 'Fastest · lowest memory',
+    size: '~250 MB',
+    url: 'https://huggingface.co/litert-community/gemma-3-270m-it-litert-lm/resolve/main/gemma-3-270m-it-litert-lm.task',
+    filename: 'sip_gemma_nano.task',
+  },
+  small: {
+    id: 'small',
+    label: 'Gemma 3 1B (int4)',
+    description: 'Recommended · 4-bit quantised · web optimised',
+    size: '~670 MB',
+    // Served through Vercel edge proxy (adds CORS headers) for web.
+    // Native uses CapacitorHttp directly to GitHub, so no CORS needed there.
+    url: 'https://smart-invoice-pro-six.vercel.app/api/model-proxy?id=small',
+    nativeUrl: 'https://github.com/domxx9/smart-invoice-pro/releases/download/v1.0-models/gemma3-1b-int4-web.task',
+    filename: 'sip_gemma_small.task',
+    public: true,
+  },
+  pro: {
+    id: 'pro',
+    label: 'Gemma 2 2B',
+    description: 'Highest accuracy · large download',
+    size: '~1.6 GB',
+    url: 'https://huggingface.co/litert-community/gemma-2-2b-it-litert-lm/resolve/main/gemma-2-2b-it-litert-lm.task',
+    filename: 'sip_gemma_pro.task',
+  },
+  alt: {
+    id: 'alt',
+    label: 'Llama 3.2 1B',
+    description: 'Alternative · Meta model',
+    size: '~1 GB',
+    url: 'https://huggingface.co/litert-community/Llama-3.2-1B-Instruct-it-litert-lm/resolve/main/Llama-3.2-1B-Instruct-it-litert-lm.task',
+    filename: 'sip_gemma_alt.task',
+  },
+}
 
 const WASM_CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai/wasm'
 
-// ─── Module state ────────────────────────────────────────────────────────────
+// ─── Platform detection ───────────────────────────────────────────────────────
 
-let _llm = null          // LlmInference instance
-let _status = 'idle'     // idle | checking | downloading | ready | loading | active | error | no-webgpu
-let _error = null
-let _abortCtrl = null    // AbortController for download cancellation
+function isNative() {
+  return typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.()
+}
 
-// ─── WebGPU detection ────────────────────────────────────────────────────────
+// ─── Module state ─────────────────────────────────────────────────────────────
 
-export function checkWebGPU() {
+let _llm = null
+let _loadedModelId = null
+let _abortCtrl = null
+
+// ─── WebGPU ───────────────────────────────────────────────────────────────────
+
+export function hasWebGPU() {
   return typeof navigator !== 'undefined' && !!navigator.gpu
 }
 
-// ─── Status ──────────────────────────────────────────────────────────────────
+// ─── OPFS helpers (web only) ──────────────────────────────────────────────────
 
-export function getModelStatus() {
-  return { status: _status, error: _error }
+function hasOPFS() {
+  return typeof navigator !== 'undefined' &&
+    'storage' in navigator &&
+    'getDirectory' in navigator.storage
 }
-
-export function getModelSizeApprox() {
-  return MODEL_SIZE_APPROX
-}
-
-// ─── OPFS helpers (browser storage for large files) ──────────────────────────
 
 async function opfsRoot() {
   return navigator.storage.getDirectory()
 }
 
-async function opfsHasModel() {
+// ─── Native filesystem helpers ────────────────────────────────────────────────
+
+async function nativeFs() {
+  const { Filesystem, Directory } = await import('@capacitor/filesystem')
+  return { Filesystem, Directory }
+}
+
+// ─── Model presence check ─────────────────────────────────────────────────────
+
+export async function isModelDownloaded(modelId) {
+  const filename = MODELS[modelId].filename
+  if (isNative()) {
+    try {
+      const { Filesystem, Directory } = await nativeFs()
+      await Filesystem.stat({ path: filename, directory: Directory.Data })
+      return true
+    } catch {
+      return false
+    }
+  }
+  if (!hasOPFS()) return false
   try {
     const root = await opfsRoot()
-    await root.getFileHandle(MODEL_FILENAME)
+    await root.getFileHandle(filename)
     return true
   } catch {
     return false
   }
 }
 
-async function opfsGetModelFile() {
-  const root = await opfsRoot()
-  const handle = await root.getFileHandle(MODEL_FILENAME)
-  return handle.getFile()
-}
+// ─── Delete model ─────────────────────────────────────────────────────────────
 
-async function opfsDeleteModel() {
+export async function deleteModel(modelId) {
+  if (_loadedModelId === modelId) {
+    try { _llm?.close?.() } catch { /* ignore */ }
+    _llm = null
+    _loadedModelId = null
+  }
+  const filename = MODELS[modelId].filename
+  if (isNative()) {
+    try {
+      const { Filesystem, Directory } = await nativeFs()
+      await Filesystem.deleteFile({ path: filename, directory: Directory.Data })
+    } catch { /* already gone */ }
+    return
+  }
   try {
     const root = await opfsRoot()
-    await root.removeEntry(MODEL_FILENAME)
-  } catch {
-    // File didn't exist — fine
-  }
+    await root.removeEntry(filename)
+  } catch { /* already gone */ }
 }
 
-// ─── Check if model is already downloaded ────────────────────────────────────
-
-export async function isModelDownloaded() {
-  if (!checkWebGPU()) return false
-  try {
-    return await opfsHasModel()
-  } catch {
-    return false
-  }
-}
-
-// ─── Download model ──────────────────────────────────────────────────────────
+// ─── Download ─────────────────────────────────────────────────────────────────
 
 /**
- * Download the Gemma 4 E2B web model to OPFS.
- * @param {function} onProgress - Callback: (receivedBytes, totalBytes) => void
- * @returns {Promise<void>}
+ * Download a model with progress tracking.
+ * Native: uses @capacitor/filesystem (native HTTP, no CORS, no OPFS).
+ * Web:    streams via fetch() to OPFS.
  */
-export async function downloadModel(onProgress) {
-  if (_status === 'downloading') throw new Error('Download already in progress')
-  if (!checkWebGPU()) {
-    _status = 'no-webgpu'
-    throw new Error('WebGPU is not available in this browser')
-  }
+export async function downloadModel(modelId, onProgress, hfToken) {
+  const model = MODELS[modelId]
+  if (!model) throw new Error(`Unknown model: ${modelId}`)
+  if (!hasWebGPU()) throw new Error('WebGPU not available in this browser')
 
-  _status = 'downloading'
-  _error = null
-  _abortCtrl = new AbortController()
+  if (isNative()) {
+    return _downloadNative(model, onProgress)
+  }
+  return _downloadWeb(model, onProgress, hfToken)
+}
+
+// ── Native download via @capacitor/filesystem ────────────────────────────────
+
+async function _downloadNative(model, onProgress) {
+  const { Filesystem, Directory } = await nativeFs()
+
+  // Use nativeUrl if present (direct GitHub, bypasses CORS proxy)
+  const url = model.nativeUrl || model.url
+  console.log('[SIP] download start:', model.id, url)
+
+  const progressListener = await Filesystem.addListener('progress', (event) => {
+    if (event.url === url && event.contentLength > 0) {
+      const pct = Math.round((event.bytes / event.contentLength) * 100)
+      if (pct % 10 === 0) console.log(`[SIP] download ${model.id}: ${pct}%`)
+      onProgress?.(event.bytes / event.contentLength)
+    }
+  })
 
   try {
-    const res = await fetch(MODEL_URL, { signal: _abortCtrl.signal })
-    if (!res.ok) throw new Error(`Download failed: HTTP ${res.status}`)
+    await Filesystem.downloadFile({
+      url,
+      path: model.filename,
+      directory: Directory.Data,
+      progress: true,
+    })
+    console.log('[SIP] download complete:', model.id)
+  } finally {
+    progressListener.remove()
+  }
+}
 
-    const total = parseInt(res.headers.get('content-length'), 10) || MODEL_SIZE_APPROX
-    const reader = res.body.getReader()
-    let received = 0
+// ── Web download via fetch → OPFS ─────────────────────────────────────────────
 
-    // Write directly to OPFS via writable stream for memory efficiency
-    const root = await opfsRoot()
-    const fileHandle = await root.getFileHandle(MODEL_FILENAME, { create: true })
-    const writable = await fileHandle.createWritable()
+async function _downloadWeb(model, onProgress, hfToken) {
+  _abortCtrl = new AbortController()
 
+  const headers = {}
+  if (hfToken && !model.public) headers['Authorization'] = `Bearer ${hfToken}`
+
+  let res
+  try {
+    res = await fetch(model.url, { signal: _abortCtrl.signal, headers })
+  } catch (err) {
+    _abortCtrl = null
+    throw new Error(`Network error — check your connection (${err.message})`)
+  }
+
+  if (!res.ok) {
+    _abortCtrl = null
+    throw new Error(
+      `Download failed: HTTP ${res.status}` +
+      (res.status === 401 ? ' — check HuggingFace token or model licence' : '')
+    )
+  }
+
+  const total = parseInt(res.headers.get('content-length') || '0', 10)
+  const reader = res.body.getReader()
+
+  const root = await opfsRoot()
+  const fh = await root.getFileHandle(model.filename, { create: true })
+  const writable = await fh.createWritable()
+
+  let received = 0
+  try {
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
       await writable.write(value)
       received += value.byteLength
-      onProgress?.(received, total)
+      if (total > 0) onProgress?.(received / total)
     }
-
     await writable.close()
-    _status = 'ready'
   } catch (err) {
-    // Clean up partial download
-    await opfsDeleteModel()
-
-    if (err.name === 'AbortError') {
-      _status = 'idle'
-      _error = 'Download cancelled'
-    } else {
-      _status = 'error'
-      _error = err.message
-    }
+    await writable.abort()
+    try { await root.removeEntry(model.filename) } catch { /* ignore */ }
     throw err
   } finally {
     _abortCtrl = null
   }
 }
 
-/**
- * Cancel an in-progress download.
- */
 export function cancelDownload() {
   _abortCtrl?.abort()
 }
 
-// ─── Delete model ────────────────────────────────────────────────────────────
+// ─── Init ─────────────────────────────────────────────────────────────────────
 
-export async function deleteModel() {
+/**
+ * Load a downloaded model into memory (WebGPU).
+ */
+export async function initModel(modelId) {
+  if (_llm && _loadedModelId === modelId) return
+
   if (_llm) {
+    try { _llm.close?.() } catch { /* ignore */ }
     _llm = null
-  }
-  await opfsDeleteModel()
-  _status = 'idle'
-  _error = null
-}
-
-// ─── Initialize model ────────────────────────────────────────────────────────
-
-/**
- * Load the downloaded model into the MediaPipe LLM Inference engine.
- * Must be called after downloadModel() completes.
- */
-export async function initModel() {
-  if (_llm) return // Already loaded
-
-  if (!checkWebGPU()) {
-    _status = 'no-webgpu'
-    throw new Error('WebGPU is not available')
+    _loadedModelId = null
   }
 
-  const hasModel = await isModelDownloaded()
-  if (!hasModel) {
-    _status = 'idle'
-    throw new Error('Model not downloaded — call downloadModel() first')
-  }
+  const { FilesetResolver, LlmInference } = await import('@mediapipe/tasks-genai')
+  const genai = await FilesetResolver.forGenAiTasks(WASM_CDN)
 
-  _status = 'loading'
-  _error = null
+  let modelOptions
 
-  try {
-    const genai = await FilesetResolver.forGenAiTasks(WASM_CDN)
-
-    // Read the model file from OPFS as a ReadableStream
-    const file = await opfsGetModelFile()
-    const stream = file.stream().getReader()
-
-    _llm = await LlmInference.createFromOptions(genai, {
-      baseOptions: { modelAssetBuffer: stream },
-      maxTokens: 1024,
-      temperature: 0.2,
-      topK: 40,
+  if (isNative()) {
+    // Get native URI then convert to http://localhost/_capacitor_file_/...
+    // so MediaPipe's internal fetch() can load it without reading into JS heap
+    const { Filesystem, Directory } = await nativeFs()
+    const { uri } = await Filesystem.getUri({
+      path: MODELS[modelId].filename,
+      directory: Directory.Data,
     })
-
-    _status = 'active'
-  } catch (err) {
-    _status = 'error'
-    _error = err.message
-    throw err
+    const { Capacitor } = await import('@capacitor/core')
+    const webUrl = Capacitor.convertFileSrc(uri)
+    console.log('[SIP] initModel native uri:', uri)
+    console.log('[SIP] initModel webUrl:', webUrl)
+    modelOptions = { baseOptions: { modelAssetPath: webUrl } }
+  } else {
+    const root = await opfsRoot()
+    const fh = await root.getFileHandle(MODELS[modelId].filename)
+    const file = await fh.getFile()
+    const buffer = await file.arrayBuffer()
+    modelOptions = { baseOptions: { modelAssetBuffer: buffer } }
   }
+
+  console.log('[SIP] LlmInference.createFromOptions start:', modelId)
+  _llm = await LlmInference.createFromOptions(genai, {
+    ...modelOptions,
+    maxTokens: 10000,
+    temperature: 0.1,
+    topK: 1,
+  })
+  _loadedModelId = modelId
+  console.log('[SIP] model loaded OK:', modelId)
 }
 
-// ─── Generate ────────────────────────────────────────────────────────────────
+export function isGemmaReady() { return _llm !== null }
+export function getLoadedModelId() { return _loadedModelId }
+
+// ─── Prompt formatting ────────────────────────────────────────────────────────
+
+function gemmaPrompt(text) {
+  return `<start_of_turn>user\n${text}\n<end_of_turn>\n<start_of_turn>model\n`
+}
+
+// ─── Full-text order parsing ──────────────────────────────────────────────────
 
 /**
- * Generate a response from a user prompt with streaming.
- * @param {string} userPrompt - The user's question/instruction
- * @param {function} onToken - Callback: (accumulatedText, isDone) => void
- * @returns {Promise<string>} Full response text
+ * Send raw order text (WhatsApp, email, etc.) to the LLM along with the
+ * known product catalog so the model can match items directly.
+ *
+ * @param {string}   text      - Raw pasted text (WhatsApp, email, list…)
+ * @param {Array}    products  - Full product catalog [{name, price, …}]
+ * @param {Function} onToken   - Optional streaming callback (partialOutput, done)
+ * @returns {Promise<Array<{name:string, qty:number}>>}
+ *          name is the matched product name from the catalog (or best attempt).
  */
-export async function generate(userPrompt, onToken) {
-  if (!_llm) {
-    throw new Error('Model not initialized — call initModel() first')
-  }
+/**
+ * Stage 1 — LLM pre-processor.
+ * Strips WhatsApp timestamps, contact names, greetings, questions.
+ * Splits combined lines ("scissors and probe") into one item per line.
+ * Returns plain text — no catalog needed, tiny prompt, fast.
+ */
+export async function cleanOrderText(text, onToken) {
+  if (!_llm) throw new Error('Model not loaded')
 
-  // Gemma turn-based prompt template
-  const formatted =
-    '<start_of_turn>user\n' +
-    userPrompt +
-    '<end_of_turn>\n<start_of_turn>model\n'
+  const prompt = gemmaPrompt(
+    `Clean up this order message. Your job:
+- Remove timestamps (e.g. [12:00, 11/04/2026]), contact names, phone numbers
+- Remove greetings, questions, delivery instructions, anything not an item order
+- If a line mentions multiple items, split them onto separate lines
+- Keep any quantities (numbers) next to their item
+- Return ONLY the cleaned order lines, one item per line, nothing else
 
-  return new Promise((resolve, reject) => {
-    let accumulated = ''
+Message:
+${text.slice(0, 800)}
 
+Cleaned lines:`
+  )
+
+  return new Promise((resolve) => {
+    let out = ''
     try {
-      _llm.generateResponse(formatted, (partial, done) => {
-        accumulated += partial
-        onToken?.(accumulated, done)
-        if (done) resolve(accumulated)
+      _llm.generateResponse(prompt, (chunk, done) => {
+        out += chunk
+        onToken?.(out, done)
+        if (done) {
+          console.log('[SIP] cleanOrderText raw:', JSON.stringify(out))
+          resolve(out.trim() || text)
+        }
       })
-    } catch (err) {
-      reject(err)
+    } catch (e) {
+      console.error('[SIP] cleanOrderText error:', e)
+      try { _llm?.cancelProcessing?.() } catch { /* ignore */ }
+      resolve(text) // fallback: use original text unchanged
     }
   })
 }
 
-/**
- * Cancel in-progress generation.
- */
-export function cancelGeneration() {
-  _llm?.cancelProcessing()
+// ─── Product matching ─────────────────────────────────────────────────────────
+
+export async function matchWithGemma(itemName, candidates) {
+  console.log('[SIP] matchWithGemma:', itemName, 'candidates:', candidates.length)
+  if (!_llm || !candidates.length) return null
+  console.log('[SIP] matchWithGemma sample candidate:', candidates[0]?.name, '| desc:', candidates[0]?.desc?.slice(0, 40))
+
+  const list = candidates
+    .map((p, i) => `${i + 1}. ${p.name}${p.desc ? ` — ${p.desc}` : ''}`)
+    .join('\n')
+  const prompt = gemmaPrompt(
+    `Which number best matches "${itemName}"? Reply with just the number.\n\n${list}\n\nNumber:`
+  )
+
+  return new Promise((resolve) => {
+    let out = ''
+    try {
+      _llm.generateResponse(prompt, (chunk, done) => {
+        out += chunk
+        if (done) {
+          console.log('[SIP] matchWithGemma raw output:', JSON.stringify(out))
+          const num = parseInt(out.trim().match(/\d+/)?.[0] ?? '0', 10)
+          console.log('[SIP] matchWithGemma result index:', num)
+          resolve(num >= 1 && num <= candidates.length ? candidates[num - 1] : null)
+        }
+      })
+    } catch (e) {
+      console.error('[SIP] matchWithGemma error:', e?.message)
+      try { _llm?.cancelProcessing?.() } catch { /* ignore */ }
+      resolve(null)
+    }
+  })
 }
 
-// ─── Convenience: check + init in one call ───────────────────────────────────
+// ─── General inference ────────────────────────────────────────────────────────
 
-/**
- * Ensure the model is ready. If downloaded but not loaded, loads it.
- * @returns {Promise<boolean>} true if model is active and ready to generate
- */
-export async function ensureReady() {
-  if (_llm && _status === 'active') return true
+export async function generate(userPrompt, onToken) {
+  if (!_llm) throw new Error('Model not loaded — download and load a model first')
+  return new Promise((resolve, reject) => {
+    let out = ''
+    try {
+      _llm.generateResponse(gemmaPrompt(userPrompt), (chunk, done) => {
+        out += chunk
+        onToken?.(out, done)
+        if (done) resolve(out)
+      })
+    } catch (e) {
+      reject(e)
+    }
+  })
+}
 
-  if (!checkWebGPU()) {
-    _status = 'no-webgpu'
-    return false
-  }
+export function cancelGeneration() {
+  _llm?.cancelProcessing?.()
+}
 
-  const downloaded = await isModelDownloaded()
-  if (!downloaded) {
-    _status = 'idle'
-    return false
-  }
+// ─── Convenience ─────────────────────────────────────────────────────────────
 
-  try {
-    await initModel()
-    return true
-  } catch {
-    return false
-  }
+export async function ensureReady(modelId) {
+  if (_llm && _loadedModelId === modelId) return true
+  if (!hasWebGPU()) return false
+  const downloaded = await isModelDownloaded(modelId)
+  if (!downloaded) return false
+  try { await initModel(modelId); return true } catch { return false }
 }

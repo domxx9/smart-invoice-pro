@@ -1,4 +1,16 @@
 import { useState, useEffect, useCallback, useRef, Component } from 'react'
+import {
+  MODELS as AI_MODELS,
+  hasWebGPU,
+  isModelDownloaded,
+  downloadModel as gemmaDownload,
+  deleteModel as gemmaDelete,
+  initModel as gemmaInit,
+  isGemmaReady,
+  getLoadedModelId,
+  matchWithGemma,
+  cancelDownload as gemmaCancelDownload,
+} from './gemma.js'
 
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { err: null } }
@@ -203,6 +215,21 @@ function calcTotals(items, taxRate) {
 
 // ─── Smart Paste — extraction + matching ─────────────────────────────────────
 
+// Strip WhatsApp message formatting before passing to extractItems.
+// Removes: [HH:MM, DD/MM/YYYY] Name: prefixes, pure questions, greetings.
+function cleanWhatsApp(text) {
+  return text
+    .split('\n')
+    .map(l => l.replace(/^\[\d{1,2}:\d{2}(?:[^\]]*)?\]\s*[^:]+:\s*/, '').trim())
+    .filter(l => {
+      if (!l || l.length < 2) return false
+      if (/^(hi|hello|hey|thanks|thank you|ok|okay|yes|no|sure|good morning|good afternoon)\b/i.test(l)) return false
+      if (/^\?/.test(l) || (/\?$/.test(l) && l.split(/\s+/).length < 5)) return false
+      return true
+    })
+    .join('\n')
+}
+
 // Layer 1: extract structured items from raw text (swap this for Gemma in Phase 4)
 function extractItems(text) {
   const results = []
@@ -308,25 +335,18 @@ function searchGroups(groups, query) {
     .map(({ g }) => g)
 }
 
-// ─── Gemma stub (Phase 4 replaces this with real MediaPipe LlmInference) ──────
-async function inferGemma(prompt, onToken) {
-  const responses = {
-    'suggest items': 'Suggested line items:\n• Web design consultation — $150/hr\n• Logo design package — $500\n• Monthly maintenance — $200/mo\n• Domain & hosting setup — $75',
-    'payment reminder': 'Subject: Friendly Payment Reminder\n\nHi [Customer],\n\nThis is a friendly reminder that invoice [ID] for [Amount] is due on [Date].\n\nPayment options: bank transfer, PayPal, or card.\n\nThank you!\n[Your Name]',
-    'summarise': 'Invoice summary: line items total [subtotal]. Tax applied at [rate]%. Grand total [amount]. Status: [status]. Due [date].',
-  }
-  const key = Object.keys(responses).find(k => prompt.toLowerCase().includes(k))
-  const text = key
-    ? responses[key]
-    : `AI response for: "${prompt}"\n\n(Connect Gemma 4 model in Phase 4 for real on-device inference.)`
-
-  let output = ''
-  for (const char of text) {
-    output += char
-    onToken(output)
-    await new Promise(r => setTimeout(r, 12))
-  }
-  return output
+// ─── Top candidates for Gemma fallback ───────────────────────────────────────
+// Returns top N products that have at least a minimal word-overlap score.
+// MIN_SCORE filters out completely unrelated products so the LLM isn't
+// forced to pick from irrelevant options.
+const CANDIDATE_MIN_SCORE = 0.15
+function getTopCandidates(name, products, n = 5) {
+  return products
+    .map(p => ({ p, c: matchConfidence(name, p.name) }))
+    .filter(({ c }) => c >= CANDIDATE_MIN_SCORE)
+    .sort((a, b) => b.c - a.c)
+    .slice(0, n)
+    .map(({ p }) => p)
 }
 
 // ─── Squarespace Commerce API ─────────────────────────────────────────────────
@@ -364,10 +384,16 @@ async function fetchSquarespaceProducts(apiKey, onProgress) {
   } while (cursor)
 
   const category = (p) => p.type ? p.type.charAt(0) + p.type.slice(1).toLowerCase() : 'Product'
+  // Strip HTML tags and truncate to 80 chars for LLM context
+  const stripDesc = (html) => {
+    if (!html) return ''
+    return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80)
+  }
   console.log(`[SIP] SQSP synced ${allProducts.length} products`)
   return allProducts.flatMap((p) => {
     const variants = p.variants ?? []
-    if (!variants.length) return [{ id: p.id, name: p.name, price: 0, stock: 99, category: category(p) }]
+    const desc = stripDesc(p.description || p.body || '')
+    if (!variants.length) return [{ id: p.id, name: p.name, desc, price: 0, stock: 99, category: category(p) }]
 
     // If single variant with no meaningful attributes, don't append a suffix
     const expand = variants.length > 1 || Object.values(variants[0]?.attributes ?? {}).some(v => v)
@@ -380,6 +406,7 @@ async function fetchSquarespaceProducts(apiKey, onProgress) {
       return {
         id: `${p.id}_v${idx}`,
         name: `${p.name}${suffix}`,
+        desc,
         price,
         stock: unlimited ? 99 : qty,
         category: category(p),
@@ -542,11 +569,14 @@ function getPasteStatus(r, i, decisions) {
 }
 const PASTE_SORT = { no_match: 0, discarded: 0, best_guess: 1, auto_match: 2, confirmed: 2, dismissed: 3 }
 
-function InvoiceEditor({ invoice, originalInvoice, products, onSave, onCancel, onDiscard, onDraftChange }) {
+function InvoiceEditor({ invoice, originalInvoice, products, onSave, onCancel, onDiscard, onDraftChange, aiReady }) {
   const [inv, setInv] = useState(invoice)
   const [pasteText, setPasteText] = useState('')
   const [pasteResults, setPasteResults] = useState(null) // null | array
   const [pasteDecisions, setPasteDecisions] = useState({}) // { [index]: 'confirmed'|'discarded'|'dismissed' }
+  const [pasteAiLoading, setPasteAiLoading] = useState(false)
+  const [pasteAiTokens, setPasteAiTokens] = useState('')
+  const [pasteAiStage, setPasteAiStage] = useState('')
   const [search, setSearch] = useState('')
 
   const setField = (k, v) => setInv(p => ({ ...p, [k]: v }))
@@ -563,6 +593,11 @@ function InvoiceEditor({ invoice, originalInvoice, products, onSave, onCancel, o
   }
 
   const decide = (i, val) => setPasteDecisions(d => ({ ...d, [i]: val }))
+  const unmatch = (i) => setPasteResults(prev => {
+    const updated = [...prev]
+    updated[i] = { ...updated[i], product: null, bestGuess: null, confidence: 0, aiEnhanced: false }
+    return updated
+  })
 
   // Auto-save draft on every change and notify parent
   useEffect(() => {
@@ -574,11 +609,61 @@ function InvoiceEditor({ invoice, originalInvoice, products, onSave, onCancel, o
 
   const filteredGroups = search.trim() ? searchGroups(groupProducts(products), search) : []
 
-  const runParse = () => {
+  const runParse = async () => {
     if (!pasteText.trim()) return
-    const extracted = extractItems(pasteText)
-    setPasteResults(matchItems(extracted, products))
+    setPasteResults(null)
     setPasteDecisions({})
+
+    console.log('[SIP] runParse aiReady:', aiReady, 'text:', pasteText.length, 'products:', products.length)
+
+    if (aiReady) {
+      setPasteAiLoading(true)
+      setPasteAiTokens('')
+      try {
+        // ── Stage 1: regex strips WhatsApp noise ────────────────────────────
+        setPasteAiStage('Cleaning order text…')
+        const cleaned = cleanWhatsApp(pasteText)
+        console.log('[SIP] cleaned text:', cleaned)
+
+        // ── Stage 2: regex extraction + fuzzy match ──────────────────────────
+        setPasteAiStage('Matching products…')
+        const extracted = extractItems(cleaned)
+        const initial = matchItems(extracted, products)
+        setPasteResults(initial)
+        setPasteDecisions({})
+
+        // ── Stage 3: LLM disambiguates low-confidence items ──────────────────
+        const lowConf = initial.filter(r => r.confidence < 65)
+        if (lowConf.length) {
+          setPasteAiStage(`Resolving ${lowConf.length} uncertain item${lowConf.length > 1 ? 's' : ''}…`)
+          const updated = [...initial]
+          for (let i = 0; i < initial.length; i++) {
+            if (initial[i].confidence >= 65) continue
+            const candidates = getTopCandidates(initial[i].name, products, 5)
+            if (!candidates.length) continue
+            const match = await matchWithGemma(initial[i].name, candidates)
+            if (match) {
+              updated[i] = { ...updated[i], product: match, bestGuess: null, confidence: 90, aiEnhanced: true }
+              setPasteResults([...updated])
+            }
+          }
+        }
+      } catch (e) {
+        console.error('[SIP] runParse error:', e?.message)
+        const extracted = extractItems(pasteText)
+        setPasteResults(matchItems(extracted, products))
+        setPasteDecisions({})
+      } finally {
+        setPasteAiLoading(false)
+        setPasteAiTokens('')
+        setPasteAiStage('')
+      }
+    } else {
+      console.log('[SIP] aiReady false — regex only')
+      const extracted = extractItems(pasteText)
+      setPasteResults(matchItems(extracted, products))
+      setPasteDecisions({})
+    }
   }
 
   const addMatched = () => {
@@ -628,11 +713,24 @@ function InvoiceEditor({ invoice, originalInvoice, products, onSave, onCancel, o
         <button
           className="btn btn-primary btn-full"
           onClick={runParse}
-          disabled={!pasteText.trim()}
-          style={{ marginBottom: pasteResults ? 12 : 0 }}
+          disabled={!pasteText.trim() || pasteAiLoading}
+          style={{ marginBottom: (pasteResults || pasteAiLoading) ? 12 : 0 }}
         >
           <Icon name="send" /> Parse &amp; Match
         </button>
+        {pasteAiLoading && (
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: '.75rem', color: 'var(--accent)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span className="ptr-spinner" style={{ animation: 'spin 1s linear infinite' }} />
+              {pasteAiStage || 'Thinking…'}
+            </div>
+            {pasteAiTokens && (
+              <div style={{ fontSize: '.72rem', color: 'var(--muted)', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px', fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 80, overflow: 'hidden' }}>
+                {pasteAiTokens}<span className="ai-typing" />
+              </div>
+            )}
+          </div>
+        )}
 
         {pasteResults && (() => {
           const sorted = pasteResults
@@ -655,14 +753,22 @@ function InvoiceEditor({ invoice, originalInvoice, products, onSave, onCancel, o
                   <div key={i} style={{ padding: '10px 12px', borderRadius: 8, marginBottom: 6, background: bg, border: `1px solid ${border}` }}>
                     {isGreen && (
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                        <div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: '.82rem', fontWeight: 600, color: 'var(--success)' }}>✓ {r.qty} × {prod.name}</div>
                           <div style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 2 }}>
-                            {r.confidence}% match · {fmt(prod.price)} each
+                            {r.aiEnhanced ? '🤖 AI matched' : `${r.confidence}% match`} · {fmt(prod.price)} each
                             {s === 'confirmed' && <span style={{ color: 'var(--success)', marginLeft: 6 }}>· Confirmed</span>}
                           </div>
                         </div>
-                        <span style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '.85rem', flexShrink: 0 }}>{fmt(r.qty * prod.price)}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                          <span style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '.85rem' }}>{fmt(r.qty * prod.price)}</span>
+                          <button
+                            className="btn btn-sm"
+                            title="Wrong match — remove"
+                            style={{ padding: '3px 7px', fontSize: '.75rem', color: 'var(--muted)', border: '1px solid var(--border)', background: 'transparent' }}
+                            onClick={() => unmatch(i)}
+                          >✕</button>
+                        </div>
                       </div>
                     )}
 
@@ -1023,7 +1129,154 @@ function Inventory({ products, onSync, syncStatus, syncCount, hasApiKey, lastSyn
   )
 }
 
-function Settings({ settings, onSave }) {
+function AiSetupScreen({ onDone }) {
+  const [hfToken, setHfToken] = useState(() => localStorage.getItem('sip_hf_token') || '')
+  const [phase, setPhase]     = useState('prompt') // prompt | downloading | done | error
+  const [progress, setProgress] = useState(0)
+  const [errMsg, setErrMsg]   = useState('')
+
+  const model = AI_MODELS.small
+
+  const isPublic = !!model.public && model.url !== 'GDRIVE_PLACEHOLDER'
+
+  const startDownload = async (token) => {
+    const t = token.trim()
+    if (t) localStorage.setItem('sip_hf_token', t)
+    setPhase('downloading')
+    setProgress(0)
+    try {
+      await gemmaDownload('small', (frac) => setProgress(frac), isPublic ? undefined : (t || undefined))
+      setPhase('done')
+    } catch (e) {
+      if (e.name === 'AbortError') { setPhase('prompt'); return }
+      setErrMsg(e.message)
+      setPhase('error')
+    }
+  }
+
+  const wrap = (children) => (
+    <div style={{
+      minHeight: '100dvh', background: 'var(--bg)', display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center',
+      padding: 'calc(env(safe-area-inset-top, 0) + 32px) 24px 32px',
+    }}>
+      <div style={{ width: '100%', maxWidth: 400 }}>{children}</div>
+    </div>
+  )
+
+  if (phase === 'prompt') return wrap(
+    <>
+      <div style={{ textAlign: 'center', marginBottom: 28 }}>
+        <div style={{ fontSize: 48, marginBottom: 12 }}>🤖</div>
+        <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--accent)', marginBottom: 8 }}>Set up on-device AI</h2>
+        <p style={{ color: 'var(--muted)', fontSize: '.88rem', lineHeight: 1.6 }}>
+          Download a small AI model ({model.size}) that runs fully on your device to improve product matching in Smart Paste.
+        </p>
+      </div>
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+          <span style={{ fontWeight: 600, fontSize: '.9rem' }}>{model.label}</span>
+          <span style={{ fontSize: '.78rem', color: 'var(--muted)' }}>{model.size}</span>
+        </div>
+        <p style={{ fontSize: '.78rem', color: 'var(--muted)' }}>{model.description} · one-time download · zero network after</p>
+      </div>
+      {!isPublic && (
+        <div className="field">
+          <label>HuggingFace Token <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(required)</span></label>
+          <input
+            type="password"
+            placeholder="hf_…"
+            value={hfToken}
+            onChange={e => setHfToken(e.target.value)}
+          />
+          <p style={{ fontSize: '.7rem', color: 'var(--muted)', marginTop: 4, lineHeight: 1.5 }}>
+            Free account at huggingface.co → Settings → Tokens → New token (Read).
+            Accept the model licence at huggingface.co/litert-community/gemma-3-270m-it-litert-lm first.
+          </p>
+        </div>
+      )}
+      <button
+        className="btn btn-primary btn-full"
+        style={{ marginBottom: 10 }}
+        disabled={!isPublic && !hfToken.trim()}
+        onClick={() => startDownload(hfToken)}
+      >
+        Download &amp; Set Up AI
+      </button>
+      <button className="btn btn-ghost btn-full" onClick={onDone}>Skip for now</button>
+    </>
+  )
+
+  if (phase === 'downloading') return wrap(
+    <div style={{ textAlign: 'center' }}>
+      <div style={{ fontSize: 48, marginBottom: 16 }}>⬇️</div>
+      <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--accent)', marginBottom: 8 }}>Downloading AI model…</h2>
+      <p style={{ color: 'var(--muted)', fontSize: '.82rem', marginBottom: 24 }}>This happens once. The model stays on your device.</p>
+      <div style={{ height: 8, background: 'var(--border)', borderRadius: 4, marginBottom: 8, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${Math.round(progress * 100)}%`, background: 'var(--accent)', borderRadius: 4, transition: 'width .4s' }} />
+      </div>
+      <p style={{ fontSize: '.82rem', color: 'var(--muted)', marginBottom: 20 }}>{Math.round(progress * 100)}% — {model.size}</p>
+      <button className="btn btn-ghost btn-sm" onClick={() => { gemmaCancelDownload(); setPhase('prompt') }}>Cancel</button>
+    </div>
+  )
+
+  if (phase === 'done') return wrap(
+    <div style={{ textAlign: 'center' }}>
+      <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
+      <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--success)', marginBottom: 8 }}>AI ready!</h2>
+      <p style={{ color: 'var(--muted)', fontSize: '.88rem', lineHeight: 1.6, marginBottom: 28 }}>
+        Smart Paste will now use on-device AI to improve low-confidence matches automatically.
+      </p>
+      <button className="btn btn-primary btn-full" onClick={onDone}>Let's go →</button>
+    </div>
+  )
+
+  // error
+  return wrap(
+    <div style={{ textAlign: 'center' }}>
+      <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
+      <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--danger)', marginBottom: 8 }}>Download failed</h2>
+      <div style={{ background: 'rgba(224,82,82,.08)', border: '1px solid rgba(224,82,82,.25)', borderRadius: 8, padding: '10px 12px', marginBottom: 12, textAlign: 'left' }}>
+        <p style={{ fontSize: '.75rem', color: '#f87171', fontFamily: 'monospace', wordBreak: 'break-all' }}>{errMsg}</p>
+      </div>
+      <button className="btn btn-primary btn-full" style={{ marginBottom: 10 }} onClick={() => setPhase('prompt')}>Try again</button>
+      <button className="btn btn-ghost btn-full" onClick={onDone}>Skip for now</button>
+    </div>
+  )
+}
+
+function HfTokenGuide() {
+  const [open, setOpen] = useState(false)
+  const step = (n, text) => (
+    <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+      <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--accent)', color: '#000', fontSize: '.72rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>{n}</div>
+      <p style={{ fontSize: '.78rem', color: 'var(--muted)', lineHeight: 1.6 }}>{text}</p>
+    </div>
+  )
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <button
+        className="btn btn-ghost btn-sm"
+        style={{ fontSize: '.75rem', marginBottom: open ? 10 : 0, width: '100%', justifyContent: 'space-between' }}
+        onClick={() => setOpen(o => !o)}
+      >
+        <span>How to get a HuggingFace token</span>
+        <span>{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 14px 4px' }}>
+          {step(1, 'Go to huggingface.co and click Sign Up. Create a free account — no payment needed.')}
+          {step(2, 'Once logged in, open the model page: huggingface.co/litert-community/gemma-3-1b-it-litert-lm')}
+          {step(3, 'Click "Agree and access repository" to accept the Gemma licence. You must do this or downloads will fail with 401.')}
+          {step(4, 'Go to huggingface.co/settings/tokens and click "New token". Give it any name, set role to Read, and click Generate.')}
+          {step(5, 'Copy the token (starts with hf_…) and paste it into the field below. Then click Download on your chosen model.')}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Settings({ settings, onSave, aiModelId, aiDownloaded, aiDownloadProgress, aiDownloading, aiLoading, aiReady, onAiSelect, onAiDownload, onAiDelete, onAiLoad }) {
   const [s, setS] = useState(settings)
   const [testStatus, setTestStatus] = useState('idle') // idle | testing | ok | error
   const [testError, setTestError] = useState('')
@@ -1098,17 +1351,89 @@ function Settings({ settings, onSave }) {
       </div>
 
       <div className="settings-section">
-        <h2>AI Model</h2>
-        <div className="card" style={{ marginBottom: 0 }}>
-          <div className="flex-between mb-8">
-            <span style={{ fontWeight: 600 }}>Gemma 4 1B · on-device</span>
-            <span className="badge badge-pending">Coming in Phase 4</span>
+        <h2>On-Device AI</h2>
+        {!hasWebGPU() ? (
+          <div className="card" style={{ marginBottom: 0 }}>
+            <p style={{ fontSize: '.82rem', color: 'var(--danger)' }}>⚠ WebGPU not available in this browser. AI matching requires Chrome 113+ or Edge 113+.</p>
           </div>
-          <p className="text-muted" style={{ fontSize: '.8rem', lineHeight: 1.5 }}>
-            On-device AI will parse order emails and match products automatically.
-            ~800 MB one-time download · zero network calls · WebGPU accelerated.
-          </p>
-        </div>
+        ) : (
+          <>
+            <p className="text-muted" style={{ fontSize: '.78rem', marginBottom: 12, lineHeight: 1.5 }}>
+              Download once · runs fully on-device · used to improve Smart Paste matches below 65% confidence.
+            </p>
+            <HfTokenGuide />
+            <div className="field">
+              <label>HuggingFace Token</label>
+              <input
+                type="password"
+                placeholder="hf_…"
+                defaultValue={localStorage.getItem('sip_hf_token') || ''}
+                onChange={e => localStorage.setItem('sip_hf_token', e.target.value.trim())}
+              />
+            </div>
+            {Object.values(AI_MODELS).map(m => {
+              const isSelected   = aiModelId === m.id
+              const downloaded   = !!aiDownloaded[m.id]
+              const downloading  = aiDownloading === m.id
+              const progress     = aiDownloadProgress[m.id] ?? 0
+              const loaded       = aiReady && getLoadedModelId() === m.id
+
+              return (
+                <div key={m.id} className="card" style={{ marginBottom: 8, border: isSelected ? '1px solid var(--accent)' : undefined }}
+                  onClick={() => onAiSelect(m.id)}>
+                  <div className="flex-between mb-4">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ width: 14, height: 14, borderRadius: '50%', border: `2px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`, background: isSelected ? 'var(--accent)' : 'transparent', flexShrink: 0 }} />
+                      <div>
+                        <span style={{ fontWeight: 600, fontSize: '.88rem' }}>{m.label}</span>
+                        {m.id === 'small' && <span style={{ fontSize: '.68rem', color: 'var(--accent)', marginLeft: 6 }}>Recommended</span>}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: '.72rem', color: 'var(--muted)' }}>{m.size}</span>
+                  </div>
+                  <p style={{ fontSize: '.75rem', color: 'var(--muted)', marginBottom: downloading || downloaded ? 8 : 0 }}>{m.description}</p>
+
+                  {downloading && (
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.72rem', color: 'var(--muted)', marginBottom: 4 }}>
+                        <span>Downloading…</span><span>{Math.round(progress * 100)}%</span>
+                      </div>
+                      <div style={{ height: 4, background: 'var(--border)', borderRadius: 2 }}>
+                        <div style={{ height: '100%', width: `${progress * 100}%`, background: 'var(--accent)', borderRadius: 2, transition: 'width .3s' }} />
+                      </div>
+                      <button className="btn btn-ghost btn-sm" style={{ marginTop: 6, fontSize: '.72rem' }} onClick={e => { e.stopPropagation(); gemmaCancelDownload() }}>Cancel</button>
+                    </div>
+                  )}
+
+                  {downloaded && !downloading && (
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {loaded ? (
+                        <span style={{ fontSize: '.75rem', color: 'var(--success)', alignSelf: 'center' }}>✓ Loaded &amp; ready</span>
+                      ) : (
+                        <button className="btn btn-primary btn-sm" style={{ fontSize: '.75rem' }}
+                          disabled={aiLoading}
+                          onClick={e => { e.stopPropagation(); onAiLoad(m.id) }}>
+                          {aiLoading && aiModelId === m.id ? 'Loading…' : 'Load into memory'}
+                        </button>
+                      )}
+                      <button className="btn btn-ghost btn-sm" style={{ fontSize: '.75rem', color: 'var(--danger)' }}
+                        onClick={e => { e.stopPropagation(); onAiDelete(m.id) }}>
+                        Delete
+                      </button>
+                    </div>
+                  )}
+
+                  {!downloaded && !downloading && (
+                    <button className="btn btn-ghost btn-sm" style={{ fontSize: '.75rem', alignSelf: 'flex-start' }}
+                      onClick={e => { e.stopPropagation(); onAiDownload(m.id) }}>
+                      Download {m.size}
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+          </>
+        )}
       </div>
 
       <button className="btn btn-primary btn-sm" style={{ marginTop: 16, alignSelf: 'flex-start' }} onClick={() => onSave(s)}>
@@ -1746,6 +2071,7 @@ function TourOverlay({ step, onNext, onSkip }) {
 // ════════════════════════════════════════════════════════════════════════════════
 export default function App() {
   const [onboarded, setOnboarded] = useState(() => !!localStorage.getItem('sip_onboarded'))
+  const [aiSetupDone, setAiSetupDone] = useState(() => !!localStorage.getItem('sip_ai_setup_done'))
   const [tourStep, setTourStep]   = useState(null) // null = no tour, 0-5 = tour active
   const [tab, setTab]             = useState(() => localStorage.getItem('sip_draft_edit') ? 'invoices' : 'dashboard')
   const [invoices, setInvoices]   = useState([])
@@ -1869,6 +2195,84 @@ export default function App() {
     }
   }, [settings.sqApiKey])
 
+  const handleDraftChange = useCallback((inv) => setEditing(inv), [])
+
+  // ── AI / Gemma state ────────────────────────────────────────────────────────
+  const [aiModelId, setAiModelId] = useState(() => localStorage.getItem('sip_ai_model') || 'small')
+  const [aiDownloaded, setAiDownloaded] = useState({})       // { modelId: bool }
+  const [aiDownloadProgress, setAiDownloadProgress] = useState({}) // { modelId: 0-1 }
+  const [aiDownloading, setAiDownloading] = useState(null)   // modelId | null
+  const [aiLoading, setAiLoading] = useState(false)          // loading into WebGPU
+  const [aiReady, setAiReady] = useState(false)              // model is in memory
+
+  // Check downloaded models on mount, then auto-load the selected model if available
+  useEffect(() => {
+    if (!hasWebGPU()) return
+    if (isGemmaReady()) {
+      // Already loaded this session (e.g. hot reload)
+      setAiModelId(getLoadedModelId() || 'small')
+      setAiReady(true)
+      Promise.all(Object.keys(AI_MODELS).map(async id => [id, await isModelDownloaded(id)]))
+        .then(entries => setAiDownloaded(Object.fromEntries(entries)))
+      return
+    }
+    Promise.all(Object.keys(AI_MODELS).map(async id => [id, await isModelDownloaded(id)]))
+      .then(entries => {
+        const downloaded = Object.fromEntries(entries)
+        setAiDownloaded(downloaded)
+        const modelId = localStorage.getItem('sip_ai_model') || 'small'
+        if (downloaded[modelId]) {
+          setAiLoading(true)
+          gemmaInit(modelId)
+            .then(() => { setAiReady(true); setAiModelId(modelId) })
+            .catch(e => console.warn('[SIP] auto-load failed:', e.message))
+            .finally(() => setAiLoading(false))
+        }
+      })
+  }, [])
+
+  const handleAiSelectModel = (id) => {
+    setAiModelId(id)
+    localStorage.setItem('sip_ai_model', id)
+    if (getLoadedModelId() === id) setAiReady(true)
+    else setAiReady(false)
+  }
+
+  const handleAiDownload = async (id) => {
+    setAiDownloading(id)
+    setAiDownloadProgress(p => ({ ...p, [id]: 0 }))
+    try {
+      const hfToken = localStorage.getItem('sip_hf_token') || ''
+      await gemmaDownload(id, (frac) => setAiDownloadProgress(p => ({ ...p, [id]: frac })), hfToken)
+      setAiDownloaded(d => ({ ...d, [id]: true }))
+      setAiDownloadProgress(p => ({ ...p, [id]: 1 }))
+    } catch (e) {
+      if (e.name !== 'AbortError') alert(`Download failed: ${e.message}`)
+    } finally {
+      setAiDownloading(null)
+    }
+  }
+
+  const handleAiDelete = async (id) => {
+    await gemmaDelete(id)
+    setAiDownloaded(d => ({ ...d, [id]: false }))
+    if (aiModelId === id) setAiReady(false)
+  }
+
+  const handleAiLoad = async (id) => {
+    setAiLoading(true)
+    try {
+      await gemmaInit(id)
+      setAiReady(true)
+      setAiModelId(id)
+      localStorage.setItem('sip_ai_model', id)
+    } catch (e) {
+      alert(`Failed to load model: ${e.message}`)
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
   const handleOnboardConnect = (apiKey, fetchedProducts, bizDetails) => {
     const newSettings = {
       ...settings,
@@ -1885,14 +2289,24 @@ export default function App() {
     if (fetchedProducts?.length) saveProducts(fetchedProducts)
     localStorage.setItem('sip_onboarded', 'real')
     setOnboarded(true)
-    setTourStep(0)
   }
 
   const handleOnboardDemo = () => {
     saveInvoices(SAMPLE_INVOICES)
     localStorage.setItem('sip_onboarded', 'demo')
     setOnboarded(true)
+  }
+
+  const handleAiSetupDone = () => {
+    localStorage.setItem('sip_ai_setup_done', '1')
+    localStorage.setItem('sip_ai_model', 'small')
+    setAiModelId('small')
+    setAiSetupDone(true)
     setTourStep(0)
+    // Refresh downloaded state so Settings reflects the new model
+    Promise.all(
+      Object.keys(AI_MODELS).map(async id => [id, await isModelDownloaded(id)])
+    ).then(entries => setAiDownloaded(Object.fromEntries(entries)))
   }
 
   if (!onboarded) {
@@ -1902,6 +2316,22 @@ export default function App() {
         <Onboarding onConnect={handleOnboardConnect} onDemo={handleOnboardDemo} />
       </ErrorBoundary>
     )
+  }
+
+  if (!aiSetupDone && hasWebGPU()) {
+    return (
+      <ErrorBoundary>
+        <style>{CSS}</style>
+        <AiSetupScreen onDone={handleAiSetupDone} />
+      </ErrorBoundary>
+    )
+  }
+
+  if (!aiSetupDone) {
+    // No WebGPU — skip setup entirely
+    localStorage.setItem('sip_ai_setup_done', '1')
+    setAiSetupDone(true)
+    setTourStep(0)
   }
 
   const clearDraft = () => {
@@ -1937,8 +2367,6 @@ export default function App() {
     setEditing(revertTo)
     localStorage.setItem('sip_draft_edit', JSON.stringify(revertTo))
   }
-
-  const handleDraftChange = useCallback((inv) => setEditing(inv), [])
 
   // Discard: clear draft entirely, close editor
   const handleDiscardEdit = () => {
@@ -2004,6 +2432,7 @@ export default function App() {
                 onCancel={handleCancelEdit}
                 onDiscard={handleDiscardEdit}
                 onDraftChange={handleDraftChange}
+                aiReady={aiReady}
               />
             )}
             {tab === 'orders' && (
@@ -2028,7 +2457,22 @@ export default function App() {
                 lastSynced={lastSynced}
               />
             )}
-            {tab === 'settings' && <Settings settings={settings} onSave={handleSaveSettings} />}
+            {tab === 'settings' && (
+              <Settings
+                settings={settings}
+                onSave={handleSaveSettings}
+                aiModelId={aiModelId}
+                aiDownloaded={aiDownloaded}
+                aiDownloadProgress={aiDownloadProgress}
+                aiDownloading={aiDownloading}
+                aiLoading={aiLoading}
+                aiReady={aiReady}
+                onAiSelect={handleAiSelectModel}
+                onAiDownload={handleAiDownload}
+                onAiDelete={handleAiDelete}
+                onAiLoad={handleAiLoad}
+              />
+            )}
           </PullToRefresh>
         </main>
 
