@@ -24,3 +24,13 @@ dist-ssr
 *.sw?
 
 .vercel
+
+# Pre-refactor source backup
+.src_OLD
+
+# ONNX WASM files — copied from node_modules at build time via prebuild script
+public/ort-wasm-simd-threaded*.wasm
+public/ort-wasm-simd-threaded*.mjs
+
+# Android keystore
+smart-invoice-pro.jks
