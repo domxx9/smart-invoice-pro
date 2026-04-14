@@ -28,7 +28,12 @@
   - Burger menu includes: Inventory, Settings, Contacts tab
 - [ ] Dashboard: add "Quick Add Contact" — supports name, email / phone number / website
 
-## Contacts
+## Sync
+- [ ] Auto-sync every 30 minutes, running in the background — UI must remain fully interactive during sync
+  - **Web (Vercel):** use `setInterval` + background fetch; consider Service Worker for syncing even when the tab is not in focus
+  - **iOS (Capacitor):** use Capacitor Background Runner or `BackgroundFetch` plugin — WKWebView tabs can be suspended by the OS, so a native background task is required
+  - **Android (Capacitor):** use Capacitor Background Runner or WorkManager via plugin to survive app backgrounding
+  - Sync should be silent — no UI interruption unless there is an error worth surfacing
 - [ ] Contacts tab accessible via burger menu
 - [ ] Add, edit, and delete contacts
 - [ ] Settings page: Contacts section
