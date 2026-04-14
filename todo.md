@@ -38,3 +38,5 @@
 
 ## Invoices
 - [ ] Invoice importing and storing
+- [ ] Add bank details to invoice
+- [ ] Add discount line to invoice — discount applies **before tax**
