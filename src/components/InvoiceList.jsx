@@ -15,7 +15,8 @@ function overdueColor(days) {
 }
 
 export function Invoices({ invoices, onNewInvoice, onEdit, onDuplicate, editingDraft }) {
-  const [filter, setFilter]   = useState('all')
+  const [filter, setFilter]     = useState('all')
+  const [search, setSearch]     = useState('')
   const [copiedId, setCopiedId] = useState(null)
 
   const copyId = (id) => {
@@ -30,7 +31,16 @@ export function Invoices({ invoices, onNewInvoice, onEdit, onDuplicate, editingD
       : [{ ...editingDraft, status: 'draft' }, ...invoices]
     : invoices
 
-  const visible = filter === 'all' ? displayInvoices : displayInvoices.filter(i => i.status === filter)
+  const q = search.trim().toLowerCase()
+  const filtered = filter === 'all' ? displayInvoices : displayInvoices.filter(i => i.status === filter)
+  const visible = q
+    ? filtered.filter(i =>
+        i.id?.toLowerCase().includes(q) ||
+        i.customer?.toLowerCase().includes(q) ||
+        i.customerBusiness?.toLowerCase().includes(q) ||
+        i.email?.toLowerCase().includes(q)
+      )
+    : filtered
 
   const sorted = [
     ...visible.filter(i => i.status === 'draft'),
@@ -44,6 +54,26 @@ export function Invoices({ invoices, onNewInvoice, onEdit, onDuplicate, editingD
         <button className="btn btn-primary btn-sm" onClick={onNewInvoice}>
           <Icon name="plus" /> New
         </button>
+      </div>
+
+      <div style={{ position: 'relative', marginBottom: 10 }}>
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search by name, ID, email…"
+          style={{
+            width: '100%', background: 'var(--surface)', border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-sm)', padding: '9px 34px 9px 12px',
+            color: 'var(--text)', fontSize: '.85rem', outline: 'none',
+          }}
+        />
+        {search && (
+          <button onClick={() => setSearch('')} style={{
+            position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+            background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer',
+            fontSize: '1rem', lineHeight: 1, padding: 0,
+          }}>×</button>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>

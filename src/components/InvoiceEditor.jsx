@@ -23,7 +23,7 @@ const WORKFLOW = {
   paid:      { label: 'Return',           next: 'refunded',  danger: true,  sendPDF: false },
 }
 
-export function InvoiceEditor({ invoice, originalInvoice, products, onSave, onClose, onDelete, onDiscard, onDraftChange, aiReady, settings }) {
+export function InvoiceEditor({ invoice, originalInvoice, products, onSave, onClose, onDelete, onDiscard, onDraftChange, aiReady, settings, onToast }) {
   const [inv, setInv] = useState(invoice)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [pdfToast, setPdfToast] = useState(null)
@@ -529,7 +529,7 @@ export function InvoiceEditor({ invoice, originalInvoice, products, onSave, onCl
               <button
                 className="btn btn-ghost"
                 style={{ flex: 1, padding: '12px 8px', fontSize: '.85rem', color: '#4caf84', borderColor: 'rgba(76,175,132,.3)' }}
-                onClick={() => sharePDF(inv, settings)}
+                onClick={async () => { await sharePDF(inv, settings); onToast?.('Invoice shared', 'success', '↗') }}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
                   <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
@@ -548,6 +548,7 @@ export function InvoiceEditor({ invoice, originalInvoice, products, onSave, onCl
                   } else {
                     const result = await savePDFToPhone(inv, settings)
                     setPdfToast(result)
+                    if (!result.error) onToast?.('PDF saved to phone', 'success', '📄')
                   }
                 }}
               >

@@ -14,6 +14,7 @@ import {
   cancelDownload as gemmaCancelDownload,
 } from './gemma.js'
 import { Confetti } from './components/Confetti.jsx'
+import { Toast } from './components/Toast.jsx'
 import { ErrorBoundary } from './components/ErrorBoundary.jsx'
 import { Dashboard } from './components/Dashboard.jsx'
 import { Invoices } from './components/InvoiceList.jsx'
@@ -87,6 +88,15 @@ export default function App() {
     setInvoicePadding(merged.invoicePadding)
     return merged
   })
+
+  // ─── Toast notifications ──────────────────────────────────────────────────
+  const [toasts, setToasts] = useState([])
+  const toast = useCallback((message, type = 'info', icon = null, duration = 2600) => {
+    const id = Date.now() + Math.random()
+    setToasts(t => [...t, { id, message, type, icon }])
+    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), duration)
+  }, [])
+  const dismissToast = useCallback((id) => setToasts(t => t.filter(x => x.id !== id)), [])
 
   // ─── Confetti + Easter egg ────────────────────────────────────────────────
   const [confettiTrigger, setConfettiTrigger] = useState(0)
@@ -191,7 +201,12 @@ export default function App() {
     setEditing(null)
     setEditingOriginal(null)
     setEditorOpen(false)
-    if (justPaid) setConfettiTrigger(t => t + 1)
+    if (justPaid) {
+      setConfettiTrigger(t => t + 1)
+      toast('Payment received — invoice paid! 🎉', 'success')
+    } else {
+      toast('Invoice saved', 'success', '✓')
+    }
   }
 
   const handleDuplicateInvoice = (inv) => {
@@ -283,6 +298,7 @@ export default function App() {
   const handleSaveSettings = (s) => {
     setSettings(s)
     localStorage.setItem('sip_settings', JSON.stringify(s))
+    toast('Settings saved', 'success', '✓')
   }
 
   // ─── Onboarding handlers ──────────────────────────────────────────────────
@@ -324,8 +340,12 @@ export default function App() {
     try {
       await gemmaDownload(id, (frac) => setAiDownloadProgress(p => ({ ...p, [id]: frac })))
       setAiDownloaded(p => ({ ...p, [id]: true }))
+      toast('AI model downloaded', 'success', '🤖')
     } catch (e) {
-      if (e.name !== 'AbortError') console.error('[AI] download error:', e)
+      if (e.name !== 'AbortError') {
+        console.error('[AI] download error:', e)
+        toast('Download failed — check your connection', 'error')
+      }
     } finally {
       setAiDownloading(null)
     }
@@ -342,8 +362,10 @@ export default function App() {
     try {
       await gemmaInit(id)
       setAiReady(isGemmaReady())
+      toast('AI model loaded and ready', 'success', '⚡')
     } catch (e) {
       console.error('[AI] load error:', e)
+      toast('Failed to load AI model', 'error')
     } finally {
       setAiLoading(false)
     }
@@ -372,6 +394,7 @@ export default function App() {
     <ErrorBoundary>
       <style>{CSS}</style>
       <Confetti trigger={confettiTrigger} />
+      <Toast toasts={toasts} onDismiss={dismissToast} />
       {showEgg && (
         <div style={{
           position: 'fixed', bottom: 88, left: '50%',
@@ -435,6 +458,7 @@ export default function App() {
                 onDiscard={handleDiscardEdit}
                 onDraftChange={handleDraftChange}
                 aiReady={aiReady}
+                onToast={toast}
               />
             )}
             {tab === 'orders' && (

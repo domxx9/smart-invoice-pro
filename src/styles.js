@@ -129,6 +129,11 @@ export const CSS = `
     to   { transform: translateX(-50%) scale(1)   translateY(0);   opacity: 1; }
   }
 
+  @keyframes toast-in {
+    from { transform: translateY(12px) scale(0.92); opacity: 0; }
+    to   { transform: translateY(0)    scale(1);    opacity: 1; }
+  }
+
   @keyframes egg-fade {
     0%   { opacity: 1; }
     70%  { opacity: 1; }
