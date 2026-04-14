@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { CSS } from './styles.js'
 import { SAMPLE_PRODUCTS, SAMPLE_INVOICES } from './constants.js'
-import { blankInvoice, setCurrency, setInvoicePrefix, setInvoicePadding } from './helpers.js'
+import { blankInvoice, nextId, today, setCurrency, setInvoicePrefix, setInvoicePadding } from './helpers.js'
 import { fetchSquarespaceProducts, fetchSquarespaceOrders } from './api/squarespace.js'
 import {
   MODELS as AI_MODELS,
@@ -13,6 +13,7 @@ import {
   getLoadedModelId,
   cancelDownload as gemmaCancelDownload,
 } from './gemma.js'
+import { Confetti } from './components/Confetti.jsx'
 import { ErrorBoundary } from './components/ErrorBoundary.jsx'
 import { Dashboard } from './components/Dashboard.jsx'
 import { Invoices } from './components/InvoiceList.jsx'
@@ -87,6 +88,25 @@ export default function App() {
     return merged
   })
 
+  // ─── Confetti + Easter egg ────────────────────────────────────────────────
+  const [confettiTrigger, setConfettiTrigger] = useState(0)
+  const [eggTaps, setEggTaps]   = useState(0)
+  const [showEgg, setShowEgg]   = useState(false)
+  const eggTimer = useRef(null)
+
+  const handleVersionTap = () => {
+    const next = eggTaps + 1
+    setEggTaps(next)
+    clearTimeout(eggTimer.current)
+    if (next >= 7) {
+      setShowEgg(true)
+      setEggTaps(0)
+      setTimeout(() => setShowEgg(false), 3800)
+    } else {
+      eggTimer.current = setTimeout(() => setEggTaps(0), 1800)
+    }
+  }
+
   // ─── AI state ─────────────────────────────────────────────────────────────
   const [aiModelId, setAiModelId]                   = useState(() => localStorage.getItem('sip_ai_model') || 'small')
   const [aiDownloaded, setAiDownloaded]             = useState({})
@@ -160,6 +180,8 @@ export default function App() {
   }, [])
 
   const handleSave = (inv) => {
+    const old = invoices.find(i => i.id === inv.id)
+    const justPaid = inv.status === 'paid' && (!old || old.status !== 'paid')
     const idx = invoices.findIndex(i => i.id === inv.id)
     const updated = idx >= 0
       ? invoices.map((i, n) => n === idx ? inv : i)
@@ -169,12 +191,19 @@ export default function App() {
     setEditing(null)
     setEditingOriginal(null)
     setEditorOpen(false)
+    if (justPaid) setConfettiTrigger(t => t + 1)
   }
 
-  // onClose: revert editor to prior saved state (cancel in-progress edits)
-  const handleCloseEditor = (revertTo) => {
-    setEditing(revertTo)
-    localStorage.setItem('sip_draft_edit', JSON.stringify(revertTo))
+  const handleDuplicateInvoice = (inv) => {
+    const copy = { ...inv, id: nextId(invoices), status: 'new', date: today(), due: '' }
+    openEditor(copy)
+  }
+
+  // onClose: save current draft state and close the editor
+  const handleCloseEditor = (inv) => {
+    setEditing(inv)
+    localStorage.setItem('sip_draft_edit', JSON.stringify(inv))
+    setEditorOpen(false)
   }
 
   // onDiscard: abandon draft entirely, close editor
@@ -342,6 +371,21 @@ export default function App() {
   return (
     <ErrorBoundary>
       <style>{CSS}</style>
+      <Confetti trigger={confettiTrigger} />
+      {showEgg && (
+        <div style={{
+          position: 'fixed', bottom: 88, left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'var(--card)', border: '1px solid var(--accent)',
+          borderRadius: 12, padding: '10px 20px',
+          fontSize: '.82rem', color: 'var(--text)',
+          zIndex: 9998, whiteSpace: 'nowrap', textAlign: 'center',
+          boxShadow: '0 8px 40px rgba(245,166,35,.35)',
+          animation: 'egg-pop 0.3s ease-out, egg-fade 3.8s ease-in-out forwards',
+        }}>
+          ✦ Vibe-coded with Claude · April 2026
+        </div>
+      )}
       {tourStep !== null && (
         <TourOverlay
           step={tourStep}
@@ -353,7 +397,8 @@ export default function App() {
         <header className="header">
           <div className="header-inner">
             <h1>Smart Invoice Pro</h1>
-            <span className="text-muted" style={{ fontSize: '.75rem' }}>v1.0</span>
+            <span className="text-muted" style={{ fontSize: '.75rem', cursor: 'default', userSelect: 'none' }}
+              onClick={handleVersionTap}>v1.0</span>
           </div>
         </header>
 
@@ -374,6 +419,7 @@ export default function App() {
                 invoices={invoices}
                 onNewInvoice={handleNewInvoice}
                 onEdit={inv => inv.status === 'draft' ? setEditorOpen(true) : handleEdit(inv)}
+                onDuplicate={handleDuplicateInvoice}
                 editingDraft={editing}
               />
             )}

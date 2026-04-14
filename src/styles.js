@@ -117,4 +117,21 @@ export const CSS = `
   .mb-16 { margin-bottom: 16px; }
   .mt-8 { margin-top: 8px; }
   .mt-16 { margin-top: 16px; }
+
+  @keyframes confetti-fall {
+    0%   { transform: translateY(0) translateX(0) rotate(0deg); opacity: 1; }
+    75%  { opacity: 1; }
+    100% { transform: translateY(110vh) translateX(var(--cdrift, 0px)) rotate(var(--crot, 360deg)); opacity: 0; }
+  }
+
+  @keyframes egg-pop {
+    from { transform: translateX(-50%) scale(0.7) translateY(8px); opacity: 0; }
+    to   { transform: translateX(-50%) scale(1)   translateY(0);   opacity: 1; }
+  }
+
+  @keyframes egg-fade {
+    0%   { opacity: 1; }
+    70%  { opacity: 1; }
+    100% { opacity: 0; }
+  }
 `
