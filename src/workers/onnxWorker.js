@@ -27,14 +27,15 @@ async function tx() {
 }
 
 function makeProgressCb(onProgress) {
-  const downloadMap = {}
-  return (info) => {
-    const { name, status, progress } = info
-    if (status === 'progress') {
-      downloadMap[name] = progress
-      const total = Object.values(downloadMap).reduce((a, b) => a + b, 0)
-      const count = Object.keys(downloadMap).length
-      onProgress(count > 0 ? total / count : 0)
+  // p.loaded / p.total are bytes — gives 0-1 fraction
+  // Do NOT use p.progress — HuggingFace sends that as 0-100 (percentage)
+  const files = new Map()
+  return (p) => {
+    if ((p.status === 'downloading' || p.status === 'progress') && p.total > 0) {
+      files.set(p.file ?? p.name ?? 'f', { loaded: p.loaded, total: p.total })
+      let loaded = 0, total = 0
+      for (const f of files.values()) { loaded += f.loaded; total += f.total }
+      if (total > 0) onProgress(Math.min(loaded / total, 1))
     }
   }
 }
@@ -53,7 +54,7 @@ async function loadModel(modelId, onProgress) {
   })
 
   _loadedModelId = modelId
-  localStorage.setItem('sip_model_cached_' + modelId, '1')
+  // localStorage not available in Web Workers — main thread sets the cached flag
 }
 
 async function initModel(modelId) {

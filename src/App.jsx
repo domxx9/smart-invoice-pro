@@ -248,7 +248,7 @@ export default function App() {
             .then(() => { setAiReady(true); setAiModelId(modelId) })
             .catch(e => {
               const msg = e.message || ''
-              const isOom = /allocat|out of memory|oom|buffer of size/i.test(msg)
+              const isOom = /allocat|out of memory|oom|buffer of size|bad_alloc|error_code.?6/i.test(msg)
               if (isOom) alert('Not enough RAM to load the model.\n\nPlease close other apps and try again.')
               else console.warn('[SIP] auto-load failed:', msg)
             })

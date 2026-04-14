@@ -35,12 +35,25 @@ const _tasks = new Map()
 // Worker management
 // ============================================================================
 
+function resetWorkerState() {
+  _worker = null
+  _isReady = false
+  _loadedModelId = null
+}
+
 function getWorker() {
   if (!_worker) {
     _worker = new Worker(new URL('./workers/onnxWorker.js', import.meta.url), { type: 'module' })
     _worker.onmessage = handleWorkerMessage
     _worker.onerror = (e) => {
-      console.error('[SIP Worker]', e)
+      console.error('[SIP Worker] uncaught error:', e)
+      // Reject all pending tasks then reset so next attempt gets a fresh worker
+      for (const [id, task] of _tasks) {
+        task.reject(new Error(e.message || 'Worker crashed'))
+        _tasks.delete(id)
+      }
+      _worker?.terminate()
+      resetWorkerState()
     }
   }
   return _worker
@@ -99,6 +112,9 @@ function handleWorkerMessage(event) {
     case 'ERROR':
       _tasks.delete(taskId)
       task.reject(new Error(error))
+      // Terminate broken worker — next call to getWorker() creates a fresh one
+      _worker?.terminate()
+      resetWorkerState()
       break
 
     default:
@@ -135,6 +151,9 @@ export async function downloadModel(modelId, onProgress) {
   return sendToWorker('LOAD', { modelId }, { onProgress }).then((result) => {
     _loadedModelId = modelId
     _isReady = true
+    // Worker can't access localStorage — set cached flag here on main thread
+    localStorage.setItem('sip_model_cached_' + modelId, '1')
+    onProgress?.(1)
     return result
   })
 }
