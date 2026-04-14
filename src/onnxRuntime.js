@@ -47,9 +47,10 @@ function getWorker() {
     _worker.onmessage = handleWorkerMessage
     _worker.onerror = (e) => {
       console.error('[SIP Worker] uncaught error:', e)
-      // Reject all pending tasks then reset so next attempt gets a fresh worker
-      for (const [id, task] of _tasks) {
-        task.reject(new Error(e.message || 'Worker crashed'))
+      // Snapshot keys first — reject all pending tasks
+      const err = new Error(e.message || 'Worker crashed')
+      for (const id of [..._tasks.keys()]) {
+        _tasks.get(id)?.reject(err)
         _tasks.delete(id)
       }
       _worker?.terminate()
@@ -63,10 +64,36 @@ function nextTaskId() {
   return `t${++_taskCounter}`
 }
 
+// LOAD/INIT can take 30–90s on slow devices; INFER much less
+const OP_TIMEOUT_MS = { LOAD: 300000, INIT: 120000, INFER: 60000, UNLOAD: 10000 }
+
 function sendToWorker(type, extra = {}, callbacks = {}) {
   const taskId = nextTaskId()
+  const timeoutMs = OP_TIMEOUT_MS[type] ?? 60000
+
   return new Promise((resolve, reject) => {
-    _tasks.set(taskId, { resolve, reject, ...callbacks })
+    let timer = null
+
+    const done = (fn, val) => {
+      clearTimeout(timer)
+      _tasks.delete(taskId)
+      fn(val)
+    }
+
+    _tasks.set(taskId, {
+      resolve: (v) => done(resolve, v),
+      reject:  (e) => done(reject, e),
+      ...callbacks,
+    })
+
+    timer = setTimeout(() => {
+      if (!_tasks.has(taskId)) return
+      console.error(`[SIP Runtime] Worker op ${type} timed out after ${timeoutMs}ms`)
+      done(reject, new Error(`AI operation timed out — the model may be too large for this device`))
+      _worker?.terminate()
+      resetWorkerState()
+    }, timeoutMs)
+
     getWorker().postMessage({ type, taskId, ...extra })
   })
 }
