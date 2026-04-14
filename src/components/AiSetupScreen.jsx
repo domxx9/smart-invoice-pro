@@ -3,7 +3,7 @@ import {
   MODELS as AI_MODELS,
   downloadModel as gemmaDownload,
   cancelDownload as gemmaCancelDownload,
-} from '../onnxRuntime.js'
+} from '../gemma.js'
 
 export function AiSetupScreen({ onDone }) {
   const [hfToken, setHfToken] = useState(() => localStorage.getItem('sip_hf_token') || '')

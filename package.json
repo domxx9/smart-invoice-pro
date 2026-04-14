@@ -5,13 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "prebuild": "node -e \"const fs=require('fs');const src='node_modules/onnxruntime-web/dist';const dst='public';['ort-wasm-simd-threaded.wasm','ort-wasm-simd-threaded.mjs','ort-wasm-simd-threaded.asyncify.wasm','ort-wasm-simd-threaded.asyncify.mjs','ort-wasm-simd-threaded.jsep.wasm','ort-wasm-simd-threaded.jsep.mjs','ort-wasm-simd-threaded.jspi.wasm','ort-wasm-simd-threaded.jspi.mjs'].forEach(f=>{try{fs.copyFileSync(src+'/'+f,dst+'/'+f)}catch(e){}})\"",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@awesome-cordova-plugins/file-opener": "^9.1.2",
     "@capacitor-community/file-opener": "^8.0.0",
     "@capacitor/android": "^8.3.0",
     "@capacitor/cli": "^8.3.0",
@@ -22,7 +20,6 @@
     "@capacitor/share": "^8.0.1",
     "@capacitor/splash-screen": "^8.0.1",
     "@capacitor/status-bar": "^8.0.2",
-    "@huggingface/transformers": "^4.0.1",
     "@mediapipe/tasks-genai": "^0.10.27",
     "jspdf": "^4.2.1",
     "react": "^18.3.1",

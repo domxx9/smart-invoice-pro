@@ -1,5 +1,20 @@
 # TODO
 
+---
+
+## 🔴 MAJOR — Tomorrow: Refactor + Testing Pipeline (OPUS-led)
+
+Dedicate a full session with **Claude Opus** in charge to:
+
+- Audit the entire codebase as it stands after the MediaPipe/Gemma migration
+- Design and build a proper **testing pipeline** — unit tests, integration tests, and end-to-end coverage for the critical paths (Smart Paste, AI inference, PDF export, invoice lifecycle, Squarespace sync)
+- Refactor anything that is messy, inconsistent, or fragile as part of the same session
+- Goal: leave the project with a test suite that can catch regressions before they reach prod
+
+> Use `/model opus` or spawn with `subagent_type: "opus"` — this session needs the strongest reasoning available.
+
+---
+
 ## AI & Smart Paste
 
 ### AI Pipeline

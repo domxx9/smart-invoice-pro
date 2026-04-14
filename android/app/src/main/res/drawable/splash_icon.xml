@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="160dp"
+    android:height="160dp"
+    android:viewportWidth="160"
+    android:viewportHeight="160">
+
+    <!-- Document body (dark card, folded top-right corner) -->
+    <path
+        android:fillColor="#1e2028"
+        android:pathData="M28,16 L94,16 L94,34 L110,34 L110,144 Q110,148 106,148 L32,148 Q28,148 28,144 Z"/>
+
+    <!-- Fold crease shadow -->
+    <path
+        android:fillColor="#2d3040"
+        android:pathData="M94,16 L110,34 L94,34 Z"/>
+
+    <!-- Text lines (muted white) -->
+    <path
+        android:fillColor="#55FFFFFF"
+        android:pathData="M36,50 L100,50 L100,53 L36,53 Z"/>
+    <path
+        android:fillColor="#38FFFFFF"
+        android:pathData="M36,59 L84,59 L84,62 L36,62 Z"/>
+    <path
+        android:fillColor="#38FFFFFF"
+        android:pathData="M36,68 L96,68 L96,71 L36,71 Z"/>
+    <path
+        android:fillColor="#38FFFFFF"
+        android:pathData="M36,77 L78,77 L78,80 L36,80 Z"/>
+
+    <!-- Amber divider -->
+    <path
+        android:fillColor="#f5a623"
+        android:pathData="M36,90 L106,90 L106,92.5 L36,92.5 Z"/>
+
+    <!-- Amount placeholder -->
+    <path
+        android:fillColor="#44FFFFFF"
+        android:pathData="M36,99 L60,99 L60,102 L36,102 Z"/>
+
+    <!-- Coin circle (amber) -->
+    <path
+        android:fillColor="#f5a623"
+        android:pathData="M80,118 A22,22,0,1,0,124,118 A22,22,0,1,0,80,118 Z"/>
+
+    <!-- Dollar sign — vertical bar -->
+    <path
+        android:fillColor="#1a1a1a"
+        android:pathData="M101,104.5 L101,131.5 L99,131.5 L99,104.5 Z"/>
+
+    <!-- Dollar sign — upper arc (S top) -->
+    <path
+        android:fillColor="#1a1a1a"
+        android:pathData="M109,110 Q109,104.5 100,104.5 Q91,104.5 91,110 Q91,115.5 100,116.5 Q109,117.5 109,123 Q109,129 100,129 Q91,129 91,123 L93.5,123 Q93.5,127 100,127 Q106.5,127 106.5,123 Q106.5,119 100,118 Q91,116.5 91,110 Q91,104.5 100,104.5 Q109,104.5 109,110 Z"/>
+
+</vector>

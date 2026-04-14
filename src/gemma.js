@@ -287,6 +287,10 @@ export async function initModel(modelId) {
 
 export function isGemmaReady() { return _llm !== null }
 export function getLoadedModelId() { return _loadedModelId }
+export function getBackendInfo() {
+  if (!_loadedModelId) return null
+  return { device: 'webgpu', dtype: 'float16' }
+}
 
 // ─── Prompt formatting ────────────────────────────────────────────────────────
 
