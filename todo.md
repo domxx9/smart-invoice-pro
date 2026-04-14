@@ -38,5 +38,5 @@
 
 ## Invoices
 - [ ] Invoice importing and storing
-- [ ] Add bank details to invoice
+- [ ] Add bank details to invoice — configured in Business Settings, pulled through to invoice automatically
 - [ ] Add discount line to invoice — discount applies **before tax**
