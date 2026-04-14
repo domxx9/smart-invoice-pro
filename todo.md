@@ -39,4 +39,6 @@
 ## Invoices
 - [ ] Invoice importing and storing
 - [ ] Add bank details to invoice — configured in Business Settings, pulled through to invoice automatically
+- [ ] Add VAT number to Business Settings — pulled through to invoice
+- [ ] Add company number to Business Settings — pulled through to invoice
 - [ ] Add discount line to invoice — discount applies **before tax**
