@@ -52,32 +52,52 @@ async function loadModel(modelId, onProgress) {
   const { pipeline } = await tx()
   const progressCb = makeProgressCb(onProgress)
 
-  _pipe = await pipeline('text-generation', model.repo, {
-    dtype: model.dtype,
-    device: 'wasm',
-    progress_callback: progressCb,
-  })
+  // Prefer WebGPU (GPU inference — faster, no SharedArrayBuffer needed).
+  // Fall back to WASM (CPU — needs SAB for threaded binary; works after
+  // COOP/COEP headers are set in MainActivity).
+  const preferWebGPU = typeof navigator !== 'undefined' && !!navigator.gpu
+  const devices = preferWebGPU ? ['webgpu', 'wasm'] : ['wasm']
 
-  _loadedModelId = modelId
-  // localStorage not available in Web Workers — main thread sets the cached flag
+  let lastErr
+  for (const device of devices) {
+    try {
+      _pipe = await pipeline('text-generation', model.repo, {
+        dtype: model.dtype,
+        device,
+        progress_callback: progressCb,
+      })
+      _loadedModelId = modelId
+      return
+    } catch (e) {
+      lastErr = e
+      console.warn(`[SIP Worker] device="${device}" failed: ${e.message} — trying next`)
+    }
+  }
+  throw lastErr
 }
 
 async function initModel(modelId) {
-  // If same model already loaded, do nothing
-  if (_loadedModelId === modelId && _pipe) {
-    return
-  }
+  if (_loadedModelId === modelId && _pipe) return
 
   const model = MODELS[modelId]
   if (!model) throw new Error(`Unknown model: ${modelId}`)
 
   const { pipeline } = await tx()
-  _pipe = await pipeline('text-generation', model.repo, {
-    dtype: model.dtype,
-    device: 'wasm',
-  })
+  const preferWebGPU = typeof navigator !== 'undefined' && !!navigator.gpu
+  const devices = preferWebGPU ? ['webgpu', 'wasm'] : ['wasm']
 
-  _loadedModelId = modelId
+  let lastErr
+  for (const device of devices) {
+    try {
+      _pipe = await pipeline('text-generation', model.repo, { dtype: model.dtype, device })
+      _loadedModelId = modelId
+      return
+    } catch (e) {
+      lastErr = e
+      console.warn(`[SIP Worker] init device="${device}" failed: ${e.message}`)
+    }
+  }
+  throw lastErr
 }
 
 async function unloadModel() {
