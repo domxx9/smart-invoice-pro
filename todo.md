@@ -34,7 +34,20 @@
   - **iOS (Capacitor):** use Capacitor Background Runner or `BackgroundFetch` plugin — WKWebView tabs can be suspended by the OS, so a native background task is required
   - **Android (Capacitor):** use Capacitor Background Runner or WorkManager via plugin to survive app backgrounding
   - Sync should be silent — no UI interruption unless there is an error worth surfacing
-- [ ] Contacts tab accessible via burger menu
+
+### Sync Strategy
+- [ ] **Initial sync:** fetch product name/title only — fast and lightweight, gets the app usable immediately
+- [ ] **Background enrichment sync** (kicks off after initial sync completes):
+  - Fetch product description and up to 2 images per product
+  - If images are files — download and save on device
+  - If images are URLs — save the URL only (no download)
+  - Run entirely in the background, no UI blocking
+
+## Picker
+- [ ] User can choose preferred display mode (saved preference):
+  - **List view:** simple list of product names; tap to expand and reveal description and images
+  - **Card/carousel view:** full-screen stack of cards showing product images as a carousel; swipe right to mark product as picked and advance to the next
+- [ ] Picker and invoice fulfillment flow share the same underlying code (see Invoices section)
 - [ ] Add, edit, and delete contacts
 - [ ] Settings page: Contacts section
   - Import from Squarespace
