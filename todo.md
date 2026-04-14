@@ -47,3 +47,9 @@
 - [ ] Add VAT number to Business Settings — pulled through to invoice
 - [ ] Add company number to Business Settings — pulled through to invoice
 - [ ] Add discount line to invoice — discount applies **before tax**
+- [ ] **Pending invoice workflow — "Mark as Fulfilled" button:**
+  - When an invoice is in pending state, the next workflow action button should read "Mark as Fulfilled"
+  - Clicking it presents a choice:
+    - **Go to Picker** — runs the same flow as the order picker (shared code — do not duplicate)
+    - **Skip** — marks the invoice as fulfilled immediately without going through the picker
+  - Order picker and this flow must share the same underlying code — any future changes to picker behaviour will apply to both automatically
