@@ -20,7 +20,12 @@ async function tx() {
     _transformers = await import('@huggingface/transformers')
     const { env } = _transformers
     env.backends.onnx.wasm.wasmPaths = '/'
-    env.useBrowserCache = true
+    // numThreads=1: SharedArrayBuffer is unavailable in Capacitor WebView
+    // without COOP/COEP headers. The threaded WASM variant crashes trying
+    // to init shared memory even on high-RAM devices (Pixel 10 Pro etc).
+    // Single-threaded is slower but actually works.
+    env.backends.onnx.wasm.numThreads = 1
+    env.useBrowserCache  = true
     env.allowLocalModels = false
   }
   return _transformers
