@@ -51,7 +51,7 @@ function Sparkline({ data }) {
 export function Dashboard({ invoices, onNewInvoice, onOpenInvoice }) {
   const paid    = invoices.filter(i => i.status === 'paid')
   const pending = invoices.filter(i => i.status === 'pending')
-  const overdue = invoices.filter(i => i.status === 'overdue')
+  const overdue = pending.filter(i => i.due && new Date(i.due) < new Date())
   const revenue     = paid.reduce((s, inv) => s + calcTotals(inv.items, inv.tax).total, 0)
   const outstanding = [...pending, ...overdue].reduce((s, inv) => s + calcTotals(inv.items, inv.tax).total, 0)
   const sparkData   = weeklyRevenue(invoices)
