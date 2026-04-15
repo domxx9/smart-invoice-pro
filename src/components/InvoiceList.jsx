@@ -31,8 +31,14 @@ export function Invoices({ invoices, onNewInvoice, onEdit, onDuplicate, editingD
       : [{ ...editingDraft, status: 'draft' }, ...invoices]
     : invoices
 
+  const isOverdueFn = (inv) => inv.status === 'pending' && inv.due && new Date(inv.due) < new Date()
+
   const q = search.trim().toLowerCase()
-  const filtered = filter === 'all' ? displayInvoices : displayInvoices.filter(i => i.status === filter)
+  const filtered = filter === 'all'
+    ? displayInvoices
+    : filter === 'overdue'
+      ? displayInvoices.filter(isOverdueFn)
+      : displayInvoices.filter(i => i.status === filter)
   const visible = q
     ? filtered.filter(i =>
         i.id?.toLowerCase().includes(q) ||
@@ -91,7 +97,7 @@ export function Invoices({ invoices, onNewInvoice, onEdit, onDuplicate, editingD
         {sorted.map(inv => {
           const { total }  = calcTotals(inv.items, inv.tax)
           const isDraft    = inv.status === 'draft'
-          const isOverdue  = inv.status === 'overdue'
+          const isOverdue  = isOverdueFn(inv)
           const days       = isOverdue ? daysOverdue(inv) : 0
           const heatColor  = isOverdue ? overdueColor(days) : null
 
@@ -127,7 +133,7 @@ export function Invoices({ invoices, onNewInvoice, onEdit, onDuplicate, editingD
                   {fmt(total)}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <span className={`badge badge-${inv.status}`}>{inv.status}</span>
+                  <span className={`badge badge-${isOverdue ? 'overdue' : inv.status}`}>{isOverdue ? 'overdue' : inv.status}</span>
                   {!isDraft && onDuplicate && (
                     <button
                       title="Duplicate invoice"
