@@ -11,9 +11,13 @@ export const fmt   = (n) => new Intl.NumberFormat(undefined, { style: 'currency'
 export const today = () => new Date().toISOString().slice(0, 10)
 
 export function nextId(invoices) {
-  const num = invoices.length + 1
   const pad = parseInt(_invoicePadding) || 4
-  return `${_invoicePrefix}${String(num).padStart(pad, '0')}`
+  const prefix = _invoicePrefix || 'INV'
+  const nums = invoices
+    .map(inv => parseInt(String(inv.id).replace(prefix, ''), 10))
+    .filter(n => !isNaN(n))
+  const next = nums.length ? Math.max(...nums) + 1 : 1
+  return `${prefix}${String(next).padStart(pad, '0')}`
 }
 
 export function blankInvoice(invoices, defaultTax = 20) {
