@@ -3,6 +3,7 @@ import { CSS } from './styles.js'
 import { SAMPLE_PRODUCTS, SAMPLE_INVOICES } from './constants.js'
 import { blankInvoice, nextId, today, setCurrency, setInvoicePrefix, setInvoicePadding } from './helpers.js'
 import { fetchSquarespaceProducts, fetchSquarespaceOrders } from './api/squarespace.js'
+import { setSecret, getSecret, migrateKeysFromLocalStorage } from './secure-storage.js'
 import {
   MODELS as AI_MODELS,
   isModelDownloaded,
@@ -126,6 +127,15 @@ export default function App() {
   const [aiReady, setAiReady]                       = useState(false)
   const [byokStatus, setByokStatus]                 = useState('idle')
   const [byokError, setByokError]                   = useState('')
+
+  // ─── Secure storage migration + key loading ───────────────────────────────
+  useEffect(() => {
+    (async () => {
+      await migrateKeysFromLocalStorage()
+      const key = await getSecret('sip_sqApiKey')
+      if (key) setSettings(prev => ({ ...prev, sqApiKey: key }))
+    })()
+  }, [])
 
   // ─── Effects ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -295,14 +305,18 @@ export default function App() {
   }, [settings.sqApiKey])
 
   // ─── Settings handler ─────────────────────────────────────────────────────
-  const handleSaveSettings = (s) => {
+  const handleSaveSettings = async (s) => {
     setSettings(s)
-    localStorage.setItem('sip_settings', JSON.stringify(s))
+    // Store API key securely, strip it from the localStorage blob
+    if (s.sqApiKey) await setSecret('sip_sqApiKey', s.sqApiKey)
+    const toStore = { ...s }
+    delete toStore.sqApiKey
+    localStorage.setItem('sip_settings', JSON.stringify(toStore))
     toast('Settings saved', 'success', '✓')
   }
 
   // ─── Onboarding handlers ──────────────────────────────────────────────────
-  const handleOnboardConnect = (apiKey, fetchedProducts, bizDetails) => {
+  const handleOnboardConnect = async (apiKey, fetchedProducts, bizDetails) => {
     const newSettings = {
       ...settings,
       sqApiKey: apiKey,
@@ -314,7 +328,11 @@ export default function App() {
       defaultTax: parseFloat(bizDetails.defaultTax) || 20,
     }
     setSettings(newSettings)
-    localStorage.setItem('sip_settings', JSON.stringify(newSettings))
+    // Store API key securely, strip it from the localStorage blob
+    await setSecret('sip_sqApiKey', apiKey)
+    const toStore = { ...newSettings }
+    delete toStore.sqApiKey
+    localStorage.setItem('sip_settings', JSON.stringify(toStore))
     if (fetchedProducts?.length) saveProducts(fetchedProducts)
     localStorage.setItem('sip_onboarded', 'real')
     setOnboarded(true)
