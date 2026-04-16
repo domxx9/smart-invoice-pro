@@ -1,0 +1,9 @@
+dist
+node_modules
+android
+package-lock.json
+public
+*.min.js
+*.min.css
+src/assets
+.documentation
