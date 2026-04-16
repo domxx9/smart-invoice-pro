@@ -1,5 +1,3 @@
-import { useEffect } from 'react'
-
 export function Toast({ toasts, onDismiss }) {
   return (
     <div style={{

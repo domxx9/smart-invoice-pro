@@ -12,7 +12,6 @@ import {
   initModel as gemmaInit,
   isGemmaReady,
   getLoadedModelId,
-  cancelDownload as gemmaCancelDownload,
 } from './gemma.js'
 import { Confetti } from './components/Confetti.jsx'
 import { Toast } from './components/Toast.jsx'
@@ -125,8 +124,8 @@ export default function App() {
   const [aiDownloading, setAiDownloading]           = useState(null)
   const [aiLoading, setAiLoading]                   = useState(false)
   const [aiReady, setAiReady]                       = useState(false)
-  const [byokStatus, setByokStatus]                 = useState('idle')
-  const [byokError, setByokError]                   = useState('')
+  const [byokStatus]                                = useState('idle')
+  const [byokError]                                 = useState('')
 
   // ─── Secure storage migration + key loading ───────────────────────────────
   useEffect(() => {

@@ -23,7 +23,7 @@ const WORKFLOW = {
   paid:      { label: 'Return',           next: 'refunded',  danger: true,  sendPDF: false },
 }
 
-export function InvoiceEditor({ invoice, originalInvoice, products, onSave, onClose, onDelete, onDiscard, onDraftChange, aiReady, settings, onToast }) {
+export function InvoiceEditor({ invoice, products, onSave, onClose, onDelete, onDraftChange, aiReady, settings, onToast }) {
   const [inv, setInv] = useState(invoice)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [pdfToast, setPdfToast] = useState(null)
@@ -32,7 +32,7 @@ export function InvoiceEditor({ invoice, originalInvoice, products, onSave, onCl
   const [pasteResults, setPasteResults] = useState(null)
   const [pasteDecisions, setPasteDecisions] = useState({})
   const [pasteAiLoading, setPasteAiLoading] = useState(false)
-  const [pasteAiTokens, setPasteAiTokens] = useState('')
+  const [, setPasteAiTokens] = useState('')
   const [pasteAiStage, setPasteAiStage] = useState('')
   const [search, setSearch] = useState('')
 
@@ -208,7 +208,7 @@ export function InvoiceEditor({ invoice, originalInvoice, products, onSave, onCl
 
                     {isAmber && (
                       <div>
-                        <div style={{ fontSize: '.78rem', color: 'var(--muted)', marginBottom: 2 }}>"{r.name}" — {r.confidence}% match</div>
+                        <div style={{ fontSize: '.78rem', color: 'var(--muted)', marginBottom: 2 }}>&ldquo;{r.name}&rdquo; — {r.confidence}% match</div>
                         <div style={{ fontSize: '.84rem', fontWeight: 600, marginBottom: 8 }}>Best guess: {r.bestGuess.name}</div>
                         <div style={{ display: 'flex', gap: 6 }}>
                           <button
@@ -232,7 +232,7 @@ export function InvoiceEditor({ invoice, originalInvoice, products, onSave, onCl
                     {isRed && (
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                         <div style={{ fontSize: '.82rem', color: 'var(--danger)' }}>
-                          ✗ No match — "{r.name}"
+                          ✗ No match — &ldquo;{r.name}&rdquo;
                           {s === 'discarded' && <span style={{ fontSize: '.72rem', color: 'var(--muted)', marginLeft: 6 }}>Discarded</span>}
                           <div style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 2 }}>Add manually then tap Handled</div>
                         </div>
