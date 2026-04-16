@@ -96,7 +96,7 @@ export function InvoiceEditor({ invoice, products, onSave, onClose, onDelete, on
       }
     } catch (e) {
       console.warn('[SIP] AI enhancement failed:', e?.message)
-      onToast?.(`AI match failed: ${e?.message || 'timed out'}`, 'error')
+      onToast?.(`AI Match Error: ${e?.message || 'Operation failed or timed out'}`, 'error', '❌')
       // regex results already visible — just hide the spinner
     } finally {
       setPasteAiLoading(false)
