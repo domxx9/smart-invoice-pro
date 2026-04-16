@@ -26,7 +26,8 @@ export const MODELS = {
     // Served through Vercel edge proxy (adds CORS headers) for web.
     // Native uses CapacitorHttp directly to GitHub, so no CORS needed there.
     url: 'https://smart-invoice-pro-six.vercel.app/api/model-proxy?id=small',
-    nativeUrl: 'https://github.com/domxx9/smart-invoice-pro/releases/download/v1.0-models/gemma3-1b-int4-web.task',
+    nativeUrl:
+      'https://github.com/domxx9/smart-invoice-pro/releases/download/v1.0-models/gemma3-1b-int4-web.task',
     filename: 'sip_gemma_small.task',
     public: true,
   },
@@ -71,9 +72,11 @@ export function hasWebGPU() {
 // ─── OPFS helpers (web only) ──────────────────────────────────────────────────
 
 function hasOPFS() {
-  return typeof navigator !== 'undefined' &&
+  return (
+    typeof navigator !== 'undefined' &&
     'storage' in navigator &&
     'getDirectory' in navigator.storage
+  )
 }
 
 async function opfsRoot() {
@@ -114,7 +117,11 @@ export async function isModelDownloaded(modelId) {
 
 export async function deleteModel(modelId) {
   if (_loadedModelId === modelId) {
-    try { _llm?.close?.() } catch { /* ignore */ }
+    try {
+      _llm?.close?.()
+    } catch {
+      /* ignore */
+    }
     _llm = null
     _loadedModelId = null
   }
@@ -123,13 +130,17 @@ export async function deleteModel(modelId) {
     try {
       const { Filesystem, Directory } = await nativeFs()
       await Filesystem.deleteFile({ path: filename, directory: Directory.Data })
-    } catch { /* already gone */ }
+    } catch {
+      /* already gone */
+    }
     return
   }
   try {
     const root = await opfsRoot()
     await root.removeEntry(filename)
-  } catch { /* already gone */ }
+  } catch {
+    /* already gone */
+  }
 }
 
 // ─── Download ─────────────────────────────────────────────────────────────────
@@ -200,7 +211,7 @@ async function _downloadWeb(model, onProgress, hfToken) {
     _abortCtrl = null
     throw new Error(
       `Download failed: HTTP ${res.status}` +
-      (res.status === 401 ? ' — check HuggingFace token or model licence' : '')
+        (res.status === 401 ? ' — check HuggingFace token or model licence' : ''),
     )
   }
 
@@ -223,7 +234,11 @@ async function _downloadWeb(model, onProgress, hfToken) {
     await writable.close()
   } catch (err) {
     await writable.abort()
-    try { await root.removeEntry(model.filename) } catch { /* ignore */ }
+    try {
+      await root.removeEntry(model.filename)
+    } catch {
+      /* ignore */
+    }
     throw err
   } finally {
     _abortCtrl = null
@@ -243,7 +258,11 @@ export async function initModel(modelId) {
   if (_llm && _loadedModelId === modelId) return
 
   if (_llm) {
-    try { _llm.close?.() } catch { /* ignore */ }
+    try {
+      _llm.close?.()
+    } catch {
+      /* ignore */
+    }
     _llm = null
     _loadedModelId = null
   }
@@ -285,8 +304,12 @@ export async function initModel(modelId) {
   console.log('[SIP] model loaded OK:', modelId)
 }
 
-export function isGemmaReady() { return _llm !== null }
-export function getLoadedModelId() { return _loadedModelId }
+export function isGemmaReady() {
+  return _llm !== null
+}
+export function getLoadedModelId() {
+  return _loadedModelId
+}
 export function getBackendInfo() {
   if (!_loadedModelId) return null
   return { device: 'webgpu', dtype: 'float16' }
@@ -330,7 +353,7 @@ export async function cleanOrderText(text, onToken) {
 Message:
 ${text.slice(0, 800)}
 
-Cleaned lines:`
+Cleaned lines:`,
   )
 
   return new Promise((resolve) => {
@@ -346,7 +369,11 @@ Cleaned lines:`
       })
     } catch (e) {
       console.error('[SIP] cleanOrderText error:', e)
-      try { _llm?.cancelProcessing?.() } catch { /* ignore */ }
+      try {
+        _llm?.cancelProcessing?.()
+      } catch {
+        /* ignore */
+      }
       resolve(text) // fallback: use original text unchanged
     }
   })
@@ -357,13 +384,18 @@ Cleaned lines:`
 export async function matchWithGemma(itemName, candidates) {
   console.log('[SIP] matchWithGemma:', itemName, 'candidates:', candidates.length)
   if (!_llm || !candidates.length) return null
-  console.log('[SIP] matchWithGemma sample candidate:', candidates[0]?.name, '| desc:', candidates[0]?.desc?.slice(0, 40))
+  console.log(
+    '[SIP] matchWithGemma sample candidate:',
+    candidates[0]?.name,
+    '| desc:',
+    candidates[0]?.desc?.slice(0, 40),
+  )
 
   const list = candidates
     .map((p, i) => `${i + 1}. ${p.name}${p.desc ? ` — ${p.desc}` : ''}`)
     .join('\n')
   const prompt = gemmaPrompt(
-    `Which number best matches "${itemName}"? Reply with just the number.\n\n${list}\n\nNumber:`
+    `Which number best matches "${itemName}"? Reply with just the number.\n\n${list}\n\nNumber:`,
   )
 
   return new Promise((resolve) => {
@@ -380,7 +412,11 @@ export async function matchWithGemma(itemName, candidates) {
       })
     } catch (e) {
       console.error('[SIP] matchWithGemma error:', e?.message)
-      try { _llm?.cancelProcessing?.() } catch { /* ignore */ }
+      try {
+        _llm?.cancelProcessing?.()
+      } catch {
+        /* ignore */
+      }
       resolve(null)
     }
   })
@@ -415,5 +451,10 @@ export async function ensureReady(modelId) {
   if (!hasWebGPU()) return false
   const downloaded = await isModelDownloaded(modelId)
   if (!downloaded) return false
-  try { await initModel(modelId); return true } catch { return false }
+  try {
+    await initModel(modelId)
+    return true
+  } catch {
+    return false
+  }
 }

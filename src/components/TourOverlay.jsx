@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
 
 export const TOUR_SECTIONS = [
-  { id: 'dashboard', label: 'Dashboard',              startStep: 0 },
-  { id: 'invoices',  label: 'Invoices & Smart Paste', startStep: 2 },
-  { id: 'orders',    label: 'Orders & Fulfillment',   startStep: 5 },
-  { id: 'catalog',   label: 'Product Catalog',        startStep: 7 },
-  { id: 'settings',  label: 'Settings & AI',          startStep: 8 },
+  { id: 'dashboard', label: 'Dashboard', startStep: 0 },
+  { id: 'invoices', label: 'Invoices & Smart Paste', startStep: 2 },
+  { id: 'orders', label: 'Orders & Fulfillment', startStep: 5 },
+  { id: 'catalog', label: 'Product Catalog', startStep: 7 },
+  { id: 'settings', label: 'Settings & AI', startStep: 8 },
 ]
 
 export const TOUR_STEPS = [
@@ -89,7 +89,7 @@ export const TOUR_STEPS = [
     title: 'AI — Smart Paste power',
     body: 'Download the on-device AI model (~300 MB, one-time) for offline matching, or add a BYOK API key to use a cloud provider. Both improve Smart Paste accuracy.',
     target: 'settings-ai',
-    cta: "All done!",
+    cta: 'All done!',
   },
 ]
 
@@ -116,64 +116,119 @@ export function TourOverlay({ step, onNext, onSkip }) {
 
   if (!s) return null
 
-  const PAD    = 8
+  const PAD = 8
   const MARGIN = 14
-  const WIN_H  = typeof window !== 'undefined' ? window.innerHeight : 800
+  const WIN_H = typeof window !== 'undefined' ? window.innerHeight : 800
 
-  const sTop    = rect ? rect.top    - PAD : 0
+  const sTop = rect ? rect.top - PAD : 0
   const sBottom = rect ? rect.bottom + PAD : 0
   const spaceBelow = WIN_H - sBottom
-  const tipBelow   = !rect || spaceBelow >= sTop
+  const tipBelow = !rect || spaceBelow >= sTop
 
-  const totalSteps   = TOUR_STEPS.length
-  const sectionLabel = TOUR_SECTIONS.slice().reverse().find(sec => step >= sec.startStep)?.label ?? ''
+  const totalSteps = TOUR_STEPS.length
+  const sectionLabel =
+    TOUR_SECTIONS.slice()
+      .reverse()
+      .find((sec) => step >= sec.startStep)?.label ?? ''
 
   return (
     <>
       <div style={{ position: 'fixed', inset: 0, zIndex: 199 }} />
 
       {rect ? (
-        <div style={{
-          position: 'fixed',
-          top: sTop, left: rect.left - PAD,
-          width: rect.width + PAD * 2, height: rect.height + PAD * 2,
-          borderRadius: 12,
-          boxShadow: '0 0 0 9999px rgba(0,0,0,0.75)',
-          zIndex: 200, pointerEvents: 'none',
-        }} />
+        <div
+          style={{
+            position: 'fixed',
+            top: sTop,
+            left: rect.left - PAD,
+            width: rect.width + PAD * 2,
+            height: rect.height + PAD * 2,
+            borderRadius: 12,
+            boxShadow: '0 0 0 9999px rgba(0,0,0,0.75)',
+            zIndex: 200,
+            pointerEvents: 'none',
+          }}
+        />
       ) : (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 200, pointerEvents: 'none' }} />
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.75)',
+            zIndex: 200,
+            pointerEvents: 'none',
+          }}
+        />
       )}
 
-      <div style={{
-        position: 'fixed', left: 16, right: 16, zIndex: 201,
-        ...(tipBelow
-          ? { top: rect ? sBottom + MARGIN : WIN_H / 2 - 90 }
-          : { bottom: WIN_H - sTop + MARGIN }
-        ),
-        background: 'var(--card)', border: '1px solid var(--border)',
-        borderRadius: 14, padding: '16px 16px 12px',
-        boxShadow: '0 8px 40px rgba(0,0,0,.7)',
-      }}>
+      <div
+        style={{
+          position: 'fixed',
+          left: 16,
+          right: 16,
+          zIndex: 201,
+          ...(tipBelow
+            ? { top: rect ? sBottom + MARGIN : WIN_H / 2 - 90 }
+            : { bottom: WIN_H - sTop + MARGIN }),
+          background: 'var(--card)',
+          border: '1px solid var(--border)',
+          borderRadius: 14,
+          padding: '16px 16px 12px',
+          boxShadow: '0 8px 40px rgba(0,0,0,.7)',
+        }}
+      >
         {/* Progress + section label */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap', flex: 1, marginRight: 12 }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 10,
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              gap: 4,
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              flex: 1,
+              marginRight: 12,
+            }}
+          >
             {TOUR_SECTIONS.map((sec, si) => {
               const nextSec = TOUR_SECTIONS[si + 1]
               const isActive = step >= sec.startStep && (!nextSec || step < nextSec.startStep)
-              const isDone   = nextSec ? step >= nextSec.startStep : step >= totalSteps - 1
+              const isDone = nextSec ? step >= nextSec.startStep : step >= totalSteps - 1
               return (
-                <div key={sec.id} style={{
-                  height: 4, flex: 1, borderRadius: 2,
-                  background: isDone ? 'var(--accent)' : isActive ? 'var(--accent)' : 'var(--border)',
-                  opacity: isActive ? 1 : isDone ? 0.5 : 0.3,
-                  transition: 'background .25s',
-                }} />
+                <div
+                  key={sec.id}
+                  style={{
+                    height: 4,
+                    flex: 1,
+                    borderRadius: 2,
+                    background: isDone
+                      ? 'var(--accent)'
+                      : isActive
+                        ? 'var(--accent)'
+                        : 'var(--border)',
+                    opacity: isActive ? 1 : isDone ? 0.5 : 0.3,
+                    transition: 'background .25s',
+                  }}
+                />
               )
             })}
           </div>
           <button
-            style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: '.78rem', cursor: 'pointer', padding: '4px 0', whiteSpace: 'nowrap' }}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--muted)',
+              fontSize: '.78rem',
+              cursor: 'pointer',
+              padding: '4px 0',
+              whiteSpace: 'nowrap',
+            }}
             onClick={onSkip}
           >
             Skip tour
@@ -182,13 +237,26 @@ export function TourOverlay({ step, onNext, onSkip }) {
 
         {/* Section label */}
         {sectionLabel && (
-          <p style={{ fontSize: '.68rem', color: 'var(--accent)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6 }}>
+          <p
+            style={{
+              fontSize: '.68rem',
+              color: 'var(--accent)',
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: '.06em',
+              marginBottom: 6,
+            }}
+          >
             {sectionLabel}
           </p>
         )}
 
-        <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 6, color: 'var(--text)' }}>{s.title}</h2>
-        <p style={{ color: 'var(--muted)', lineHeight: 1.6, fontSize: '.86rem', marginBottom: 14 }}>{s.body}</p>
+        <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 6, color: 'var(--text)' }}>
+          {s.title}
+        </h2>
+        <p style={{ color: 'var(--muted)', lineHeight: 1.6, fontSize: '.86rem', marginBottom: 14 }}>
+          {s.body}
+        </p>
 
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-primary" style={{ flex: 1 }} onClick={onNext}>

@@ -1,10 +1,19 @@
 import { useState, useRef } from 'react'
 
 const EGG_STYLE = {
-  position: 'fixed', bottom: 88, left: '50%', transform: 'translateX(-50%)',
-  background: 'var(--card)', border: '1px solid var(--accent)',
-  borderRadius: 12, padding: '10px 20px', fontSize: '.82rem', color: 'var(--text)',
-  zIndex: 9998, whiteSpace: 'nowrap', textAlign: 'center',
+  position: 'fixed',
+  bottom: 88,
+  left: '50%',
+  transform: 'translateX(-50%)',
+  background: 'var(--card)',
+  border: '1px solid var(--accent)',
+  borderRadius: 12,
+  padding: '10px 20px',
+  fontSize: '.82rem',
+  color: 'var(--text)',
+  zIndex: 9998,
+  whiteSpace: 'nowrap',
+  textAlign: 'center',
   boxShadow: '0 8px 40px rgba(245,166,35,.35)',
   animation: 'egg-pop 0.3s ease-out, egg-fade 3.8s ease-in-out forwards',
 }

@@ -49,10 +49,10 @@ export function useAiModel(toast) {
 
   const handleAiDownload = async (id) => {
     setAiDownloading(id)
-    setAiDownloadProgress(p => ({ ...p, [id]: 0 }))
+    setAiDownloadProgress((p) => ({ ...p, [id]: 0 }))
     try {
-      await gemmaDownload(id, (frac) => setAiDownloadProgress(p => ({ ...p, [id]: frac })))
-      setAiDownloaded(p => ({ ...p, [id]: true }))
+      await gemmaDownload(id, (frac) => setAiDownloadProgress((p) => ({ ...p, [id]: frac })))
+      setAiDownloaded((p) => ({ ...p, [id]: true }))
       toast?.('AI model downloaded', 'success', '🤖')
     } catch (e) {
       if (e.name !== 'AbortError') {
@@ -66,7 +66,7 @@ export function useAiModel(toast) {
 
   const handleAiDelete = async (id) => {
     await gemmaDelete(id)
-    setAiDownloaded(p => ({ ...p, [id]: false }))
+    setAiDownloaded((p) => ({ ...p, [id]: false }))
     if (getLoadedModelId() === id) setAiReady(false)
   }
 
@@ -85,9 +85,17 @@ export function useAiModel(toast) {
   }
 
   return {
-    aiModelId, aiDownloaded, aiDownloadProgress,
-    aiDownloading, aiLoading, aiReady,
-    byokStatus, byokError,
-    handleAiSelect, handleAiDownload, handleAiDelete, handleAiLoad,
+    aiModelId,
+    aiDownloaded,
+    aiDownloadProgress,
+    aiDownloading,
+    aiLoading,
+    aiReady,
+    byokStatus,
+    byokError,
+    handleAiSelect,
+    handleAiDownload,
+    handleAiDelete,
+    handleAiLoad,
   }
 }

@@ -18,7 +18,7 @@ export function useOrderSync(sqApiKey) {
   })
 
   const savePick = useCallback((orderId, itemIndex, qty) => {
-    setPicks(prev => {
+    setPicks((prev) => {
       const next = { ...prev, [orderId]: { ...(prev[orderId] ?? {}), [itemIndex]: qty } }
       localStorage.setItem('sip_picks', JSON.stringify(next))
       return next
@@ -32,8 +32,8 @@ export function useOrderSync(sqApiKey) {
     try {
       const fetched = await fetchSquarespaceOrders(sqApiKey, setOrderSyncCount)
       setOrders(fetched)
-      const pendingIds = new Set(fetched.filter(o => o.status === 'PENDING').map(o => o.id))
-      setPicks(prev => {
+      const pendingIds = new Set(fetched.filter((o) => o.status === 'PENDING').map((o) => o.id))
+      setPicks((prev) => {
         const next = {}
         for (const id of Object.keys(prev)) {
           if (pendingIds.has(id)) next[id] = prev[id]
@@ -52,8 +52,12 @@ export function useOrderSync(sqApiKey) {
   }, [sqApiKey])
 
   return {
-    orders, lastOrderSync, orderSyncStatus, orderSyncCount,
-    picks, savePick,
+    orders,
+    lastOrderSync,
+    orderSyncStatus,
+    orderSyncCount,
+    picks,
+    savePick,
     handleSyncOrders,
   }
 }

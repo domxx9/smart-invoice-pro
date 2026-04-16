@@ -19,8 +19,8 @@ createRoot(document.getElementById('root')).render(
 if ('serviceWorker' in navigator) {
   if (Capacitor.isNativePlatform()) {
     // Unregister any cached service workers — they interfere with native HTTP
-    navigator.serviceWorker.getRegistrations().then(regs => {
-      regs.forEach(r => r.unregister())
+    navigator.serviceWorker.getRegistrations().then((regs) => {
+      regs.forEach((r) => r.unregister())
     })
   } else {
     window.addEventListener('load', () => {

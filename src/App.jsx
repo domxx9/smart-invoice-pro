@@ -37,10 +37,10 @@ export default function App() {
 
 const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
-  { id: 'invoices',  label: 'Invoices',  icon: 'invoice' },
-  { id: 'orders',    label: 'Orders',    icon: 'orders' },
-  { id: 'inventory', label: 'Catalog',   icon: 'inventory' },
-  { id: 'settings',  label: 'Settings',  icon: 'settings' },
+  { id: 'invoices', label: 'Invoices', icon: 'invoice' },
+  { id: 'orders', label: 'Orders', icon: 'orders' },
+  { id: 'inventory', label: 'Catalog', icon: 'inventory' },
+  { id: 'settings', label: 'Settings', icon: 'settings' },
 ]
 
 function AppShell() {
@@ -49,11 +49,13 @@ function AppShell() {
   const { showEgg, handleVersionTap } = useEasterEgg()
   const [onboarded, setOnboarded] = useState(() => !!localStorage.getItem('sip_onboarded'))
   const [tourStep, setTourStep] = useState(null)
-  const [tab, setTab] = useState(() => localStorage.getItem('sip_draft_edit') ? 'invoices' : 'dashboard')
+  const [tab, setTab] = useState(() =>
+    localStorage.getItem('sip_draft_edit') ? 'invoices' : 'dashboard',
+  )
   const [confettiTrigger, setConfettiTrigger] = useState(0)
   const inv = useInvoiceState({
     defaultTax: settings.defaultTax,
-    onPaid: () => setConfettiTrigger(t => t + 1),
+    onPaid: () => setConfettiTrigger((t) => t + 1),
     onOpenEditor: () => setTab('invoices'),
   })
   const catalog = useCatalogSync(settings.sqApiKey)
@@ -61,14 +63,21 @@ function AppShell() {
   const ai = useAiModel(toast)
   const handleSave = (invoice) => {
     const justPaid = inv.handleSave(invoice)
-    toast(justPaid ? 'Payment received — invoice paid! 🎉' : 'Invoice saved', 'success', justPaid ? null : '✓')
+    toast(
+      justPaid ? 'Payment received — invoice paid! 🎉' : 'Invoice saved',
+      'success',
+      justPaid ? null : '✓',
+    )
   }
   const handleOnboardConnect = (apiKey, fetchedProducts, bizDetails) => {
     saveSettings({
-      ...settings, sqApiKey: apiKey,
+      ...settings,
+      sqApiKey: apiKey,
       businessName: bizDetails.businessName || 'My Business',
-      email: bizDetails.email || '', phone: bizDetails.phone || '',
-      address1: bizDetails.address || '', currency: bizDetails.currency || 'GBP',
+      email: bizDetails.email || '',
+      phone: bizDetails.phone || '',
+      address1: bizDetails.address || '',
+      currency: bizDetails.currency || 'GBP',
       defaultTax: parseFloat(bizDetails.defaultTax) || 20,
     })
     if (fetchedProducts?.length) catalog.saveProducts(fetchedProducts)
@@ -90,56 +99,97 @@ function AppShell() {
       <Toast toasts={toasts} onDismiss={dismissToast} />
       <EasterEggToast show={showEgg} />
       {tourStep !== null && (
-        <TourOverlay step={tourStep}
-          onNext={() => tourStep < TOUR_STEPS.length - 1 ? setTourStep(t => t + 1) : setTourStep(null)}
-          onSkip={() => setTourStep(null)} />
+        <TourOverlay
+          step={tourStep}
+          onNext={() =>
+            tourStep < TOUR_STEPS.length - 1 ? setTourStep((t) => t + 1) : setTourStep(null)
+          }
+          onSkip={() => setTourStep(null)}
+        />
       )}
       <div className="app">
         <header className="header">
           <div className="header-inner">
             <h1>Smart Invoice Pro</h1>
-            <span className="text-muted" style={{ fontSize: '.75rem', cursor: 'default', userSelect: 'none' }}
-              onClick={handleVersionTap}>v1.0</span>
+            <span
+              className="text-muted"
+              style={{ fontSize: '.75rem', cursor: 'default', userSelect: 'none' }}
+              onClick={handleVersionTap}
+            >
+              v1.0
+            </span>
           </div>
         </header>
         <main className="content">
           <PullToRefresh
             onRefresh={tab === 'orders' ? orderSync.handleSyncOrders : catalog.handleSyncCatalog}
-            enabled={(tab === 'inventory' || tab === 'orders') && !!settings.sqApiKey}>
+            enabled={(tab === 'inventory' || tab === 'orders') && !!settings.sqApiKey}
+          >
             {tab === 'dashboard' && (
-              <Dashboard invoices={inv.invoices} onNewInvoice={inv.handleNewInvoice} onOpenInvoice={inv.handleEdit} />
+              <Dashboard
+                invoices={inv.invoices}
+                onNewInvoice={inv.handleNewInvoice}
+                onOpenInvoice={inv.handleEdit}
+              />
             )}
             {tab === 'invoices' && !inv.editorOpen && (
-              <Invoices invoices={inv.invoices} onNewInvoice={inv.handleNewInvoice}
-                onEdit={i => i.status === 'draft' ? inv.setEditorOpen(true) : inv.handleEdit(i)}
-                onDuplicate={inv.handleDuplicateInvoice} editingDraft={inv.editing} />
+              <Invoices
+                invoices={inv.invoices}
+                onNewInvoice={inv.handleNewInvoice}
+                onEdit={(i) => (i.status === 'draft' ? inv.setEditorOpen(true) : inv.handleEdit(i))}
+                onDuplicate={inv.handleDuplicateInvoice}
+                editingDraft={inv.editing}
+              />
             )}
             {tab === 'invoices' && inv.editorOpen && inv.editing !== null && (
-              <InvoiceEditor invoice={inv.editing}
-                products={catalog.products} onSave={handleSave} onClose={inv.handleCloseEditor}
+              <InvoiceEditor
+                invoice={inv.editing}
+                products={catalog.products}
+                onSave={handleSave}
+                onClose={inv.handleCloseEditor}
                 onDelete={inv.handleDeleteInvoice}
-                onDraftChange={inv.handleDraftChange} aiReady={ai.aiReady} />
+                onDraftChange={inv.handleDraftChange}
+                aiReady={ai.aiReady}
+              />
             )}
             {tab === 'orders' && (
-              <Orders orders={orderSync.orders} onSync={orderSync.handleSyncOrders}
-                syncStatus={orderSync.orderSyncStatus} syncCount={orderSync.orderSyncCount}
-                hasApiKey={!!settings.sqApiKey} lastSynced={orderSync.lastOrderSync}
-                picks={orderSync.picks} onPickChange={orderSync.savePick} />
+              <Orders
+                orders={orderSync.orders}
+                onSync={orderSync.handleSyncOrders}
+                syncStatus={orderSync.orderSyncStatus}
+                syncCount={orderSync.orderSyncCount}
+                hasApiKey={!!settings.sqApiKey}
+                lastSynced={orderSync.lastOrderSync}
+                picks={orderSync.picks}
+                onPickChange={orderSync.savePick}
+              />
             )}
             {tab === 'inventory' && (
-              <Inventory products={catalog.products} onSync={catalog.handleSyncCatalog}
-                syncStatus={catalog.syncStatus} syncCount={catalog.syncCount}
-                hasApiKey={!!settings.sqApiKey} lastSynced={catalog.lastSynced} />
+              <Inventory
+                products={catalog.products}
+                onSync={catalog.handleSyncCatalog}
+                syncStatus={catalog.syncStatus}
+                syncCount={catalog.syncCount}
+                hasApiKey={!!settings.sqApiKey}
+                lastSynced={catalog.lastSynced}
+              />
             )}
             {tab === 'settings' && <Settings ai={ai} onStartTour={setTourStep} />}
           </PullToRefresh>
         </main>
         <nav className="nav">
-          {NAV_ITEMS.map(item => (
-            <button key={item.id} data-tour={`nav-${item.id}`}
+          {NAV_ITEMS.map((item) => (
+            <button
+              key={item.id}
+              data-tour={`nav-${item.id}`}
               className={`nav-btn ${tab === item.id ? 'active' : ''}`}
-              onClick={() => { inv.setEditorOpen(false); setTab(item.id) }}>
-              <Icon name={item.icon} />{item.label}
+              onClick={() => {
+                inv.setEditorOpen(false)
+                setTab(item.id)
+              }}
+            >
+              <Icon name={item.icon} />
+              {item.label}
             </button>
           ))}
         </nav>
