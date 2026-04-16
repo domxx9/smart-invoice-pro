@@ -29,10 +29,18 @@ export default [
       ...react.configs['jsx-runtime'].rules,
       ...reactHooks.configs.recommended.rules,
       'react/jsx-no-target-blank': 'off',
+      // JS-only React 18 project — prop-types is not in use.
+      'react/prop-types': 'off',
       'react-refresh/only-export-components': [
         'warn',
         { allowConstantExport: true },
       ],
+    },
+  },
+  {
+    files: ['generate-icons.js'],
+    languageOptions: {
+      globals: { ...globals.node },
     },
   },
 ]

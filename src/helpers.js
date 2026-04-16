@@ -106,7 +106,7 @@ function wordSim(a, b) {
 function matchConfidence(queryName, productName) {
   const stopWords = new Set(['and', 'the', 'with', 'for', 'of', 'a', 'an'])
   const qw = queryName.toLowerCase().split(/\s+/).filter(w => w.length > 1 && !stopWords.has(w))
-  const pw = productName.toLowerCase().split(/[\s\-—\/]+/).filter(w => w.length > 1 && !stopWords.has(w))
+  const pw = productName.toLowerCase().split(/[\s\-—/]+/).filter(w => w.length > 1 && !stopWords.has(w))
   if (!qw.length || !pw.length) return 0
   const qScore = qw.reduce((s, q) => s + Math.max(...pw.map(p => wordSim(q, p))), 0)
   const pScore = pw.reduce((s, p) => s + Math.max(...qw.map(q => wordSim(q, p))), 0)

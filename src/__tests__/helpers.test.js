@@ -5,15 +5,11 @@ import {
   setInvoicePrefix,
   setInvoicePadding,
   nextId,
-  blankInvoice,
   calcTotals,
   timeAgo,
   cleanWhatsApp,
   extractItems,
   matchItems,
-  getTopCandidates,
-  groupProducts,
-  searchGroups,
 } from '../helpers.js'
 
 // ─── calcTotals ──────────────────────────────────────────────────────────────
