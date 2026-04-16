@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { CURRENCY_TAX } from '../constants.js'
 import { fetchSquarespaceProducts } from '../api/squarespace.js'
+import { getSecret, setSecret } from '../secure-storage.js'
 import {
   MODELS as AI_MODELS,
   getLoadedModelId,
@@ -16,7 +17,15 @@ export function Settings({ settings, onSave, aiModelId, aiDownloaded, aiDownload
   const [s, setS] = useState(settings)
   const [testStatus, setTestStatus] = useState('idle')
   const [testError, setTestError] = useState('')
+  const [byokKey, setByokKey] = useState('')
   const set = (k, v) => setS(p => ({ ...p, [k]: v }))
+
+  // Load BYOK key from secure storage when provider changes
+  const byokProvider = s.byokProvider || ''
+  useEffect(() => {
+    if (!byokProvider) { setByokKey(''); return }
+    getSecret(`sip_byok_${byokProvider}`).then(v => setByokKey(v || ''))
+  }, [byokProvider])
 
   const handleTest = async () => {
     if (!s.sqApiKey) return
@@ -116,7 +125,6 @@ export function Settings({ settings, onSave, aiModelId, aiDownloaded, aiDownload
         {/* ── Mode selector ── */}
         {(() => {
           const aiMode = s.aiMode || 'small'
-          const byokProvider = s.byokProvider || ''
 
           const BYOK_PROVIDERS = [
             {
@@ -319,8 +327,12 @@ export function Settings({ settings, onSave, aiModelId, aiDownloaded, aiDownload
                           <input
                             type="password"
                             placeholder={provider.keyHint}
-                            defaultValue={localStorage.getItem(`sip_byok_${byokProvider}`) || ''}
-                            onChange={e => localStorage.setItem(`sip_byok_${byokProvider}`, e.target.value.trim())}
+                            value={byokKey}
+                            onChange={e => {
+                              const v = e.target.value.trim()
+                              setByokKey(v)
+                              setSecret(`sip_byok_${byokProvider}`, v)
+                            }}
                           />
                         </div>
 

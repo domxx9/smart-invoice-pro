@@ -1,0 +1,89 @@
+/**
+ * Secure storage wrapper for API keys.
+ *
+ * Native (Android/iOS): uses capacitor-secure-storage-plugin
+ *   → Android Keystore / iOS Keychain
+ * Web/PWA: falls back to sessionStorage
+ *   → keys cleared on tab close (acceptable trade-off)
+ */
+
+const isNative = () => !!window.Capacitor?.isNativePlatform?.()
+
+let _plugin = null
+async function getPlugin() {
+  if (_plugin) return _plugin
+  const mod = await import('capacitor-secure-storage-plugin')
+  _plugin = mod.SecureStoragePlugin
+  return _plugin
+}
+
+export async function setSecret(key, value) {
+  if (isNative()) {
+    const plugin = await getPlugin()
+    await plugin.set({ key, value })
+  } else {
+    sessionStorage.setItem(key, value)
+  }
+}
+
+export async function getSecret(key) {
+  if (isNative()) {
+    const plugin = await getPlugin()
+    try {
+      const { value } = await plugin.get({ key })
+      return value ?? ''
+    } catch {
+      // key not found in secure storage
+      return ''
+    }
+  } else {
+    return sessionStorage.getItem(key) || ''
+  }
+}
+
+export async function deleteSecret(key) {
+  if (isNative()) {
+    const plugin = await getPlugin()
+    try {
+      await plugin.remove({ key })
+    } catch {
+      // key didn't exist — ignore
+    }
+  } else {
+    sessionStorage.removeItem(key)
+  }
+}
+
+/**
+ * One-time migration: move API keys out of the sip_settings localStorage
+ * blob and any sip_byok_* localStorage keys into secure storage, then
+ * remove them from localStorage so they are never persisted in plaintext
+ * again.
+ */
+export async function migrateKeysFromLocalStorage() {
+  // Migrate sqApiKey from sip_settings blob
+  const raw = localStorage.getItem('sip_settings')
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw)
+      if (parsed.sqApiKey) {
+        await setSecret('sip_sqApiKey', parsed.sqApiKey)
+        delete parsed.sqApiKey
+        localStorage.setItem('sip_settings', JSON.stringify(parsed))
+      }
+    } catch {
+      // corrupted settings — skip migration
+    }
+  }
+
+  // Migrate BYOK provider keys
+  const providers = ['openrouter', 'gemini', 'openai', 'anthropic']
+  for (const p of providers) {
+    const lsKey = `sip_byok_${p}`
+    const val = localStorage.getItem(lsKey)
+    if (val) {
+      await setSecret(lsKey, val)
+      localStorage.removeItem(lsKey)
+    }
+  }
+}
