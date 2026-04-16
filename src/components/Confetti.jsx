@@ -1,6 +1,16 @@
 import { useEffect, useState } from 'react'
 
-const COLORS = ['#f5a623', '#4caf84', '#e05252', '#64a0ff', '#9b59b6', '#e67e22', '#fff', '#1abc9c', '#f472b6']
+const COLORS = [
+  '#f5a623',
+  '#4caf84',
+  '#e05252',
+  '#64a0ff',
+  '#9b59b6',
+  '#e67e22',
+  '#fff',
+  '#1abc9c',
+  '#f472b6',
+]
 const r = (min, max) => Math.random() * (max - min) + min
 
 export function Confetti({ trigger }) {
@@ -28,20 +38,31 @@ export function Confetti({ trigger }) {
   if (!particles.length) return null
 
   return (
-    <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 9999, overflow: 'hidden' }}>
-      {particles.map(p => (
-        <div key={p.id} style={{
-          position: 'absolute',
-          left: `${p.x}%`,
-          top: -18,
-          width: p.round ? p.w : p.w * 0.5,
-          height: p.round ? p.w : p.h,
-          borderRadius: p.round ? '50%' : '2px',
-          background: p.color,
-          '--cdrift': `${p.drift}px`,
-          '--crot': `${p.rot}deg`,
-          animation: `confetti-fall ${p.dur}s ${p.delay}s cubic-bezier(.25,.46,.45,.94) forwards`,
-        }} />
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        pointerEvents: 'none',
+        zIndex: 9999,
+        overflow: 'hidden',
+      }}
+    >
+      {particles.map((p) => (
+        <div
+          key={p.id}
+          style={{
+            position: 'absolute',
+            left: `${p.x}%`,
+            top: -18,
+            width: p.round ? p.w : p.w * 0.5,
+            height: p.round ? p.w : p.h,
+            borderRadius: p.round ? '50%' : '2px',
+            background: p.color,
+            '--cdrift': `${p.drift}px`,
+            '--crot': `${p.rot}deg`,
+            animation: `confetti-fall ${p.dur}s ${p.delay}s cubic-bezier(.25,.46,.45,.94) forwards`,
+          }}
+        />
       ))}
     </div>
   )

@@ -39,7 +39,10 @@ describe('calcTotals', () => {
   })
 
   it('treats missing/invalid values as zero', () => {
-    const items = [{ qty: 'abc', price: 10 }, { qty: 2, price: '' }]
+    const items = [
+      { qty: 'abc', price: 10 },
+      { qty: 2, price: '' },
+    ]
     expect(calcTotals(items, 0)).toEqual({ sub: 0, tax: 0, total: 0 })
   })
 })

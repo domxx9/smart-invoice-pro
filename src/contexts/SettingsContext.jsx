@@ -6,12 +6,21 @@ const SettingsContext = createContext(null)
 
 const DEFAULTS = {
   businessName: 'My Business',
-  email: '', phone: '', address1: '', address2: '',
-  city: '', postcode: '', country: '',
-  defaultTax: 20, currency: 'GBP',
-  invoicePrefix: 'INV', invoicePadding: 4,
-  sqApiKey: '', sqDomain: '',
-  aiMode: 'small', byokProvider: '',
+  email: '',
+  phone: '',
+  address1: '',
+  address2: '',
+  city: '',
+  postcode: '',
+  country: '',
+  defaultTax: 20,
+  currency: 'GBP',
+  invoicePrefix: 'INV',
+  invoicePadding: 4,
+  sqApiKey: '',
+  sqDomain: '',
+  aiMode: 'small',
+  byokProvider: '',
   pdfTemplate: {},
 }
 
@@ -30,10 +39,10 @@ export function SettingsProvider({ children }) {
 
   // One-time migration + hydrate sqApiKey from secure storage
   useEffect(() => {
-    (async () => {
+    ;(async () => {
       await migrateKeysFromLocalStorage()
       const key = await getSecret('sip_sqApiKey')
-      if (key) setSettings(prev => ({ ...prev, sqApiKey: key }))
+      if (key) setSettings((prev) => ({ ...prev, sqApiKey: key }))
     })()
   }, [])
 

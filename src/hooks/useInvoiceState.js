@@ -44,12 +44,10 @@ export function useInvoiceState({ defaultTax, onPaid, onOpenEditor }) {
   }, [])
 
   const handleSave = (inv) => {
-    const old = invoices.find(i => i.id === inv.id)
+    const old = invoices.find((i) => i.id === inv.id)
     const justPaid = inv.status === 'paid' && (!old || old.status !== 'paid')
-    const idx = invoices.findIndex(i => i.id === inv.id)
-    const updated = idx >= 0
-      ? invoices.map((i, n) => n === idx ? inv : i)
-      : [...invoices, inv]
+    const idx = invoices.findIndex((i) => i.id === inv.id)
+    const updated = idx >= 0 ? invoices.map((i, n) => (n === idx ? inv : i)) : [...invoices, inv]
     saveInvoices(updated)
     clearDraft()
     setEditing(null)
@@ -78,7 +76,7 @@ export function useInvoiceState({ defaultTax, onPaid, onOpenEditor }) {
   }
 
   const handleDeleteInvoice = (id) => {
-    const updated = invoices.filter(i => i.id !== id)
+    const updated = invoices.filter((i) => i.id !== id)
     saveInvoices(updated)
     clearDraft()
     setEditing(null)
@@ -87,10 +85,19 @@ export function useInvoiceState({ defaultTax, onPaid, onOpenEditor }) {
   }
 
   return {
-    invoices, saveInvoices,
-    editing, editingOriginal, editorOpen, setEditorOpen,
-    handleNewInvoice, handleEdit, handleDraftChange,
-    handleSave, handleDuplicateInvoice,
-    handleCloseEditor, handleDiscardEdit, handleDeleteInvoice,
+    invoices,
+    saveInvoices,
+    editing,
+    editingOriginal,
+    editorOpen,
+    setEditorOpen,
+    handleNewInvoice,
+    handleEdit,
+    handleDraftChange,
+    handleSave,
+    handleDuplicateInvoice,
+    handleCloseEditor,
+    handleDiscardEdit,
+    handleDeleteInvoice,
   }
 }

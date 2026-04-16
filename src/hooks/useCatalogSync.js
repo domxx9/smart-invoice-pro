@@ -36,8 +36,11 @@ export function useCatalogSync(sqApiKey) {
   }, [sqApiKey, saveProducts])
 
   return {
-    products, saveProducts,
-    lastSynced, syncStatus, syncCount,
+    products,
+    saveProducts,
+    lastSynced,
+    syncStatus,
+    syncCount,
     handleSyncCatalog,
   }
 }
