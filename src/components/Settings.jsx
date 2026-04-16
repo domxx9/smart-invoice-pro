@@ -8,12 +8,17 @@ import {
   getBackendInfo,
   cancelDownload as gemmaCancelDownload,
 } from '../gemma.js'
+import { useSettings } from '../contexts/SettingsContext.jsx'
+import { useToast } from '../contexts/ToastContext.jsx'
 import { SettingsSection } from './SettingsSection.jsx'
 import { PdfTemplateEditor } from './PdfTemplateEditor.jsx'
 import { Icon } from './Icon.jsx'
 import { TOUR_SECTIONS } from './TourOverlay.jsx'
 
-export function Settings({ settings, onSave, aiModelId, aiDownloaded, aiDownloadProgress, aiDownloading, aiLoading, aiReady, onAiSelect, onAiDownload, onAiDelete, onAiLoad, byokStatus, byokError, onStartTour }) {
+export function Settings({ ai, onStartTour }) {
+  const { aiModelId, aiDownloaded, aiDownloadProgress, aiDownloading, aiLoading, aiReady, handleAiSelect: onAiSelect, handleAiDownload: onAiDownload, handleAiDelete: onAiDelete, handleAiLoad: onAiLoad, byokStatus, byokError } = ai
+  const { settings, saveSettings } = useSettings()
+  const { toast } = useToast()
   const [s, setS] = useState(settings)
   const [testStatus, setTestStatus] = useState('idle')
   const [testError, setTestError] = useState('')
@@ -392,7 +397,7 @@ export function Settings({ settings, onSave, aiModelId, aiDownloaded, aiDownload
         </div>
       </SettingsSection>
 
-      <button className="btn btn-primary btn-sm" style={{ marginTop: 12, alignSelf: 'flex-start' }} onClick={() => onSave(s)}>
+      <button className="btn btn-primary btn-sm" style={{ marginTop: 12, alignSelf: 'flex-start' }} onClick={() => { saveSettings(s); toast('Settings saved', 'success', '✓') }}>
         <Icon name="check" /> Save Settings
       </button>
     </div>

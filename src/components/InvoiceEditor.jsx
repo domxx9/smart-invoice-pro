@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { calcTotals, fmt, cleanWhatsApp, extractItems, matchItems, searchGroups, groupProducts, getTopCandidates } from '../helpers.js'
 import { savePDFToPhone, sharePDF, openPDF, getPDFFilename, pdfFileExists } from '../pdf.js'
 import { matchWithGemma } from '../gemma.js'
+import { useToast } from '../contexts/ToastContext.jsx'
+import { useSettings } from '../contexts/SettingsContext.jsx'
 import { Icon } from './Icon.jsx'
 
 function getPasteStatus(r, i, decisions) {
@@ -23,7 +25,9 @@ const WORKFLOW = {
   paid:      { label: 'Return',           next: 'refunded',  danger: true,  sendPDF: false },
 }
 
-export function InvoiceEditor({ invoice, products, onSave, onClose, onDelete, onDraftChange, aiReady, settings, onToast }) {
+export function InvoiceEditor({ invoice, products, onSave, onClose, onDelete, onDraftChange, aiReady }) {
+  const { toast: onToast } = useToast()
+  const { settings } = useSettings()
   const [inv, setInv] = useState(invoice)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [pdfToast, setPdfToast] = useState(null)
