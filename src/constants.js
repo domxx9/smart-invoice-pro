@@ -39,5 +39,5 @@ export const SAMPLE_PRODUCTS = [
 export const SAMPLE_INVOICES = [
   { id: 'INV-0001', customer: 'Acme Corp',    email: 'billing@acme.com',   date: '2026-03-15', due: '2026-04-15', status: 'paid',    items: [{ desc: 'Web Design',   qty: 1, price: 2500 }],                                          tax: 10, notes: '' },
   { id: 'INV-0002', customer: 'Bright Ideas', email: 'hi@bright.io',       date: '2026-03-28', due: '2026-04-28', status: 'pending', items: [{ desc: 'Logo Design', qty: 1, price: 500 }, { desc: 'Brand Kit', qty: 1, price: 1200 }], tax: 10, notes: '' },
-  { id: 'INV-0003', customer: 'DevStudio',    email: 'pay@devstudio.co',   date: '2026-02-10', due: '2026-03-10', status: 'overdue', items: [{ desc: 'SEO Retainer', qty: 2, price: 800 }],                                           tax: 10, notes: 'Follow up sent.' },
+  { id: 'INV-0003', customer: 'DevStudio',    email: 'pay@devstudio.co',   date: '2026-02-10', due: '2026-03-10', status: 'pending', items: [{ desc: 'SEO Retainer', qty: 2, price: 800 }],                                           tax: 10, notes: 'Follow up sent.' },
 ]
