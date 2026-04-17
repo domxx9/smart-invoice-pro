@@ -1,7 +1,13 @@
 import { useState, useCallback } from 'react'
 import { fetchSquarespaceOrders } from '../api/squarespace.js'
+import { fetchShopifyOrders } from '../api/shopify.js'
 
-export function useOrderSync(sqApiKey) {
+export function useOrderSync({
+  activeIntegration,
+  sqApiKey,
+  shopifyShopDomain,
+  shopifyAccessToken,
+}) {
   const [orders, setOrders] = useState(() => {
     const s = localStorage.getItem('sip_orders')
     return s ? JSON.parse(s) : []
@@ -26,11 +32,20 @@ export function useOrderSync(sqApiKey) {
   }, [])
 
   const handleSyncOrders = useCallback(async () => {
-    if (!sqApiKey) return
+    const provider =
+      activeIntegration || (sqApiKey ? 'squarespace' : shopifyAccessToken ? 'shopify' : null)
+    if (!provider) return
     setOrderSyncStatus('syncing')
     setOrderSyncCount(0)
     try {
-      const fetched = await fetchSquarespaceOrders(sqApiKey, setOrderSyncCount)
+      let fetched
+      if (provider === 'shopify') {
+        if (!shopifyShopDomain || !shopifyAccessToken) return setOrderSyncStatus('idle')
+        fetched = await fetchShopifyOrders(shopifyShopDomain, shopifyAccessToken, setOrderSyncCount)
+      } else {
+        if (!sqApiKey) return setOrderSyncStatus('idle')
+        fetched = await fetchSquarespaceOrders(sqApiKey, setOrderSyncCount)
+      }
       setOrders(fetched)
       const pendingIds = new Set(fetched.filter((o) => o.status === 'PENDING').map((o) => o.id))
       setPicks((prev) => {
@@ -49,7 +64,7 @@ export function useOrderSync(sqApiKey) {
     } catch {
       setOrderSyncStatus('error')
     }
-  }, [sqApiKey])
+  }, [activeIntegration, sqApiKey, shopifyShopDomain, shopifyAccessToken])
 
   return {
     orders,

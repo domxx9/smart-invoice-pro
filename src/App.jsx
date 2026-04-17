@@ -58,8 +58,18 @@ function AppShell() {
     onPaid: () => setConfettiTrigger((t) => t + 1),
     onOpenEditor: () => setTab('invoices'),
   })
-  const catalog = useCatalogSync(settings.sqApiKey)
-  const orderSync = useOrderSync(settings.sqApiKey)
+  const syncArgs = {
+    activeIntegration: settings.activeIntegration,
+    sqApiKey: settings.sqApiKey,
+    shopifyShopDomain: settings.shopifyShopDomain,
+    shopifyAccessToken: settings.shopifyAccessToken,
+  }
+  const catalog = useCatalogSync(syncArgs)
+  const orderSync = useOrderSync(syncArgs)
+  const hasConnectedProvider =
+    settings.activeIntegration === 'shopify'
+      ? !!(settings.shopifyShopDomain && settings.shopifyAccessToken)
+      : !!settings.sqApiKey
   const ai = useAiModel(toast)
   const handleSave = (invoice) => {
     const justPaid = inv.handleSave(invoice)
@@ -69,10 +79,22 @@ function AppShell() {
       justPaid ? null : '✓',
     )
   }
-  const handleOnboardConnect = (apiKey, fetchedProducts, bizDetails) => {
+  const handleOnboardConnect = (credentials, fetchedProducts, bizDetails) => {
+    // credentials shape for back-compat: if a string is passed, treat it as a Squarespace
+    // API key — that was the pre-Shopify signature. New callers pass an object.
+    const creds =
+      typeof credentials === 'string'
+        ? { provider: 'squarespace', apiKey: credentials }
+        : credentials
+    const provider = creds.provider || 'squarespace'
     saveSettings({
       ...settings,
-      sqApiKey: apiKey,
+      activeIntegration: provider,
+      sqApiKey: provider === 'squarespace' ? creds.apiKey || '' : settings.sqApiKey,
+      shopifyShopDomain:
+        provider === 'shopify' ? creds.shopDomain || '' : settings.shopifyShopDomain,
+      shopifyAccessToken:
+        provider === 'shopify' ? creds.accessToken || '' : settings.shopifyAccessToken,
       businessName: bizDetails.businessName || 'My Business',
       email: bizDetails.email || '',
       phone: bizDetails.phone || '',
@@ -127,7 +149,7 @@ function AppShell() {
         <main id="main-content" tabIndex={-1} className="content">
           <PullToRefresh
             onRefresh={tab === 'orders' ? orderSync.handleSyncOrders : catalog.handleSyncCatalog}
-            enabled={(tab === 'inventory' || tab === 'orders') && !!settings.sqApiKey}
+            enabled={(tab === 'inventory' || tab === 'orders') && hasConnectedProvider}
           >
             {tab === 'dashboard' && (
               <section aria-label="Dashboard">
@@ -170,7 +192,7 @@ function AppShell() {
                   onSync={orderSync.handleSyncOrders}
                   syncStatus={orderSync.orderSyncStatus}
                   syncCount={orderSync.orderSyncCount}
-                  hasApiKey={!!settings.sqApiKey}
+                  hasApiKey={hasConnectedProvider}
                   lastSynced={orderSync.lastOrderSync}
                   picks={orderSync.picks}
                   onPickChange={orderSync.savePick}
@@ -184,7 +206,7 @@ function AppShell() {
                   onSync={catalog.handleSyncCatalog}
                   syncStatus={catalog.syncStatus}
                   syncCount={catalog.syncCount}
-                  hasApiKey={!!settings.sqApiKey}
+                  hasApiKey={hasConnectedProvider}
                   lastSynced={catalog.lastSynced}
                 />
               </section>
