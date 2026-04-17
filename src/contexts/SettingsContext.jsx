@@ -19,6 +19,9 @@ const DEFAULTS = {
   invoicePadding: 4,
   sqApiKey: '',
   sqDomain: '',
+  shopifyShopDomain: '',
+  shopifyAccessToken: '',
+  activeIntegration: null,
   aiMode: 'small',
   byokProvider: '',
   byokBaseUrl: '',
@@ -39,20 +42,29 @@ function loadSettings() {
 export function SettingsProvider({ children }) {
   const [settings, setSettings] = useState(loadSettings)
 
-  // One-time migration + hydrate sqApiKey from secure storage
+  // One-time migration + hydrate secrets from secure storage.
   useEffect(() => {
     ;(async () => {
       await migrateKeysFromLocalStorage()
-      const key = await getSecret('sip_sqApiKey')
-      if (key) setSettings((prev) => ({ ...prev, sqApiKey: key }))
+      const [sq, shop] = await Promise.all([
+        getSecret('sip_sqApiKey'),
+        getSecret('sip_shopifyAccessToken'),
+      ])
+      setSettings((prev) => ({
+        ...prev,
+        ...(sq ? { sqApiKey: sq } : {}),
+        ...(shop ? { shopifyAccessToken: shop } : {}),
+      }))
     })()
   }, [])
 
   const saveSettings = useCallback(async (s) => {
     setSettings(s)
     if (s.sqApiKey) await setSecret('sip_sqApiKey', s.sqApiKey)
+    if (s.shopifyAccessToken) await setSecret('sip_shopifyAccessToken', s.shopifyAccessToken)
     const toStore = { ...s }
     delete toStore.sqApiKey
+    delete toStore.shopifyAccessToken
     localStorage.setItem('sip_settings', JSON.stringify(toStore))
     setCurrency(s.currency)
     setInvoicePrefix(s.invoicePrefix || 'INV')

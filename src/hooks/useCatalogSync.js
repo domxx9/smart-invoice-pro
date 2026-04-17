@@ -1,8 +1,14 @@
 import { useState, useCallback } from 'react'
 import { SAMPLE_PRODUCTS } from '../constants.js'
 import { fetchSquarespaceProducts } from '../api/squarespace.js'
+import { fetchShopifyProducts } from '../api/shopify.js'
 
-export function useCatalogSync(sqApiKey) {
+export function useCatalogSync({
+  activeIntegration,
+  sqApiKey,
+  shopifyShopDomain,
+  shopifyAccessToken,
+}) {
   const [products, setProducts] = useState(() => {
     const s = localStorage.getItem('sip_products')
     return s ? JSON.parse(s) : SAMPLE_PRODUCTS
@@ -23,17 +29,26 @@ export function useCatalogSync(sqApiKey) {
   }, [])
 
   const handleSyncCatalog = useCallback(async () => {
-    if (!sqApiKey) return
+    const provider =
+      activeIntegration || (sqApiKey ? 'squarespace' : shopifyAccessToken ? 'shopify' : null)
+    if (!provider) return
     setSyncStatus('syncing')
     setSyncCount(0)
     try {
-      const fetched = await fetchSquarespaceProducts(sqApiKey, setSyncCount)
+      let fetched
+      if (provider === 'shopify') {
+        if (!shopifyShopDomain || !shopifyAccessToken) return setSyncStatus('idle')
+        fetched = await fetchShopifyProducts(shopifyShopDomain, shopifyAccessToken, setSyncCount)
+      } else {
+        if (!sqApiKey) return setSyncStatus('idle')
+        fetched = await fetchSquarespaceProducts(sqApiKey, setSyncCount)
+      }
       saveProducts(fetched)
       setSyncStatus('ok')
     } catch {
       setSyncStatus('error')
     }
-  }, [sqApiKey, saveProducts])
+  }, [activeIntegration, sqApiKey, shopifyShopDomain, shopifyAccessToken, saveProducts])
 
   return {
     products,

@@ -1,12 +1,16 @@
 import { useState } from 'react'
 import { CURRENCY_TAX } from '../constants.js'
 import { fetchSquarespaceProducts } from '../api/squarespace.js'
+import { fetchShopifyProducts } from '../api/shopify.js'
 import { Icon } from './Icon.jsx'
 
 export function Onboarding({ onConnect, onDemo }) {
-  const [phase, setPhase] = useState('key') // key | details | ready
+  const [phase, setPhase] = useState('provider') // provider | key | details | ready
+  const [provider, setProvider] = useState(null) // 'squarespace' | 'shopify'
   const [apiKey, setApiKey] = useState('')
-  const [status, setStatus] = useState('idle') // idle | connecting | error
+  const [shopDomain, setShopDomain] = useState('')
+  const [accessToken, setAccessToken] = useState('')
+  const [status, setStatus] = useState('idle')
   const [errMsg, setErrMsg] = useState('')
   const [fetchedProducts, setFetchedProducts] = useState([])
   const [biz, setBiz] = useState({
@@ -23,19 +27,34 @@ export function Onboarding({ onConnect, onDemo }) {
   })
   const [syncCount, setSyncCount] = useState(0)
 
+  const canConnect =
+    provider === 'shopify' ? !!(shopDomain.trim() && accessToken.trim()) : !!apiKey.trim()
+
+  const resolveCredentials = () =>
+    provider === 'shopify'
+      ? {
+          provider: 'shopify',
+          shopDomain: shopDomain.trim(),
+          accessToken: accessToken.trim(),
+        }
+      : { provider: 'squarespace', apiKey: apiKey.trim() }
+
   const handleConnect = async () => {
-    if (!apiKey.trim()) return
+    if (!canConnect) return
     setStatus('connecting')
     setErrMsg('')
     setSyncCount(0)
     try {
-      const prods = await fetchSquarespaceProducts(apiKey.trim(), setSyncCount)
+      const prods =
+        provider === 'shopify'
+          ? await fetchShopifyProducts(shopDomain.trim(), accessToken.trim(), setSyncCount)
+          : await fetchSquarespaceProducts(apiKey.trim(), setSyncCount)
       setFetchedProducts(prods)
       setStatus('idle')
       setPhase('details')
     } catch (e) {
       setStatus('error')
-      setErrMsg(e.message || 'Could not connect — check your API key and try again.')
+      setErrMsg(e.message || 'Could not connect — check your credentials and try again.')
     }
   }
 
@@ -55,36 +74,137 @@ export function Onboarding({ onConnect, onDemo }) {
     </div>
   )
 
-  // ── Step 1: connect store ─────────────────────────────────────────
-  if (phase === 'key')
+  // ── Step 0: pick integration provider ─────────────────────────────
+  if (phase === 'provider')
     return wrap(
       <div style={{ width: '100%', maxWidth: 400 }}>
-        <div style={{ textAlign: 'center', marginBottom: 40 }}>
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <h1
             style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--accent)', marginBottom: 8 }}
           >
             Smart Invoice Pro
           </h1>
           <p style={{ color: 'var(--muted)', fontSize: '.9rem' }}>
-            Connect your Squarespace store to get started.
+            Pick the store you want to connect.
           </p>
         </div>
-        <div className="field">
-          <label>
-            Squarespace API Key
-            <input
-              type="password"
-              placeholder="Paste your API key here"
-              value={apiKey}
-              onChange={(e) => {
-                setApiKey(e.target.value)
-                setStatus('idle')
-                setErrMsg('')
-              }}
-              onKeyDown={(e) => e.key === 'Enter' && handleConnect()}
-            />
-          </label>
+        <div
+          role="radiogroup"
+          aria-label="Integration provider"
+          style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}
+        >
+          {[
+            { id: 'squarespace', label: 'Squarespace', desc: 'Commerce API key' },
+            { id: 'shopify', label: 'Shopify', desc: 'Admin API access token' },
+          ].map((opt) => {
+            const active = provider === opt.id
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => setProvider(opt.id)}
+                style={{
+                  textAlign: 'left',
+                  padding: '14px 16px',
+                  borderRadius: 10,
+                  cursor: 'pointer',
+                  background: active ? 'rgba(245,166,35,.08)' : 'var(--card-bg)',
+                  border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
+                  color: 'var(--text)',
+                }}
+              >
+                <div style={{ fontWeight: 700, fontSize: '.95rem', marginBottom: 2 }}>
+                  {opt.label}
+                </div>
+                <div style={{ fontSize: '.78rem', color: 'var(--muted)' }}>{opt.desc}</div>
+              </button>
+            )
+          })}
         </div>
+        <button
+          className="btn btn-primary btn-full"
+          disabled={!provider}
+          onClick={() => setPhase('key')}
+          style={{ marginBottom: 12 }}
+        >
+          Continue
+        </button>
+        <button className="btn btn-ghost btn-full" onClick={onDemo}>
+          Try Demo
+        </button>
+      </div>,
+    )
+
+  // ── Step 1: connect store ─────────────────────────────────────────
+  if (phase === 'key')
+    return wrap(
+      <div style={{ width: '100%', maxWidth: 400 }}>
+        <div style={{ textAlign: 'center', marginBottom: 28 }}>
+          <h1
+            style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--accent)', marginBottom: 8 }}
+          >
+            Smart Invoice Pro
+          </h1>
+          <p style={{ color: 'var(--muted)', fontSize: '.9rem' }}>
+            Connect your {provider === 'shopify' ? 'Shopify' : 'Squarespace'} store to get started.
+          </p>
+        </div>
+
+        {provider === 'shopify' ? (
+          <>
+            <div className="field">
+              <label>
+                Shop Domain
+                <input
+                  type="text"
+                  placeholder="yourstore.myshopify.com"
+                  value={shopDomain}
+                  onChange={(e) => {
+                    setShopDomain(e.target.value)
+                    setStatus('idle')
+                    setErrMsg('')
+                  }}
+                />
+              </label>
+            </div>
+            <div className="field">
+              <label>
+                Admin API Access Token
+                <input
+                  type="password"
+                  placeholder="shpat_…"
+                  value={accessToken}
+                  onChange={(e) => {
+                    setAccessToken(e.target.value)
+                    setStatus('idle')
+                    setErrMsg('')
+                  }}
+                  onKeyDown={(e) => e.key === 'Enter' && handleConnect()}
+                />
+              </label>
+            </div>
+          </>
+        ) : (
+          <div className="field">
+            <label>
+              Squarespace API Key
+              <input
+                type="password"
+                placeholder="Paste your API key here"
+                value={apiKey}
+                onChange={(e) => {
+                  setApiKey(e.target.value)
+                  setStatus('idle')
+                  setErrMsg('')
+                }}
+                onKeyDown={(e) => e.key === 'Enter' && handleConnect()}
+              />
+            </label>
+          </div>
+        )}
+
         {errMsg && (
           <div
             style={{
@@ -108,15 +228,12 @@ export function Onboarding({ onConnect, onDemo }) {
             >
               {errMsg}
             </p>
-            <p style={{ color: 'var(--muted)', fontSize: '.78rem', marginTop: 6 }}>
-              Double-check your key in Squarespace → Settings → Advanced → API Keys and try again.
-            </p>
           </div>
         )}
         <button
           className="btn btn-primary btn-full"
           onClick={handleConnect}
-          disabled={!apiKey.trim() || status === 'connecting'}
+          disabled={!canConnect || status === 'connecting'}
           style={{ marginBottom: 12 }}
         >
           {status === 'connecting'
@@ -125,19 +242,29 @@ export function Onboarding({ onConnect, onDemo }) {
               : 'Connecting…'
             : 'Connect Store'}
         </button>
-        <button className="btn btn-ghost btn-full" onClick={onDemo}>
-          Try Demo
+        <button
+          className="btn btn-ghost btn-full"
+          onClick={() => {
+            setPhase('provider')
+            setErrMsg('')
+            setStatus('idle')
+          }}
+          style={{ marginBottom: 8 }}
+        >
+          ← Change provider
         </button>
         <p
           style={{
             color: 'var(--muted)',
             fontSize: '.75rem',
             textAlign: 'center',
-            marginTop: 16,
+            marginTop: 8,
             lineHeight: 1.5,
           }}
         >
-          Squarespace → Settings → Advanced → API Keys
+          {provider === 'shopify'
+            ? 'Shopify Admin → Settings → Apps and sales channels → Develop apps'
+            : 'Squarespace → Settings → Advanced → API Keys'}
         </p>
       </div>,
     )
@@ -287,7 +414,11 @@ export function Onboarding({ onConnect, onDemo }) {
     { icon: 'dashboard', label: 'Dashboard', desc: 'Revenue & activity at a glance' },
     { icon: 'invoice', label: 'Invoices', desc: 'Create, send & track invoices' },
     { icon: 'invoice', label: 'Smart Paste', desc: 'Paste an order — AI fills items' },
-    { icon: 'orders', label: 'Orders', desc: 'Sync & fulfil Squarespace orders' },
+    {
+      icon: 'orders',
+      label: 'Orders',
+      desc: `Sync & fulfil ${provider === 'shopify' ? 'Shopify' : 'Squarespace'} orders`,
+    },
     { icon: 'inventory', label: 'Catalog', desc: 'Products synced from your store' },
     { icon: 'settings', label: 'Settings', desc: 'Business details, PDF & AI setup' },
   ]
@@ -344,13 +475,13 @@ export function Onboarding({ onConnect, onDemo }) {
       <button
         className="btn btn-primary btn-full"
         style={{ marginBottom: 10 }}
-        onClick={() => onConnect(apiKey.trim(), fetchedProducts, biz, true)}
+        onClick={() => onConnect(resolveCredentials(), fetchedProducts, biz, true)}
       >
         Start Tour →
       </button>
       <button
         className="btn btn-ghost btn-full"
-        onClick={() => onConnect(apiKey.trim(), fetchedProducts, biz, false)}
+        onClick={() => onConnect(resolveCredentials(), fetchedProducts, biz, false)}
       >
         Skip, go to app
       </button>
