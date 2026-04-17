@@ -1,5 +1,14 @@
 /**
  * Gemma on-device inference — Phase 4
+ *
+ * ⚠️ Dev-only entry point (SMA-39 Track B).
+ *    Production code should use `./gemmaWorker.js`, which runs MediaPipe in a
+ *    Web Worker and gates on WebGPU availability (Android/iOS WebView returns
+ *    `{ unavailable: true }` so BYOK — SMA-34 — picks up). This file still
+ *    owns download/storage helpers (OPFS + Capacitor filesystem) and remains
+ *    useful for local profiling; keep it in sync with the worker until the
+ *    worker owns the download path end-to-end.
+ *
  * Tiered model strategy: Nano / Small (default) / Pro / Alt
  * Storage:
  *   Web  → OPFS (Origin Private File System)
