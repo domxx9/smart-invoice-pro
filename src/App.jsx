@@ -160,7 +160,6 @@ function AppShell() {
                   onClose={inv.handleCloseEditor}
                   onDelete={inv.handleDeleteInvoice}
                   onDraftChange={inv.handleDraftChange}
-                  aiReady={ai.aiReady}
                 />
               </section>
             )}

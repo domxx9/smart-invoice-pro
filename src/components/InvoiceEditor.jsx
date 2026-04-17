@@ -4,15 +4,7 @@ import { InvoiceFields } from './InvoiceFields.jsx'
 import { InvoiceLineItems } from './InvoiceLineItems.jsx'
 import { InvoiceActions } from './InvoiceActions.jsx'
 
-export function InvoiceEditor({
-  invoice,
-  products,
-  onSave,
-  onClose,
-  onDelete,
-  onDraftChange,
-  aiReady,
-}) {
+export function InvoiceEditor({ invoice, products, onSave, onClose, onDelete, onDraftChange }) {
   const [inv, setInv] = useState(invoice)
 
   const setField = (k, v) => setInv((p) => ({ ...p, [k]: v }))
@@ -43,7 +35,7 @@ export function InvoiceEditor({
         </span>
       </div>
 
-      <SmartPasteWidget products={products} aiReady={aiReady} onAddItems={addItems} />
+      <SmartPasteWidget products={products} onAddItems={addItems} />
 
       <div className="card">
         <InvoiceFields inv={inv} setField={setField} />
