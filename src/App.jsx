@@ -70,7 +70,7 @@ function AppShell() {
     settings.activeIntegration === 'shopify'
       ? !!(settings.shopifyShopDomain && settings.shopifyAccessToken)
       : !!settings.sqApiKey
-  const ai = useAiModel(toast)
+  const ai = useAiModel(toast, settings)
   const handleSave = (invoice) => {
     const justPaid = inv.handleSave(invoice)
     toast(
@@ -182,6 +182,9 @@ function AppShell() {
                   onClose={inv.handleCloseEditor}
                   onDelete={inv.handleDeleteInvoice}
                   onDraftChange={inv.handleDraftChange}
+                  aiMode={settings.aiMode}
+                  runInference={ai.runInference}
+                  toast={toast}
                 />
               </section>
             )}
