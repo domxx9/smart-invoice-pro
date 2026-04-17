@@ -117,8 +117,10 @@ export async function generate({
   if (!res.ok) {
     throw new Error(`BYOK ${res.status}: ${extractErrorMessage(body, 'request failed')}`)
   }
-  const text = extractText(cfg.protocol, body)
-  if (!text) throw new Error('BYOK response contained no text')
+  const { text, detail } = extractText(cfg.protocol, body)
+  if (!text) {
+    throw new Error(`BYOK response contained no text${detail ? ` (${detail})` : ''}`)
+  }
   return text
 }
 
@@ -175,24 +177,63 @@ function buildRequest(cfg, apiKey, prompt, { maxTokens }) {
   throw new Error(`Unsupported protocol: ${cfg.protocol}`)
 }
 
+/**
+ * Pull the assistant text out of a provider response. Returns
+ * `{ text, detail }` where `detail` is a short diagnostic ("finish_reason=length",
+ * "stop_reason=max_tokens", "no candidates", …) when the response parsed but
+ * yielded no usable text. Callers surface `detail` so users know *why* the
+ * response was empty (truncation, safety filter, refusal, etc).
+ */
 function extractText(protocol, body) {
-  if (!body) return ''
+  if (!body) return { text: '', detail: 'empty body' }
+
   if (protocol === 'openai') {
-    return body.choices?.[0]?.message?.content?.trim() || ''
+    const choice = body.choices?.[0]
+    if (!choice) return { text: '', detail: 'no choices' }
+    const msg = choice.message || choice.delta || {}
+    // OpenAI-compatible APIs may return `content` as either a string or an
+    // array of structured parts (vision, tool, multimodal models).
+    const raw = msg.content
+    let text = ''
+    if (typeof raw === 'string') text = raw
+    else if (Array.isArray(raw)) {
+      text = raw.map((c) => (typeof c === 'string' ? c : c?.text || '')).join('')
+    }
+    text = text.trim()
+    if (text) return { text, detail: null }
+    if (msg.refusal) return { text: '', detail: 'model refused the request' }
+    const finish = choice.finish_reason
+    return { text: '', detail: finish ? `finish_reason=${finish}` : 'empty content' }
   }
+
   if (protocol === 'gemini') {
-    const parts = body.candidates?.[0]?.content?.parts || []
-    return parts
-      .map((p) => p.text || '')
+    const cand = body.candidates?.[0]
+    if (!cand) {
+      // Top-level promptFeedback.blockReason fires when the *prompt* tripped
+      // a safety filter and no candidate was generated at all.
+      const blocked = body.promptFeedback?.blockReason
+      return { text: '', detail: blocked ? `promptFeedback=${blocked}` : 'no candidates' }
+    }
+    const parts = cand.content?.parts || []
+    const text = parts
+      .map((p) => p?.text || '')
       .join('')
       .trim()
+    if (text) return { text, detail: null }
+    const finish = cand.finishReason
+    return { text: '', detail: finish ? `finishReason=${finish}` : 'empty parts' }
   }
+
   if (protocol === 'anthropic') {
     const blocks = body.content || []
-    return blocks
-      .map((b) => (b.type === 'text' ? b.text : ''))
+    const text = blocks
+      .map((b) => (b?.type === 'text' ? b?.text || '' : ''))
       .join('')
       .trim()
+    if (text) return { text, detail: null }
+    const stop = body.stop_reason
+    return { text: '', detail: stop ? `stop_reason=${stop}` : 'empty content' }
   }
-  return ''
+
+  return { text: '', detail: `unsupported protocol ${protocol}` }
 }
