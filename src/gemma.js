@@ -379,49 +379,6 @@ Cleaned lines:`,
   })
 }
 
-// ─── Product matching ─────────────────────────────────────────────────────────
-
-export async function matchWithGemma(itemName, candidates) {
-  console.log('[SIP] matchWithGemma:', itemName, 'candidates:', candidates.length)
-  if (!_llm || !candidates.length) return null
-  console.log(
-    '[SIP] matchWithGemma sample candidate:',
-    candidates[0]?.name,
-    '| desc:',
-    candidates[0]?.desc?.slice(0, 40),
-  )
-
-  const list = candidates
-    .map((p, i) => `${i + 1}. ${p.name}${p.desc ? ` — ${p.desc}` : ''}`)
-    .join('\n')
-  const prompt = gemmaPrompt(
-    `Which number best matches "${itemName}"? Reply with just the number.\n\n${list}\n\nNumber:`,
-  )
-
-  return new Promise((resolve) => {
-    let out = ''
-    try {
-      _llm.generateResponse(prompt, (chunk, done) => {
-        out += chunk
-        if (done) {
-          console.log('[SIP] matchWithGemma raw output:', JSON.stringify(out))
-          const num = parseInt(out.trim().match(/\d+/)?.[0] ?? '0', 10)
-          console.log('[SIP] matchWithGemma result index:', num)
-          resolve(num >= 1 && num <= candidates.length ? candidates[num - 1] : null)
-        }
-      })
-    } catch (e) {
-      console.error('[SIP] matchWithGemma error:', e?.message)
-      try {
-        _llm?.cancelProcessing?.()
-      } catch {
-        /* ignore */
-      }
-      resolve(null)
-    }
-  })
-}
-
 // ─── General inference ────────────────────────────────────────────────────────
 
 export async function generate(userPrompt, onToken) {

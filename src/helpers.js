@@ -111,60 +111,7 @@ export function extractItems(text) {
   return results
 }
 
-function wordSim(a, b) {
-  if (a === b) return 1
-  if (a.startsWith(b) || b.startsWith(a)) return 0.75
-  if (Math.abs(a.length - b.length) <= 3 && a.length >= 4) {
-    let diff = 0
-    const min = Math.min(a.length, b.length)
-    for (let i = 0; i < min; i++) if (a[i] !== b[i]) diff++
-    diff += Math.abs(a.length - b.length)
-    if (diff <= 2) return Math.max(0, 1 - diff * 0.25)
-  }
-  return 0
-}
-
-function matchConfidence(queryName, productName) {
-  const stopWords = new Set(['and', 'the', 'with', 'for', 'of', 'a', 'an'])
-  const qw = queryName
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((w) => w.length > 1 && !stopWords.has(w))
-  const pw = productName
-    .toLowerCase()
-    .split(/[\s\-—/]+/)
-    .filter((w) => w.length > 1 && !stopWords.has(w))
-  if (!qw.length || !pw.length) return 0
-  const qScore = qw.reduce((s, q) => s + Math.max(...pw.map((p) => wordSim(q, p))), 0)
-  const pScore = pw.reduce((s, p) => s + Math.max(...qw.map((q) => wordSim(q, p))), 0)
-  const coverage = qScore / qw.length
-  const specificity = pScore / pw.length
-  if (coverage + specificity === 0) return 0
-  return (2 * coverage * specificity) / (coverage + specificity)
-}
-
-export function matchItems(extracted, products) {
-  return extracted.map(({ raw, name, qty }) => {
-    let best = null,
-      bestConf = 0
-    for (const p of products) {
-      const c = matchConfidence(name, p.name)
-      if (c > bestConf) {
-        bestConf = c
-        best = p
-      }
-    }
-    const pct = Math.round(bestConf * 100)
-    return {
-      raw,
-      name,
-      qty,
-      product: pct >= 80 ? best : null,
-      bestGuess: pct >= 30 && pct < 80 ? best : null,
-      confidence: pct,
-    }
-  })
-}
+export { matchProduct, matchItems, getTopCandidates, invalidateProductIndex } from './matcher.js'
 
 export function groupProducts(products) {
   const map = {}
@@ -193,14 +140,4 @@ export function searchGroups(groups, query) {
     .filter(({ score }) => score === Infinity || score === wordCount)
     .sort((a, b) => b.score - a.score)
     .map(({ g }) => g)
-}
-
-const CANDIDATE_MIN_SCORE = 0.15
-export function getTopCandidates(name, products, n = 5) {
-  return products
-    .map((p) => ({ p, c: matchConfidence(name, p.name) }))
-    .filter(({ c }) => c >= CANDIDATE_MIN_SCORE)
-    .sort((a, b) => b.c - a.c)
-    .slice(0, n)
-    .map(({ p }) => p)
 }
