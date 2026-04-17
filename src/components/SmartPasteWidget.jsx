@@ -82,7 +82,7 @@ export function SmartPasteWidget({ products, onAddItems, aiMode, runInference, t
       if (r.product) return
       if ((r.confidence ?? 0) >= AI_CONFIDENCE_FLOOR) return
       setAiPending((p) => ({ ...p, [i]: true }))
-      runInference({ prompt: buildAiPrompt(r, products), maxTokens: 32 })
+      runInference({ prompt: buildAiPrompt(r, products), maxTokens: 512 })
         .then((res) => {
           setAiPending((p) => ({ ...p, [i]: false }))
           if (!res) return
