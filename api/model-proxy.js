@@ -6,9 +6,14 @@
 
 export const config = { runtime: 'edge' }
 
+// Keep in sync with src/gemma.js MODELS.{id}.nativeUrl/url.
+// `small` must be a MediaPipe `.task` Gemma model — LlmInference.createFromOptions
+// rejects anything else on web (SMA-47 regression: proxy was serving Qwen2.5 0.5B
+// while the UI labelled it Gemma 3 1B, so loads crashed).
 const MODEL_URLS = {
-  small: 'https://github.com/domxx9/smart-invoice-pro/releases/download/v1.0-models/Qwen2.5-0.5B-Instruct_multi-prefill-seq_q8_ekv1280.task',
-  pro:   'https://github.com/domxx9/smart-invoice-pro/releases/download/v1.0-models/Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv4096.task',
+  small:
+    'https://github.com/domxx9/smart-invoice-pro/releases/download/v1.0-models/gemma3-1b-int4-web.task',
+  pro: 'https://github.com/domxx9/smart-invoice-pro/releases/download/v1.0-models/Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv4096.task',
 }
 
 export default async function handler(req) {

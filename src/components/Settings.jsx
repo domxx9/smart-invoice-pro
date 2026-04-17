@@ -6,7 +6,6 @@ import { getSecret, setSecret } from '../secure-storage.js'
 import { BYOK_PROVIDERS as BYOK_PRESETS } from '../byok.js'
 import {
   MODELS as AI_MODELS,
-  getLoadedModelId,
   getBackendInfo,
   cancelDownload as gemmaCancelDownload,
 } from '../gemma.js'
@@ -25,6 +24,7 @@ export function Settings({ ai, onStartTour }) {
     aiDownloading,
     aiLoading,
     aiReady,
+    loadedModelId,
     handleAiSelect: onAiSelect,
     handleAiDownload: onAiDownload,
     handleAiDelete: onAiDelete,
@@ -511,8 +511,9 @@ export function Settings({ ai, onStartTour }) {
                   const isSelected = aiModelId === m.id
                   const downloaded = !!aiDownloaded[m.id]
                   const downloading = aiDownloading === m.id
-                  const progress = aiDownloadProgress[m.id] ?? 0
-                  const loaded = aiReady && getLoadedModelId() === m.id
+                  const progress = aiDownloadProgress[m.id]
+                  const indeterminate = downloading && (progress == null || progress === 0)
+                  const loaded = aiReady && loadedModelId === m.id
 
                   return (
                     <>
@@ -581,21 +582,49 @@ export function Settings({ ai, onStartTour }) {
                                 marginBottom: 4,
                               }}
                             >
-                              <span>Downloading…</span>
-                              <span>{Math.round(progress * 100)}%</span>
+                              <span>{indeterminate ? 'Connecting…' : 'Downloading…'}</span>
+                              <span>{indeterminate ? '' : `${Math.round(progress * 100)}%`}</span>
                             </div>
                             <div
-                              style={{ height: 4, background: 'var(--border)', borderRadius: 2 }}
+                              role="progressbar"
+                              aria-label={indeterminate ? 'Connecting' : 'Downloading AI model'}
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                              {...(indeterminate
+                                ? {}
+                                : { 'aria-valuenow': Math.round(progress * 100) })}
+                              style={{
+                                height: 4,
+                                background: 'var(--border)',
+                                borderRadius: 2,
+                                overflow: 'hidden',
+                                position: 'relative',
+                              }}
                             >
-                              <div
-                                style={{
-                                  height: '100%',
-                                  width: `${progress * 100}%`,
-                                  background: 'var(--accent)',
-                                  borderRadius: 2,
-                                  transition: 'width .3s',
-                                }}
-                              />
+                              {indeterminate ? (
+                                <div
+                                  className="sip-progress-indeterminate"
+                                  style={{
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: 0,
+                                    height: '100%',
+                                    width: '40%',
+                                    background: 'var(--accent)',
+                                    borderRadius: 2,
+                                  }}
+                                />
+                              ) : (
+                                <div
+                                  style={{
+                                    height: '100%',
+                                    width: `${progress * 100}%`,
+                                    background: 'var(--accent)',
+                                    borderRadius: 2,
+                                    transition: 'width .3s',
+                                  }}
+                                />
+                              )}
                             </div>
                             <button
                               className="btn btn-ghost btn-sm"

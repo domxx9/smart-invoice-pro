@@ -5,11 +5,34 @@ import {
   downloadModel as gemmaDownload,
   deleteModel as gemmaDelete,
   initModel as gemmaInit,
-  isGemmaReady,
-  getLoadedModelId,
+  buildModelOptions,
+  isNativePlatform,
 } from '../gemma.js'
+import { initGemma } from '../gemmaWorker.js'
 import { testConnection as byokTestConnection } from '../byok.js'
 import { getSecret, deleteSecret } from '../secure-storage.js'
+
+/**
+ * Load a model via the worker facade (SMA-39) with a desktop fallback to
+ * the main-thread gemma.js path when the worker can't run MediaPipe. On
+ * Capacitor/Android where WebGPU isn't available in the worker, surfaces
+ * `unavailable: true` so the caller can prompt the user to switch to BYOK.
+ * Throws a descriptive error on failure.
+ */
+async function loadModelViaFacade(id) {
+  const modelOptions = await buildModelOptions(id)
+  const result = await initGemma(modelOptions)
+  if (result?.unavailable) {
+    if (isNativePlatform()) {
+      return { unavailable: true, reason: result.reason }
+    }
+    // Desktop browsers without Worker support (very rare) — fall back to
+    // the main-thread path so the feature still works.
+    await gemmaInit(id)
+    return { ready: true, fallback: 'main-thread' }
+  }
+  return { ready: true }
+}
 
 export function useAiModel(toast) {
   const [aiModelId, setAiModelId] = useState(() => localStorage.getItem('sip_ai_model') || 'small')
@@ -18,6 +41,7 @@ export function useAiModel(toast) {
   const [aiDownloading, setAiDownloading] = useState(null)
   const [aiLoading, setAiLoading] = useState(false)
   const [aiReady, setAiReady] = useState(false)
+  const [loadedModelId, setLoadedModelId] = useState(null)
   const [byokStatus, setByokStatus] = useState('idle')
   const [byokError, setByokError] = useState('')
 
@@ -32,8 +56,13 @@ export function useAiModel(toast) {
       if (results[modelToLoad]) {
         setAiLoading(true)
         try {
-          await gemmaInit(modelToLoad)
-          setAiReady(isGemmaReady())
+          const result = await loadModelViaFacade(modelToLoad)
+          if (result?.ready) {
+            setAiReady(true)
+            setLoadedModelId(modelToLoad)
+          }
+          // When unavailable on native we stay quiet on auto-init; the
+          // BYOK panel in Settings already tells the user what to do.
         } catch (e) {
           console.error('[AI] auto-init error:', e)
         } finally {
@@ -69,18 +98,29 @@ export function useAiModel(toast) {
   const handleAiDelete = async (id) => {
     await gemmaDelete(id)
     setAiDownloaded((p) => ({ ...p, [id]: false }))
-    if (getLoadedModelId() === id) setAiReady(false)
+    if (loadedModelId === id) {
+      setAiReady(false)
+      setLoadedModelId(null)
+    }
   }
 
   const handleAiLoad = async (id) => {
     setAiLoading(true)
     try {
-      await gemmaInit(id)
-      setAiReady(isGemmaReady())
+      const result = await loadModelViaFacade(id)
+      if (result?.unavailable) {
+        toast?.(
+          'On-device AI not supported on this device — switch to cloud AI (BYOK) in Settings',
+          'error',
+        )
+        return
+      }
+      setAiReady(true)
+      setLoadedModelId(id)
       toast?.('AI model loaded and ready', 'success', '⚡')
     } catch (e) {
       console.error('[AI] load error:', e)
-      toast?.('Failed to load AI model', 'error')
+      toast?.(e?.message || 'Failed to load AI model', 'error')
     } finally {
       setAiLoading(false)
     }
@@ -129,6 +169,7 @@ export function useAiModel(toast) {
     aiDownloading,
     aiLoading,
     aiReady,
+    loadedModelId,
     byokStatus,
     byokError,
     handleAiSelect,

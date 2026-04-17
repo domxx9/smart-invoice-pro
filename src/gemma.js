@@ -66,6 +66,10 @@ function isNative() {
   return typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.()
 }
 
+export function isNativePlatform() {
+  return isNative()
+}
+
 // ─── Module state ─────────────────────────────────────────────────────────────
 
 let _llm = null
@@ -208,6 +212,10 @@ async function _downloadWeb(model, onProgress, hfToken) {
   const headers = {}
   if (hfToken && !model.public) headers['Authorization'] = `Bearer ${hfToken}`
 
+  // Signal "connecting" as soon as the user clicks — the network round-trip
+  // can take seconds and the UI must show motion (SMA-47).
+  onProgress?.(null)
+
   let res
   try {
     res = await fetch(model.url, { signal: _abortCtrl.signal, headers })
@@ -224,7 +232,11 @@ async function _downloadWeb(model, onProgress, hfToken) {
     )
   }
 
-  const total = parseInt(res.headers.get('content-length') || '0', 10)
+  const rawLen = res.headers.get('content-length')
+  const total = parseInt(rawLen || '0', 10)
+  if (import.meta.env?.DEV) {
+    console.log('[SIP] download content-length:', rawLen, '→ total bytes:', total)
+  }
   const reader = res.body.getReader()
 
   const root = await opfsRoot()
@@ -238,9 +250,15 @@ async function _downloadWeb(model, onProgress, hfToken) {
       if (done) break
       await writable.write(value)
       received += value.byteLength
-      if (total > 0) onProgress?.(received / total)
+      // When upstream strips content-length (some CDNs / proxies), keep
+      // firing the null sentinel so Settings.jsx holds the indeterminate bar
+      // rather than a frozen 0%.
+      onProgress?.(total > 0 ? received / total : null)
     }
     await writable.close()
+    // Flip to 100% at the end so the UI gets a clean finish even on
+    // indeterminate transfers.
+    onProgress?.(1)
   } catch (err) {
     await writable.abort()
     try {
@@ -261,6 +279,50 @@ export function cancelDownload() {
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 /**
+ * Build the MediaPipe modelOptions payload for a given model id, reading the
+ * downloaded file from the platform-appropriate storage (OPFS on web, Capacitor
+ * filesystem on native). Throws a specific error if the file is missing so the
+ * UI can prompt the user to re-download (SMA-47).
+ */
+export async function buildModelOptions(modelId) {
+  const model = MODELS[modelId]
+  if (!model) throw new Error(`Unknown model: ${modelId}`)
+  const filename = model.filename
+
+  if (isNative()) {
+    const { Filesystem, Directory } = await nativeFs()
+    try {
+      await Filesystem.stat({ path: filename, directory: Directory.Data })
+    } catch {
+      throw new Error('Model file missing — please re-download')
+    }
+    // Get native URI then convert to http://localhost/_capacitor_file_/...
+    // so MediaPipe's internal fetch() can load it without reading into JS heap
+    const { uri } = await Filesystem.getUri({ path: filename, directory: Directory.Data })
+    const { Capacitor } = await import('@capacitor/core')
+    const webUrl = Capacitor.convertFileSrc(uri)
+    console.log('[SIP] buildModelOptions native uri:', uri)
+    console.log('[SIP] buildModelOptions webUrl:', webUrl)
+    return { baseOptions: { modelAssetPath: webUrl } }
+  }
+
+  if (!hasOPFS()) {
+    throw new Error('Browser storage unavailable — OPFS is required')
+  }
+  const root = await opfsRoot()
+  let fh
+  try {
+    fh = await root.getFileHandle(filename)
+  } catch {
+    throw new Error('Model file missing — please re-download')
+  }
+  const file = await fh.getFile()
+  const buffer = await file.arrayBuffer()
+  console.log('[SIP] buildModelOptions buffer bytes:', buffer.byteLength, 'file:', filename)
+  return { baseOptions: { modelAssetBuffer: buffer } }
+}
+
+/**
  * Load a downloaded model into memory (WebGPU).
  */
 export async function initModel(modelId) {
@@ -276,39 +338,34 @@ export async function initModel(modelId) {
     _loadedModelId = null
   }
 
-  const { FilesetResolver, LlmInference } = await import('@mediapipe/tasks-genai')
-  const genai = await FilesetResolver.forGenAiTasks(WASM_CDN)
+  const modelOptions = await buildModelOptions(modelId)
 
-  let modelOptions
-
-  if (isNative()) {
-    // Get native URI then convert to http://localhost/_capacitor_file_/...
-    // so MediaPipe's internal fetch() can load it without reading into JS heap
-    const { Filesystem, Directory } = await nativeFs()
-    const { uri } = await Filesystem.getUri({
-      path: MODELS[modelId].filename,
-      directory: Directory.Data,
-    })
-    const { Capacitor } = await import('@capacitor/core')
-    const webUrl = Capacitor.convertFileSrc(uri)
-    console.log('[SIP] initModel native uri:', uri)
-    console.log('[SIP] initModel webUrl:', webUrl)
-    modelOptions = { baseOptions: { modelAssetPath: webUrl } }
-  } else {
-    const root = await opfsRoot()
-    const fh = await root.getFileHandle(MODELS[modelId].filename)
-    const file = await fh.getFile()
-    const buffer = await file.arrayBuffer()
-    modelOptions = { baseOptions: { modelAssetBuffer: buffer } }
+  let FilesetResolver, LlmInference
+  try {
+    ;({ FilesetResolver, LlmInference } = await import('@mediapipe/tasks-genai'))
+  } catch (e) {
+    throw new Error(`Failed to load MediaPipe runtime: ${e.message || e}`)
   }
 
-  console.log('[SIP] LlmInference.createFromOptions start:', modelId)
-  _llm = await LlmInference.createFromOptions(genai, {
-    ...modelOptions,
-    maxTokens: 10000,
-    temperature: 0.1,
-    topK: 1,
-  })
+  let genai
+  try {
+    genai = await FilesetResolver.forGenAiTasks(WASM_CDN)
+  } catch (e) {
+    throw new Error(`Failed to fetch MediaPipe WASM: ${e.message || e}`)
+  }
+
+  console.log('[SIP] LlmInference.createFromOptions start:', modelId, 'native:', isNative())
+  try {
+    _llm = await LlmInference.createFromOptions(genai, {
+      ...modelOptions,
+      maxTokens: 10000,
+      temperature: 0.1,
+      topK: 1,
+    })
+  } catch (e) {
+    const detail = e?.message || String(e)
+    throw new Error(`MediaPipe could not load this model: ${detail}`)
+  }
   _loadedModelId = modelId
   console.log('[SIP] model loaded OK:', modelId)
 }
