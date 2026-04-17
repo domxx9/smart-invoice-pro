@@ -215,7 +215,8 @@ async function _downloadWeb(model, onProgress, hfToken) {
   if (hfToken && !model.public) headers['Authorization'] = `Bearer ${hfToken}`
 
   // Signal "connecting" as soon as the user clicks — the network round-trip
-  // can take seconds and the UI must show motion (SMA-47).
+  // can take seconds and the UI must show motion (SMA-47). `null` is strictly
+  // the pre-fetch sentinel; once bytes flow we switch to a fraction or `-1`.
   onProgress?.(null)
 
   let res
@@ -252,14 +253,15 @@ async function _downloadWeb(model, onProgress, hfToken) {
       if (done) break
       await writable.write(value)
       received += value.byteLength
-      // When upstream strips content-length (some CDNs / proxies), keep
-      // firing the null sentinel so Settings.jsx holds the indeterminate bar
-      // rather than a frozen 0%.
-      onProgress?.(total > 0 ? received / total : null)
+      // Progress sentinel (SMA-47):
+      //   null      → pre-fetch "Connecting…"
+      //   -1        → bytes flowing, upstream stripped content-length
+      //                (Settings.jsx animates + labels "Downloading…")
+      //   0..1      → determinate fraction
+      //   1 (final) → done
+      onProgress?.(total > 0 ? received / total : -1)
     }
     await writable.close()
-    // Flip to 100% at the end so the UI gets a clean finish even on
-    // indeterminate transfers.
     onProgress?.(1)
   } catch (err) {
     await writable.abort()
