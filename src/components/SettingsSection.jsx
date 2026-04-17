@@ -1,6 +1,6 @@
 import { useId, useState } from 'react'
 
-export function SettingsSection({ title, defaultOpen = false, dataTour, children }) {
+export function SettingsSection({ id, title, defaultOpen = false, dataTour, children }) {
   const [open, setOpen] = useState(defaultOpen)
   const bodyId = useId()
   return (
@@ -12,7 +12,7 @@ export function SettingsSection({ title, defaultOpen = false, dataTour, children
         aria-controls={bodyId}
         onClick={() => setOpen((o) => !o)}
       >
-        <h2>{title}</h2>
+        <h2 {...(id ? { id } : {})}>{title}</h2>
         <span className="chevron" aria-hidden="true">
           ▼
         </span>

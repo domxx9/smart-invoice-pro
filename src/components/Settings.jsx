@@ -43,6 +43,8 @@ export function Settings({ ai, onStartTour }) {
   const [shopifyTestError, setShopifyTestError] = useState('')
   const [byokKey, setByokKey] = useState('')
   const set = (k, v) => setS((p) => ({ ...p, [k]: v }))
+  const setSmartPasteContext = (k, v) =>
+    setS((p) => ({ ...p, smartPasteContext: { ...(p.smartPasteContext || {}), [k]: v } }))
 
   // Load BYOK key from secure storage when provider changes.
   // Guard against the async resolution overwriting keystrokes typed
@@ -913,6 +915,85 @@ export function Settings({ ai, onStartTour }) {
             </>
           )
         })()}
+      </SettingsSection>
+
+      <SettingsSection id="smart-paste-ai-context" title="Smart Paste AI Context">
+        <p style={{ fontSize: '.78rem', color: 'var(--muted)', marginBottom: 12, lineHeight: 1.5 }}>
+          Five short phrases about your business. Smart Paste prepends these to every AI call so the
+          model maps messy customer messages onto your real catalog.
+        </p>
+        <div className="field">
+          <label>
+            Product type
+            <textarea
+              rows={2}
+              value={s.smartPasteContext?.productType || ''}
+              onChange={(e) => setSmartPasteContext('productType', e.target.value)}
+              placeholder="e.g. artisan cheese, industrial fasteners, vinyl records, skincare"
+            />
+          </label>
+          <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
+            What you sell, in 3–4 examples the AI can pattern-match against.
+          </p>
+        </div>
+        <div className="field">
+          <label>
+            Shop type
+            <textarea
+              rows={2}
+              value={s.smartPasteContext?.shopType || ''}
+              onChange={(e) => setSmartPasteContext('shopType', e.target.value)}
+              placeholder="brick-and-mortar, online only, trade counter, pop-up market stall"
+            />
+          </label>
+          <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
+            How you trade — helps the AI weight wholesale vs retail phrasing.
+          </p>
+        </div>
+        <div className="field">
+          <label>
+            Customer type
+            <textarea
+              rows={2}
+              value={s.smartPasteContext?.customerType || ''}
+              onChange={(e) => setSmartPasteContext('customerType', e.target.value)}
+              placeholder="restaurants, trade contractors, walk-in retail, boutique resellers"
+            />
+          </label>
+          <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
+            Who you sell to — sets expectations for quantities and vocabulary.
+          </p>
+        </div>
+        <div className="field">
+          <label>
+            Customer vocabulary / jargon
+            <textarea
+              rows={3}
+              value={s.smartPasteContext?.vocabulary || ''}
+              onChange={(e) => setSmartPasteContext('vocabulary', e.target.value)}
+              placeholder={
+                'abbreviations, brand nicknames, short codes — e.g.\n"pdr" = powder, "M8x20" = M8 20mm bolt, "chedd" = cheddar'
+              }
+            />
+          </label>
+          <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
+            Shorthand the AI would otherwise fail on. One per line is fine.
+          </p>
+        </div>
+        <div className="field">
+          <label>
+            Language / locale
+            <textarea
+              rows={2}
+              value={s.smartPasteContext?.locale || ''}
+              onChange={(e) => setSmartPasteContext('locale', e.target.value)}
+              placeholder='e.g. "UK English + Spanish, sometimes mixed"'
+            />
+          </label>
+          <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
+            Languages customers write in — covers codeswitching and regional spellings.
+          </p>
+        </div>
       </SettingsSection>
 
       <SettingsSection title="Help & Tour">
