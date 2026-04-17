@@ -12,7 +12,10 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepare": "husky"
+    "prepare": "husky",
+    "vercel": "vercel",
+    "deploy:preview": "vercel deploy",
+    "deploy": "vercel deploy --prod"
   },
   "lint-staged": {
     "*.{js,jsx}": [
@@ -60,6 +63,7 @@
     "lint-staged": "^16.4.0",
     "prettier": "^3.8.3",
     "sharp": "^0.34.5",
+    "vercel": "^51.6.1",
     "vite": "^5.4.10",
     "vitest": "^4.1.4"
   }
