@@ -59,7 +59,11 @@ export function Inventory({ products, onSync, syncStatus, syncCount, hasApiKey, 
         </p>
       )}
       <div style={{ marginBottom: 14 }}>
+        <label htmlFor="catalog-search" className="sr-only">
+          Search products
+        </label>
         <input
+          id="catalog-search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search products…"
@@ -74,16 +78,36 @@ export function Inventory({ products, onSync, syncStatus, syncCount, hasApiKey, 
         {groups.map((g) => {
           const isOpen = expanded.has(g.name)
           const hasVariants = g.variants.length > 1 || g.variants[0]?.name !== g.name
+          const HeaderTag = hasVariants ? 'button' : 'div'
+          const headerExtra = hasVariants
+            ? {
+                type: 'button',
+                'aria-expanded': isOpen,
+                'aria-label': `${g.name}, ${g.variants.length} variants`,
+                onClick: () => toggle(g.name),
+              }
+            : {}
           return (
             <div key={g.name} className="card" style={{ padding: 0, overflow: 'hidden' }}>
-              <div
-                onClick={() => hasVariants && toggle(g.name)}
+              <HeaderTag
+                {...headerExtra}
+                className={hasVariants ? 'catalog-header-btn' : undefined}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   padding: '12px 14px',
                   cursor: hasVariants ? 'pointer' : 'default',
+                  width: '100%',
+                  ...(hasVariants
+                    ? {
+                        background: 'none',
+                        border: 'none',
+                        color: 'inherit',
+                        font: 'inherit',
+                        textAlign: 'left',
+                      }
+                    : {}),
                 }}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -103,6 +127,8 @@ export function Inventory({ products, onSync, syncStatus, syncCount, hasApiKey, 
                   )}
                   {hasVariants && (
                     <svg
+                      aria-hidden="true"
+                      focusable="false"
                       width="16"
                       height="16"
                       viewBox="0 0 24 24"
@@ -119,7 +145,7 @@ export function Inventory({ products, onSync, syncStatus, syncCount, hasApiKey, 
                     </svg>
                   )}
                 </div>
-              </div>
+              </HeaderTag>
               {hasVariants && isOpen && (
                 <div style={{ borderTop: '1px solid var(--border)' }}>
                   {g.variants.map((v, i) => {

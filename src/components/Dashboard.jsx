@@ -130,11 +130,21 @@ export function Dashboard({ invoices, onNewInvoice, onOpenInvoice }) {
           .slice(0, 5)
           .map((inv) => {
             const { total } = calcTotals(inv.items, inv.tax)
+            const open = () => onOpenInvoice?.(inv)
             return (
               <div
                 key={inv.id}
                 className="flex-between"
-                onClick={() => onOpenInvoice?.(inv)}
+                role="button"
+                tabIndex={0}
+                aria-label={`Open invoice ${inv.id}${inv.customer ? ` for ${inv.customer}` : ''}`}
+                onClick={open}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    open()
+                  }
+                }}
                 style={{
                   padding: '8px 0',
                   borderBottom: '1px solid var(--border)',

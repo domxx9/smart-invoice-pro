@@ -165,6 +165,7 @@ export function SmartPasteWidget({ products, aiReady, onAddItems }) {
         </div>
       ) : (
         <textarea
+          aria-label="Smart paste order text"
           value={pasteText}
           onChange={(e) => {
             setPasteText(e.target.value)

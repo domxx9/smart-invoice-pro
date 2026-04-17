@@ -2,89 +2,111 @@ export function InvoiceFields({ inv, setField }) {
   return (
     <div className="invoice-meta">
       <div className="field">
-        <label>Customer Name</label>
-        <input
-          value={inv.customer || ''}
-          onChange={(e) => setField('customer', e.target.value)}
-          placeholder="Jane Smith"
-        />
+        <label>
+          Customer Name
+          <input
+            value={inv.customer || ''}
+            onChange={(e) => setField('customer', e.target.value)}
+            placeholder="Jane Smith"
+          />
+        </label>
       </div>
       <div className="field">
-        <label>Business Name</label>
-        <input
-          value={inv.customerBusiness || ''}
-          onChange={(e) => setField('customerBusiness', e.target.value)}
-          placeholder="Acme Corp (optional)"
-        />
+        <label>
+          Business Name
+          <input
+            value={inv.customerBusiness || ''}
+            onChange={(e) => setField('customerBusiness', e.target.value)}
+            placeholder="Acme Corp (optional)"
+          />
+        </label>
       </div>
       <div className="field">
-        <label>Email</label>
-        <input
-          value={inv.email || ''}
-          onChange={(e) => setField('email', e.target.value)}
-          placeholder="billing@acme.com"
-          type="email"
-        />
+        <label>
+          Email
+          <input
+            value={inv.email || ''}
+            onChange={(e) => setField('email', e.target.value)}
+            placeholder="billing@acme.com"
+            type="email"
+          />
+        </label>
       </div>
       <div className="field">
-        <label>Address Line 1</label>
-        <input
-          value={inv.address1 || ''}
-          onChange={(e) => setField('address1', e.target.value)}
-          placeholder="123 High Street"
-        />
+        <label>
+          Address Line 1
+          <input
+            value={inv.address1 || ''}
+            onChange={(e) => setField('address1', e.target.value)}
+            placeholder="123 High Street"
+          />
+        </label>
       </div>
       <div className="field">
-        <label>Address Line 2</label>
-        <input
-          value={inv.address2 || ''}
-          onChange={(e) => setField('address2', e.target.value)}
-          placeholder="Suite / Unit (optional)"
-        />
+        <label>
+          Address Line 2
+          <input
+            value={inv.address2 || ''}
+            onChange={(e) => setField('address2', e.target.value)}
+            placeholder="Suite / Unit (optional)"
+          />
+        </label>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <div className="field">
-          <label>City</label>
-          <input
-            value={inv.city || ''}
-            onChange={(e) => setField('city', e.target.value)}
-            placeholder="London"
-          />
+          <label>
+            City
+            <input
+              value={inv.city || ''}
+              onChange={(e) => setField('city', e.target.value)}
+              placeholder="London"
+            />
+          </label>
         </div>
         <div className="field">
-          <label>Postcode / ZIP</label>
-          <input
-            value={inv.postcode || ''}
-            onChange={(e) => setField('postcode', e.target.value)}
-            placeholder="SW1A 1AA"
-          />
+          <label>
+            Postcode / ZIP
+            <input
+              value={inv.postcode || ''}
+              onChange={(e) => setField('postcode', e.target.value)}
+              placeholder="SW1A 1AA"
+            />
+          </label>
         </div>
       </div>
       <div className="field">
-        <label>Country</label>
-        <input
-          value={inv.country || ''}
-          onChange={(e) => setField('country', e.target.value)}
-          placeholder="United Kingdom"
-        />
+        <label>
+          Country
+          <input
+            value={inv.country || ''}
+            onChange={(e) => setField('country', e.target.value)}
+            placeholder="United Kingdom"
+          />
+        </label>
       </div>
       <div className="field">
-        <label>Invoice Date</label>
-        <input value={inv.date} onChange={(e) => setField('date', e.target.value)} type="date" />
+        <label>
+          Invoice Date
+          <input value={inv.date} onChange={(e) => setField('date', e.target.value)} type="date" />
+        </label>
       </div>
       <div className="field">
-        <label>Due Date</label>
-        <input value={inv.due} onChange={(e) => setField('due', e.target.value)} type="date" />
+        <label>
+          Due Date
+          <input value={inv.due} onChange={(e) => setField('due', e.target.value)} type="date" />
+        </label>
       </div>
       <div className="field">
-        <label>Tax %</label>
-        <input
-          value={inv.tax}
-          onChange={(e) => setField('tax', e.target.value)}
-          type="number"
-          min="0"
-          max="100"
-        />
+        <label>
+          Tax %
+          <input
+            value={inv.tax}
+            onChange={(e) => setField('tax', e.target.value)}
+            type="number"
+            min="0"
+            max="100"
+          />
+        </label>
       </div>
     </div>
   )

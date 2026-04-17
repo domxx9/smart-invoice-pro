@@ -67,120 +67,148 @@ export function Settings({ ai, onStartTour }) {
 
       <SettingsSection title="Business">
         <div className="field">
-          <label>Business Name</label>
-          <input
-            value={s.businessName || ''}
-            onChange={(e) => set('businessName', e.target.value)}
-          />
+          <label>
+            Business Name
+            <input
+              value={s.businessName || ''}
+              onChange={(e) => set('businessName', e.target.value)}
+            />
+          </label>
         </div>
         <div className="field">
-          <label>Email</label>
-          <input
-            value={s.email || ''}
-            onChange={(e) => set('email', e.target.value)}
-            type="email"
-          />
+          <label>
+            Email
+            <input
+              value={s.email || ''}
+              onChange={(e) => set('email', e.target.value)}
+              type="email"
+            />
+          </label>
         </div>
         <div className="field">
-          <label>Phone</label>
-          <input value={s.phone || ''} onChange={(e) => set('phone', e.target.value)} type="tel" />
+          <label>
+            Phone
+            <input
+              value={s.phone || ''}
+              onChange={(e) => set('phone', e.target.value)}
+              type="tel"
+            />
+          </label>
         </div>
         <div className="field">
-          <label>Address Line 1</label>
-          <input
-            value={s.address1 || ''}
-            onChange={(e) => set('address1', e.target.value)}
-            placeholder="123 High Street"
-          />
+          <label>
+            Address Line 1
+            <input
+              value={s.address1 || ''}
+              onChange={(e) => set('address1', e.target.value)}
+              placeholder="123 High Street"
+            />
+          </label>
         </div>
         <div className="field">
-          <label>Address Line 2</label>
-          <input
-            value={s.address2 || ''}
-            onChange={(e) => set('address2', e.target.value)}
-            placeholder="Suite / Unit (optional)"
-          />
+          <label>
+            Address Line 2
+            <input
+              value={s.address2 || ''}
+              onChange={(e) => set('address2', e.target.value)}
+              placeholder="Suite / Unit (optional)"
+            />
+          </label>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <div className="field">
-            <label>City</label>
-            <input
-              value={s.city || ''}
-              onChange={(e) => set('city', e.target.value)}
-              placeholder="London"
-            />
+            <label>
+              City
+              <input
+                value={s.city || ''}
+                onChange={(e) => set('city', e.target.value)}
+                placeholder="London"
+              />
+            </label>
           </div>
           <div className="field">
-            <label>Postcode / ZIP</label>
-            <input
-              value={s.postcode || ''}
-              onChange={(e) => set('postcode', e.target.value)}
-              placeholder="SW1A 1AA"
-            />
+            <label>
+              Postcode / ZIP
+              <input
+                value={s.postcode || ''}
+                onChange={(e) => set('postcode', e.target.value)}
+                placeholder="SW1A 1AA"
+              />
+            </label>
           </div>
         </div>
         <div className="field">
-          <label>Country</label>
-          <input
-            value={s.country || ''}
-            onChange={(e) => set('country', e.target.value)}
-            placeholder="United Kingdom"
-          />
+          <label>
+            Country
+            <input
+              value={s.country || ''}
+              onChange={(e) => set('country', e.target.value)}
+              placeholder="United Kingdom"
+            />
+          </label>
         </div>
       </SettingsSection>
 
       <SettingsSection title="Invoicing">
         <div className="field">
-          <label>Currency</label>
-          <select
-            value={s.currency || 'GBP'}
-            onChange={(e) => {
-              const cur = e.target.value
-              const suggested = CURRENCY_TAX[cur]?.tax
-              set('currency', cur)
-              if (suggested !== undefined) set('defaultTax', suggested)
-            }}
-          >
-            {Object.entries(CURRENCY_TAX).map(([code, { label }]) => (
-              <option key={code} value={code}>
-                {label}
-              </option>
-            ))}
-          </select>
+          <label>
+            Currency
+            <select
+              value={s.currency || 'GBP'}
+              onChange={(e) => {
+                const cur = e.target.value
+                const suggested = CURRENCY_TAX[cur]?.tax
+                set('currency', cur)
+                if (suggested !== undefined) set('defaultTax', suggested)
+              }}
+            >
+              {Object.entries(CURRENCY_TAX).map(([code, { label }]) => (
+                <option key={code} value={code}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
         <div className="field">
-          <label>Default Tax %</label>
-          <input
-            value={s.defaultTax}
-            onChange={(e) => set('defaultTax', e.target.value)}
-            type="number"
-            min="0"
-            max="100"
-            step="0.1"
-          />
+          <label>
+            Default Tax %
+            <input
+              value={s.defaultTax}
+              onChange={(e) => set('defaultTax', e.target.value)}
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+            />
+          </label>
           <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
             Auto-suggested from currency. Override if needed.
           </p>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <div className="field">
-            <label>Invoice Prefix</label>
-            <input
-              value={s.invoicePrefix ?? ''}
-              onChange={(e) => set('invoicePrefix', e.target.value.toUpperCase())}
-              placeholder="INV"
-              maxLength={6}
-            />
+            <label>
+              Invoice Prefix
+              <input
+                value={s.invoicePrefix ?? ''}
+                onChange={(e) => set('invoicePrefix', e.target.value.toUpperCase())}
+                placeholder="INV"
+                maxLength={6}
+              />
+            </label>
           </div>
           <div className="field">
-            <label>Number Padding</label>
-            <input
-              value={s.invoicePadding || 4}
-              onChange={(e) => set('invoicePadding', parseInt(e.target.value) || 1)}
-              type="number"
-              min="1"
-              max="8"
-            />
+            <label>
+              Number Padding
+              <input
+                value={s.invoicePadding || 4}
+                onChange={(e) => set('invoicePadding', parseInt(e.target.value) || 1)}
+                type="number"
+                min="1"
+                max="8"
+              />
+            </label>
           </div>
         </div>
         <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: -6, marginBottom: 8 }}>
@@ -202,21 +230,25 @@ export function Settings({ ai, onStartTour }) {
 
       <SettingsSection title="Squarespace Integration">
         <div className="field">
-          <label>API Key</label>
-          <input
-            value={s.sqApiKey}
-            onChange={(e) => set('sqApiKey', e.target.value)}
-            type="password"
-            placeholder="sq_…"
-          />
+          <label>
+            API Key
+            <input
+              value={s.sqApiKey}
+              onChange={(e) => set('sqApiKey', e.target.value)}
+              type="password"
+              placeholder="sq_…"
+            />
+          </label>
         </div>
         <div className="field">
-          <label>Store Domain</label>
-          <input
-            value={s.sqDomain}
-            onChange={(e) => set('sqDomain', e.target.value)}
-            placeholder="yourstore.squarespace.com"
-          />
+          <label>
+            Store Domain
+            <input
+              value={s.sqDomain}
+              onChange={(e) => set('sqDomain', e.target.value)}
+              placeholder="yourstore.squarespace.com"
+            />
+          </label>
         </div>
         <button
           className="btn btn-ghost btn-sm mb-8"
@@ -307,6 +339,8 @@ export function Settings({ ai, onStartTour }) {
             return (
               <button
                 key={id}
+                type="button"
+                aria-pressed={active}
                 onClick={() => set('aiMode', id)}
                 style={{
                   flex: 1,
@@ -357,11 +391,22 @@ export function Settings({ ai, onStartTour }) {
                       </p>
                       <div
                         className="card"
+                        role="button"
+                        tabIndex={0}
+                        aria-pressed={isSelected}
+                        aria-label={`Select ${m.label} AI model`}
                         style={{
                           marginBottom: 8,
                           border: isSelected ? '1px solid var(--accent)' : undefined,
+                          cursor: 'pointer',
                         }}
                         onClick={() => onAiSelect(m.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            onAiSelect(m.id)
+                          }
+                        }}
                       >
                         <div className="flex-between mb-4">
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -510,18 +555,20 @@ export function Settings({ ai, onStartTour }) {
                         this device.
                       </p>
                       <div className="field" style={{ marginBottom: 12 }}>
-                        <label>Provider</label>
-                        <select
-                          value={byokProvider}
-                          onChange={(e) => set('byokProvider', e.target.value)}
-                        >
-                          <option value="">— select a provider —</option>
-                          {BYOK_PROVIDERS.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.label}
-                            </option>
-                          ))}
-                        </select>
+                        <label>
+                          Provider
+                          <select
+                            value={byokProvider}
+                            onChange={(e) => set('byokProvider', e.target.value)}
+                          >
+                            <option value="">— select a provider —</option>
+                            {BYOK_PROVIDERS.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
                       </div>
 
                       {provider && (
@@ -590,17 +637,19 @@ export function Settings({ ai, onStartTour }) {
                           </div>
 
                           <div className="field">
-                            <label>{provider.label} API Key</label>
-                            <input
-                              type="password"
-                              placeholder={provider.keyHint}
-                              value={byokKey}
-                              onChange={(e) => {
-                                const v = e.target.value.trim()
-                                setByokKey(v)
-                                setSecret(`sip_byok_${byokProvider}`, v)
-                              }}
-                            />
+                            <label>
+                              {provider.label} API Key
+                              <input
+                                type="password"
+                                placeholder={provider.keyHint}
+                                value={byokKey}
+                                onChange={(e) => {
+                                  const v = e.target.value.trim()
+                                  setByokKey(v)
+                                  setSecret(`sip_byok_${byokProvider}`, v)
+                                }}
+                              />
+                            </label>
                           </div>
 
                           {byokStatus && byokStatus !== 'idle' && (

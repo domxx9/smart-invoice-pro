@@ -14,6 +14,15 @@ function overdueColor(days) {
   return '#9f1239'
 }
 
+function onActivateKey(handler) {
+  return (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      handler()
+    }
+  }
+}
+
 export function Invoices({ invoices, onNewInvoice, onEdit, onDuplicate, editingDraft }) {
   const [filter, setFilter] = useState('all')
   const [search, setSearch] = useState('')
@@ -65,7 +74,11 @@ export function Invoices({ invoices, onNewInvoice, onEdit, onDuplicate, editingD
       </div>
 
       <div style={{ position: 'relative', marginBottom: 10 }}>
+        <label htmlFor="invoice-search" className="sr-only">
+          Search invoices
+        </label>
         <input
+          id="invoice-search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by name, ID, email…"
@@ -82,6 +95,8 @@ export function Invoices({ invoices, onNewInvoice, onEdit, onDuplicate, editingD
         />
         {search && (
           <button
+            type="button"
+            aria-label="Clear search"
             onClick={() => setSearch('')}
             style={{
               position: 'absolute',
@@ -102,24 +117,32 @@ export function Invoices({ invoices, onNewInvoice, onEdit, onDuplicate, editingD
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+      <div
+        role="group"
+        aria-label="Filter invoices"
+        style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}
+      >
         {['all', 'new', 'pending', 'fulfilled', 'paid', 'overdue', 'refunded'].map((f) => (
-          <span
+          <button
             key={f}
+            type="button"
             className="chip"
+            aria-pressed={filter === f}
             style={filter === f ? { background: 'rgba(245,166,35,.3)' } : {}}
             onClick={() => setFilter(f)}
           >
             {f.charAt(0).toUpperCase() + f.slice(1)}
-          </span>
+          </button>
         ))}
       </div>
 
-      <div>
+      <ul className="inv-list" aria-label="Invoices">
         {sorted.length === 0 && (
-          <p className="text-muted" style={{ padding: '20px 0' }}>
-            No invoices.
-          </p>
+          <li>
+            <p className="text-muted" style={{ padding: '20px 0' }}>
+              No invoices.
+            </p>
+          </li>
         )}
         {sorted.map((inv) => {
           const { total } = calcTotals(inv.items, inv.tax)
@@ -127,90 +150,120 @@ export function Invoices({ invoices, onNewInvoice, onEdit, onDuplicate, editingD
           const isOverdue = isOverdueFn(inv)
           const days = isOverdue ? daysOverdue(inv) : 0
           const heatColor = isOverdue ? overdueColor(days) : null
+          const openEdit = () => onEdit(inv)
 
           return (
-            <div
+            <li
               key={inv.id}
-              className="inv-row"
-              onClick={() => onEdit(inv)}
+              className="inv-row-wrap"
               style={{
                 ...(isDraft ? { borderLeft: '3px solid var(--muted)', paddingLeft: 10 } : {}),
                 ...(isOverdue ? { borderLeft: `3px solid ${heatColor}`, paddingLeft: 10 } : {}),
               }}
             >
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span
-                    className="inv-id"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      copyId(inv.id)
-                    }}
-                    style={{ cursor: 'copy' }}
-                  >
-                    {inv.id}
-                  </span>
-                  {copiedId === inv.id && (
-                    <span style={{ fontSize: '.62rem', color: 'var(--success)', fontWeight: 600 }}>
-                      ✓ Copied
-                    </span>
-                  )}
-                </div>
-                <div className="inv-customer">
-                  {inv.customer || '—'} · {isDraft ? 'Unsaved draft' : `Due ${inv.due || '—'}`}
-                </div>
-                {isOverdue && days > 0 && (
-                  <div
-                    style={{ fontSize: '.68rem', color: heatColor, marginTop: 2, fontWeight: 600 }}
-                  >
-                    {days} day{days !== 1 ? 's' : ''} overdue
-                  </div>
-                )}
-              </div>
-
               <div
-                style={{
-                  textAlign: 'right',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'flex-end',
-                  gap: 4,
-                }}
+                className="inv-row"
+                role="button"
+                tabIndex={0}
+                aria-label={`Open invoice ${inv.id}${inv.customer ? ` for ${inv.customer}` : ''}`}
+                onClick={openEdit}
+                onKeyDown={onActivateKey(openEdit)}
               >
-                <div style={{ color: isDraft ? 'var(--muted)' : 'var(--accent)', fontWeight: 700 }}>
-                  {fmt(total)}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <span className={`badge badge-${isOverdue ? 'overdue' : inv.status}`}>
-                    {isOverdue ? 'overdue' : inv.status}
-                  </span>
-                  {!isDraft && onDuplicate && (
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <button
-                      title="Duplicate invoice"
+                      type="button"
+                      className="inv-id"
+                      aria-label={`Copy invoice ID ${inv.id}`}
                       onClick={(e) => {
                         e.stopPropagation()
-                        onDuplicate(inv)
+                        copyId(inv.id)
                       }}
                       style={{
+                        cursor: 'copy',
                         background: 'none',
-                        border: '1px solid var(--border)',
-                        borderRadius: 4,
-                        color: 'var(--muted)',
-                        fontSize: '.72rem',
-                        padding: '1px 5px',
-                        cursor: 'pointer',
-                        lineHeight: 1.4,
+                        border: 'none',
+                        color: 'inherit',
+                        padding: 0,
+                        font: 'inherit',
+                        fontWeight: 600,
                       }}
                     >
-                      ⧉
+                      {inv.id}
                     </button>
+                    {copiedId === inv.id && (
+                      <span
+                        style={{ fontSize: '.62rem', color: 'var(--success)', fontWeight: 600 }}
+                      >
+                        ✓ Copied
+                      </span>
+                    )}
+                  </div>
+                  <div className="inv-customer">
+                    {inv.customer || '—'} · {isDraft ? 'Unsaved draft' : `Due ${inv.due || '—'}`}
+                  </div>
+                  {isOverdue && days > 0 && (
+                    <div
+                      style={{
+                        fontSize: '.68rem',
+                        color: heatColor,
+                        marginTop: 2,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {days} day{days !== 1 ? 's' : ''} overdue
+                    </div>
                   )}
                 </div>
+
+                <div
+                  style={{
+                    textAlign: 'right',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-end',
+                    gap: 4,
+                  }}
+                >
+                  <div
+                    style={{ color: isDraft ? 'var(--muted)' : 'var(--accent)', fontWeight: 700 }}
+                  >
+                    {fmt(total)}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span className={`badge badge-${isOverdue ? 'overdue' : inv.status}`}>
+                      {isOverdue ? 'overdue' : inv.status}
+                    </span>
+                    {!isDraft && onDuplicate && (
+                      <button
+                        type="button"
+                        title="Duplicate invoice"
+                        aria-label={`Duplicate invoice ${inv.id}`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onDuplicate(inv)
+                        }}
+                        style={{
+                          background: 'none',
+                          border: '1px solid var(--border)',
+                          borderRadius: 4,
+                          color: 'var(--muted)',
+                          fontSize: '.72rem',
+                          padding: '1px 5px',
+                          cursor: 'pointer',
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        ⧉
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
+            </li>
           )
         })}
-      </div>
+      </ul>
     </div>
   )
 }

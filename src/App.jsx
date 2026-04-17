@@ -108,90 +108,115 @@ function AppShell() {
         />
       )}
       <div className="app">
+        <a href="#main-content" className="skip-link">
+          Skip to content
+        </a>
         <header className="header">
           <div className="header-inner">
             <h1>Smart Invoice Pro</h1>
-            <span
-              className="text-muted"
-              style={{ fontSize: '.75rem', cursor: 'default', userSelect: 'none' }}
+            <button
+              type="button"
+              className="text-muted version-tap"
               onClick={handleVersionTap}
+              aria-label="App version 1.0 (tap repeatedly for easter egg)"
             >
               v1.0
-            </span>
+            </button>
           </div>
         </header>
-        <main className="content">
+        <main id="main-content" tabIndex={-1} className="content">
           <PullToRefresh
             onRefresh={tab === 'orders' ? orderSync.handleSyncOrders : catalog.handleSyncCatalog}
             enabled={(tab === 'inventory' || tab === 'orders') && !!settings.sqApiKey}
           >
             {tab === 'dashboard' && (
-              <Dashboard
-                invoices={inv.invoices}
-                onNewInvoice={inv.handleNewInvoice}
-                onOpenInvoice={inv.handleEdit}
-              />
+              <section aria-label="Dashboard">
+                <Dashboard
+                  invoices={inv.invoices}
+                  onNewInvoice={inv.handleNewInvoice}
+                  onOpenInvoice={inv.handleEdit}
+                />
+              </section>
             )}
             {tab === 'invoices' && !inv.editorOpen && (
-              <Invoices
-                invoices={inv.invoices}
-                onNewInvoice={inv.handleNewInvoice}
-                onEdit={(i) => (i.status === 'draft' ? inv.setEditorOpen(true) : inv.handleEdit(i))}
-                onDuplicate={inv.handleDuplicateInvoice}
-                editingDraft={inv.editing}
-              />
+              <section aria-label="Invoices">
+                <Invoices
+                  invoices={inv.invoices}
+                  onNewInvoice={inv.handleNewInvoice}
+                  onEdit={(i) =>
+                    i.status === 'draft' ? inv.setEditorOpen(true) : inv.handleEdit(i)
+                  }
+                  onDuplicate={inv.handleDuplicateInvoice}
+                  editingDraft={inv.editing}
+                />
+              </section>
             )}
             {tab === 'invoices' && inv.editorOpen && inv.editing !== null && (
-              <InvoiceEditor
-                invoice={inv.editing}
-                products={catalog.products}
-                onSave={handleSave}
-                onClose={inv.handleCloseEditor}
-                onDelete={inv.handleDeleteInvoice}
-                onDraftChange={inv.handleDraftChange}
-                aiReady={ai.aiReady}
-              />
+              <section aria-label="Invoice editor">
+                <InvoiceEditor
+                  invoice={inv.editing}
+                  products={catalog.products}
+                  onSave={handleSave}
+                  onClose={inv.handleCloseEditor}
+                  onDelete={inv.handleDeleteInvoice}
+                  onDraftChange={inv.handleDraftChange}
+                  aiReady={ai.aiReady}
+                />
+              </section>
             )}
             {tab === 'orders' && (
-              <Orders
-                orders={orderSync.orders}
-                onSync={orderSync.handleSyncOrders}
-                syncStatus={orderSync.orderSyncStatus}
-                syncCount={orderSync.orderSyncCount}
-                hasApiKey={!!settings.sqApiKey}
-                lastSynced={orderSync.lastOrderSync}
-                picks={orderSync.picks}
-                onPickChange={orderSync.savePick}
-              />
+              <section aria-label="Orders">
+                <Orders
+                  orders={orderSync.orders}
+                  onSync={orderSync.handleSyncOrders}
+                  syncStatus={orderSync.orderSyncStatus}
+                  syncCount={orderSync.orderSyncCount}
+                  hasApiKey={!!settings.sqApiKey}
+                  lastSynced={orderSync.lastOrderSync}
+                  picks={orderSync.picks}
+                  onPickChange={orderSync.savePick}
+                />
+              </section>
             )}
             {tab === 'inventory' && (
-              <Inventory
-                products={catalog.products}
-                onSync={catalog.handleSyncCatalog}
-                syncStatus={catalog.syncStatus}
-                syncCount={catalog.syncCount}
-                hasApiKey={!!settings.sqApiKey}
-                lastSynced={catalog.lastSynced}
-              />
+              <section aria-label="Catalog">
+                <Inventory
+                  products={catalog.products}
+                  onSync={catalog.handleSyncCatalog}
+                  syncStatus={catalog.syncStatus}
+                  syncCount={catalog.syncCount}
+                  hasApiKey={!!settings.sqApiKey}
+                  lastSynced={catalog.lastSynced}
+                />
+              </section>
             )}
-            {tab === 'settings' && <Settings ai={ai} onStartTour={setTourStep} />}
+            {tab === 'settings' && (
+              <section aria-label="Settings">
+                <Settings ai={ai} onStartTour={setTourStep} />
+              </section>
+            )}
           </PullToRefresh>
         </main>
-        <nav className="nav">
-          {NAV_ITEMS.map((item) => (
-            <button
-              key={item.id}
-              data-tour={`nav-${item.id}`}
-              className={`nav-btn ${tab === item.id ? 'active' : ''}`}
-              onClick={() => {
-                inv.setEditorOpen(false)
-                setTab(item.id)
-              }}
-            >
-              <Icon name={item.icon} />
-              {item.label}
-            </button>
-          ))}
+        <nav className="nav" aria-label="Primary">
+          {NAV_ITEMS.map((item) => {
+            const isActive = tab === item.id
+            return (
+              <button
+                key={item.id}
+                type="button"
+                data-tour={`nav-${item.id}`}
+                className={`nav-btn ${isActive ? 'active' : ''}`}
+                aria-current={isActive ? 'page' : undefined}
+                onClick={() => {
+                  inv.setEditorOpen(false)
+                  setTab(item.id)
+                }}
+              >
+                <Icon name={item.icon} />
+                {item.label}
+              </button>
+            )
+          })}
         </nav>
       </div>
     </>

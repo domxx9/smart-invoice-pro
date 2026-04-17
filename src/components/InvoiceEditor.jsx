@@ -56,12 +56,14 @@ export function InvoiceEditor({
           addProduct={addProduct}
         />
         <div className="field mt-8">
-          <label>Notes</label>
-          <textarea
-            value={inv.notes}
-            onChange={(e) => setField('notes', e.target.value)}
-            placeholder="Payment terms, thank-you note, etc."
-          />
+          <label>
+            Notes
+            <textarea
+              value={inv.notes}
+              onChange={(e) => setField('notes', e.target.value)}
+              placeholder="Payment terms, thank-you note, etc."
+            />
+          </label>
         </div>
       </div>
 

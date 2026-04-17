@@ -19,7 +19,18 @@ export const CSS = `
 
   body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; min-height: 100dvh; }
 
-  .app { display: flex; flex-direction: column; min-height: 100dvh; padding-top: env(safe-area-inset-top, 0); }
+  /* Visually hidden content for screen readers only */
+  .sr-only { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0,0,0,0) !important; white-space: nowrap !important; border: 0 !important; }
+
+  /* Skip link — visible when focused */
+  .skip-link { position: absolute; top: -40px; left: 8px; background: var(--accent); color: #000; padding: 8px 14px; border-radius: 0 0 var(--radius-sm) var(--radius-sm); z-index: 10000; font-weight: 700; font-size: .85rem; text-decoration: none; transition: top .15s; }
+  .skip-link:focus { top: 0; outline: 2px solid #fff; outline-offset: 2px; }
+
+  /* Focus styles for keyboard users */
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #main-content:focus { outline: none; }
+
+  .app { display: flex; flex-direction: column; min-height: 100dvh; padding-top: env(safe-area-inset-top, 0); position: relative; }
   .header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 16px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
   .header-inner { display: flex; align-items: center; justify-content: space-between; width: 100%; }
   .header h1 { font-size: 1rem; font-weight: 700; color: var(--accent); letter-spacing: .5px; }
@@ -44,6 +55,8 @@ export const CSS = `
   .btn-full { width: 100%; }
 
   label { font-size: .8rem; color: var(--muted); display: block; margin-bottom: 4px; }
+  /* Give a visual gap when input is nested inside a wrapping label */
+  label > input, label > textarea, label > select { margin-top: 4px; }
   input, textarea, select { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: .9rem; padding: 10px 12px; outline: none; }
   input:focus, textarea:focus, select:focus { border-color: var(--accent); }
   textarea { resize: vertical; min-height: 80px; }
@@ -67,8 +80,10 @@ export const CSS = `
   @keyframes blink { 50% { opacity: 0; } }
   @keyframes spin { to { transform: rotate(360deg); } }
   .ptr-spinner { width: 26px; height: 26px; border-radius: 50%; border: 2.5px solid var(--border); border-top-color: var(--accent); flex-shrink: 0; }
-  .chip { display: inline-block; background: rgba(245,166,35,.12); color: var(--accent); border-radius: 20px; padding: 3px 10px; font-size: .75rem; margin: 2px; cursor: pointer; border: 1px solid rgba(245,166,35,.2); }
+  .chip { display: inline-block; background: rgba(245,166,35,.12); color: var(--accent); border-radius: 20px; padding: 3px 10px; font-size: .75rem; margin: 2px; cursor: pointer; border: 1px solid rgba(245,166,35,.2); font: inherit; line-height: 1.4; }
+  button.chip { font-size: .75rem; font-family: inherit; }
   .chip:hover { background: rgba(245,166,35,.22); }
+  .chip[aria-pressed="true"] { background: rgba(245,166,35,.3); }
 
   .product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
   .product-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; cursor: pointer; transition: border-color .15s, transform .1s; }
@@ -78,7 +93,10 @@ export const CSS = `
   .product-card .stock { font-size: .75rem; color: var(--muted); }
   .low-stock { color: var(--danger) !important; }
 
+  .inv-list { list-style: none; padding: 0; margin: 0; }
+  .inv-row-wrap { list-style: none; }
   .inv-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
+  .inv-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius-sm); }
   .inv-id { font-weight: 600; font-size: .9rem; }
   .inv-customer { font-size: .8rem; color: var(--muted); }
   .badge { display: inline-block; font-size: .7rem; padding: 2px 8px; border-radius: 20px; font-weight: 600; }
@@ -94,12 +112,15 @@ export const CSS = `
   .badge-CANCELED  { background: rgba(224,82,82,.12);   color: var(--danger);  }
 
   .settings-section { margin-bottom: 8px; }
-  .settings-section-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; user-select: none; transition: background .15s; }
+  .settings-section-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; user-select: none; transition: background .15s; width: 100%; text-align: left; color: var(--text); font: inherit; }
   .settings-section-header:hover { background: #222225; }
   .settings-section-header h2 { font-size: .82rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin: 0; }
   .settings-section-header .chevron { font-size: .7rem; color: var(--muted); transition: transform .2s; }
   .settings-section-header.open .chevron { transform: rotate(180deg); }
   .settings-section-body { border: 1px solid var(--border); border-top: none; border-radius: 0 0 var(--radius-sm) var(--radius-sm); padding: 14px; margin-bottom: 0; background: var(--bg); }
+
+  /* Buttons that look like clickable rows/cards */
+  .catalog-pick-btn:hover, .catalog-header-btn:hover, .order-header-btn:hover { background: #222225 !important; }
 
   .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
   .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }

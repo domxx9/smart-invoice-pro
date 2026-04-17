@@ -62,16 +62,22 @@ export function Orders({
         </p>
       )}
 
-      <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+      <div
+        role="group"
+        aria-label="Filter orders"
+        style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}
+      >
         {['all', 'PENDING', 'FULFILLED', 'CANCELED'].map((f) => (
-          <span
+          <button
             key={f}
+            type="button"
             className="chip"
+            aria-pressed={filter === f}
             style={filter === f ? { background: 'rgba(245,166,35,.3)' } : {}}
             onClick={() => setFilter(f)}
           >
             {f === 'all' ? 'All' : f.charAt(0) + f.slice(1).toLowerCase()}
-          </span>
+          </button>
         ))}
       </div>
 
@@ -99,7 +105,11 @@ export function Orders({
             className="card"
             style={{ padding: 0, overflow: 'hidden', marginBottom: 10 }}
           >
-            <div
+            <button
+              type="button"
+              className="order-header-btn"
+              aria-expanded={isOpen}
+              aria-label={`Order ${o.orderNumber}, ${o.status.toLowerCase()}, ${o.customer}`}
               onClick={() => setExpanded(isOpen ? null : o.id)}
               style={{
                 display: 'flex',
@@ -107,6 +117,12 @@ export function Orders({
                 alignItems: 'center',
                 padding: '12px 14px',
                 cursor: 'pointer',
+                width: '100%',
+                background: 'none',
+                border: 'none',
+                color: 'inherit',
+                font: 'inherit',
+                textAlign: 'left',
               }}
             >
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -136,6 +152,8 @@ export function Orders({
                   {fmt(o.total)}
                 </span>
                 <svg
+                  aria-hidden="true"
+                  focusable="false"
                   width="14"
                   height="14"
                   viewBox="0 0 24 24"
@@ -152,7 +170,7 @@ export function Orders({
                   <polyline points="6 9 12 15 18 9" />
                 </svg>
               </div>
-            </div>
+            </button>
 
             {isOpen && (
               <div
