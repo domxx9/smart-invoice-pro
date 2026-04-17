@@ -75,23 +75,28 @@ describe('gemma._downloadWeb — progress signals', () => {
     delete globalThis.fetch
   })
 
-  it('fires onProgress(null) on connect and emits a fraction when content-length is known', async () => {
-    const chunk = new Uint8Array([1, 2, 3, 4])
+  it('fires onProgress(null) on connect, fractions mid-flight, and 1 at the end when content-length is known', async () => {
+    // Total = 6, two 2-byte chunks → fractions 1/3 and 2/3 mid-flight, then 1.
+    const chunk = new Uint8Array([1, 2])
     globalThis.fetch = vi
       .fn()
-      .mockResolvedValue(makeResponse({ contentLength: 4, chunks: [chunk] }))
+      .mockResolvedValue(makeResponse({ contentLength: 6, chunks: [chunk, chunk] }))
 
     const { downloadModel } = await import('../gemma.js')
     const calls = []
     await downloadModel('small', (p) => calls.push(p))
 
+    // First tick: connect sentinel.
     expect(calls[0]).toBeNull()
-    // Determinate fraction arrives after the read — last value is 1 (final push).
-    expect(calls.some((p) => typeof p === 'number' && p > 0 && p < 2)).toBe(true)
+    // Mid-flight ticks: determinate fractions strictly between 0 and 1.
+    const mid = calls.slice(1, -1)
+    expect(mid.length).toBeGreaterThan(0)
+    expect(mid.every((p) => typeof p === 'number' && p > 0 && p < 1)).toBe(true)
+    // Final tick: exact 1 so the UI shows a clean finish.
     expect(calls[calls.length - 1]).toBe(1)
   })
 
-  it('keeps emitting null when content-length is absent (indeterminate)', async () => {
+  it('emits -1 on chunks when content-length is absent (indeterminate with bytes)', async () => {
     const chunk = new Uint8Array([9, 9, 9])
     globalThis.fetch = vi
       .fn()
@@ -101,13 +106,16 @@ describe('gemma._downloadWeb — progress signals', () => {
     const calls = []
     await downloadModel('small', (p) => calls.push(p))
 
-    // First call is the connect sentinel
+    // First tick: pre-fetch connect sentinel (null), never repeated for chunks.
     expect(calls[0]).toBeNull()
-    // Subsequent reader.read() ticks also report null because total === 0
+    // After the first chunk arrives we flip to -1 so Settings can stop saying
+    // "Connecting…" and switch the label to "Downloading…" while keeping the
+    // striped bar animation running.
     const readTicks = calls.slice(1, -1)
     expect(readTicks.length).toBeGreaterThan(0)
-    expect(readTicks.every((p) => p === null)).toBe(true)
-    // Final flip to 1 so the UI can finish gracefully
+    expect(readTicks.every((p) => p === -1)).toBe(true)
+    expect(readTicks.some((p) => p === null)).toBe(false)
+    // Final flip to 1 so the UI can finish gracefully.
     expect(calls[calls.length - 1]).toBe(1)
   })
 })
