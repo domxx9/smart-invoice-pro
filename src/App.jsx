@@ -185,6 +185,8 @@ function AppShell() {
                   aiMode={settings.aiMode}
                   runInference={ai.runInference}
                   toast={toast}
+                  smartPasteContext={settings.smartPasteContext}
+                  onOpenSettings={() => setTab('settings')}
                 />
               </section>
             )}
