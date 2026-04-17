@@ -13,6 +13,8 @@
  *   - each product has 1..N variants; we flatten to one row per variant
  */
 
+import { logger } from '../utils/logger.js'
+
 const API_VERSION = '2024-01'
 const PAGE_LIMIT = 250
 
@@ -182,7 +184,7 @@ export async function fetchShopifyProducts(shopDomain, accessToken, onProgress) 
     pageInfo = nextPageInfo
   } while (pageInfo)
 
-  console.log(`[SIP] Shopify synced ${rawCount} products → ${flattened.length} variants`)
+  logger.info('shopify', `synced ${rawCount} products → ${flattened.length} variants`)
   return flattened
 }
 
@@ -256,7 +258,7 @@ export async function fetchShopifyOrders(shopDomain, accessToken, onProgress) {
     const ref = new Date(o.modifiedOn || o.createdOn).getTime()
     return now - ref <= THIRTY_DAYS
   })
-  console.log(`[SIP] Shopify synced ${all.length} orders (${filtered.length} within window)`)
+  logger.info('shopify', `synced ${all.length} orders (${filtered.length} within window)`)
   return filtered.sort((a, b) => new Date(b.createdOn) - new Date(a.createdOn))
 }
 

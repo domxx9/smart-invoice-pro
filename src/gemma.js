@@ -16,6 +16,8 @@
  * Backend: WebGPU (required by MediaPipe LLM Inference API)
  */
 
+import { logger } from './utils/logger.js'
+
 // ─── Model registry ───────────────────────────────────────────────────────────
 
 export const MODELS = {
@@ -181,12 +183,12 @@ async function _downloadNative(model, onProgress) {
 
   // Use nativeUrl if present (direct GitHub, bypasses CORS proxy)
   const url = model.nativeUrl || model.url
-  console.log('[SIP] download start:', model.id, url)
+  logger.info('ai', 'download start:', model.id, url)
 
   const progressListener = await Filesystem.addListener('progress', (event) => {
     if (event.url === url && event.contentLength > 0) {
       const pct = Math.round((event.bytes / event.contentLength) * 100)
-      if (pct % 10 === 0) console.log(`[SIP] download ${model.id}: ${pct}%`)
+      if (pct % 10 === 0) logger.debug('ai', `download ${model.id}: ${pct}%`)
       onProgress?.(event.bytes / event.contentLength)
     }
   })
@@ -198,7 +200,7 @@ async function _downloadNative(model, onProgress) {
       directory: Directory.Data,
       progress: true,
     })
-    console.log('[SIP] download complete:', model.id)
+    logger.info('ai', 'download complete:', model.id)
   } finally {
     progressListener.remove()
   }
@@ -213,7 +215,8 @@ async function _downloadWeb(model, onProgress, hfToken) {
   if (hfToken && !model.public) headers['Authorization'] = `Bearer ${hfToken}`
 
   // Signal "connecting" as soon as the user clicks — the network round-trip
-  // can take seconds and the UI must show motion (SMA-47).
+  // can take seconds and the UI must show motion (SMA-47). `null` is strictly
+  // the pre-fetch sentinel; once bytes flow we switch to a fraction or `-1`.
   onProgress?.(null)
 
   let res
@@ -235,7 +238,7 @@ async function _downloadWeb(model, onProgress, hfToken) {
   const rawLen = res.headers.get('content-length')
   const total = parseInt(rawLen || '0', 10)
   if (import.meta.env?.DEV) {
-    console.log('[SIP] download content-length:', rawLen, '→ total bytes:', total)
+    logger.debug('ai', 'download content-length:', rawLen, '→ total bytes:', total)
   }
   const reader = res.body.getReader()
 
@@ -250,14 +253,15 @@ async function _downloadWeb(model, onProgress, hfToken) {
       if (done) break
       await writable.write(value)
       received += value.byteLength
-      // When upstream strips content-length (some CDNs / proxies), keep
-      // firing the null sentinel so Settings.jsx holds the indeterminate bar
-      // rather than a frozen 0%.
-      onProgress?.(total > 0 ? received / total : null)
+      // Progress sentinel (SMA-47):
+      //   null      → pre-fetch "Connecting…"
+      //   -1        → bytes flowing, upstream stripped content-length
+      //                (Settings.jsx animates + labels "Downloading…")
+      //   0..1      → determinate fraction
+      //   1 (final) → done
+      onProgress?.(total > 0 ? received / total : -1)
     }
     await writable.close()
-    // Flip to 100% at the end so the UI gets a clean finish even on
-    // indeterminate transfers.
     onProgress?.(1)
   } catch (err) {
     await writable.abort()
@@ -301,8 +305,8 @@ export async function buildModelOptions(modelId) {
     const { uri } = await Filesystem.getUri({ path: filename, directory: Directory.Data })
     const { Capacitor } = await import('@capacitor/core')
     const webUrl = Capacitor.convertFileSrc(uri)
-    console.log('[SIP] buildModelOptions native uri:', uri)
-    console.log('[SIP] buildModelOptions webUrl:', webUrl)
+    logger.debug('ai', 'buildModelOptions native uri:', uri)
+    logger.debug('ai', 'buildModelOptions webUrl:', webUrl)
     return { baseOptions: { modelAssetPath: webUrl } }
   }
 
@@ -318,7 +322,7 @@ export async function buildModelOptions(modelId) {
   }
   const file = await fh.getFile()
   const buffer = await file.arrayBuffer()
-  console.log('[SIP] buildModelOptions buffer bytes:', buffer.byteLength, 'file:', filename)
+  logger.debug('ai', 'buildModelOptions buffer bytes:', buffer.byteLength, 'file:', filename)
   return { baseOptions: { modelAssetBuffer: buffer } }
 }
 
@@ -354,7 +358,7 @@ export async function initModel(modelId) {
     throw new Error(`Failed to fetch MediaPipe WASM: ${e.message || e}`)
   }
 
-  console.log('[SIP] LlmInference.createFromOptions start:', modelId, 'native:', isNative())
+  logger.info('ai', 'LlmInference.createFromOptions start:', modelId, 'native:', isNative())
   try {
     _llm = await LlmInference.createFromOptions(genai, {
       ...modelOptions,
@@ -367,7 +371,7 @@ export async function initModel(modelId) {
     throw new Error(`MediaPipe could not load this model: ${detail}`)
   }
   _loadedModelId = modelId
-  console.log('[SIP] model loaded OK:', modelId)
+  logger.info('ai', 'model loaded OK:', modelId)
 }
 
 export function isGemmaReady() {
@@ -429,12 +433,12 @@ Cleaned lines:`,
         out += chunk
         onToken?.(out, done)
         if (done) {
-          console.log('[SIP] cleanOrderText raw:', JSON.stringify(out))
+          logger.debug('ai', 'cleanOrderText raw:', JSON.stringify(out))
           resolve(out.trim() || text)
         }
       })
     } catch (e) {
-      console.error('[SIP] cleanOrderText error:', e)
+      logger.error('ai', 'cleanOrderText error:', e)
       try {
         _llm?.cancelProcessing?.()
       } catch {
