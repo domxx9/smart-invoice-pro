@@ -79,6 +79,8 @@ export const CSS = `
   .ai-typing::after { content: '▋'; animation: blink .7s step-end infinite; }
   @keyframes blink { 50% { opacity: 0; } }
   @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes sip-indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(350%); } }
+  .sip-progress-indeterminate { animation: sip-indeterminate 1.3s cubic-bezier(.4,0,.2,1) infinite; }
   .ptr-spinner { width: 26px; height: 26px; border-radius: 50%; border: 2.5px solid var(--border); border-top-color: var(--accent); flex-shrink: 0; }
   .chip { display: inline-block; background: rgba(245,166,35,.12); color: var(--accent); border-radius: 20px; padding: 3px 10px; font-size: .75rem; margin: 2px; cursor: pointer; border: 1px solid rgba(245,166,35,.2); font: inherit; line-height: 1.4; }
   button.chip { font-size: .75rem; font-family: inherit; }

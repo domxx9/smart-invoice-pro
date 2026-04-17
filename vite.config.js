@@ -13,6 +13,13 @@ const SHOPIFY_DOMAIN_RE = /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i
 export default defineConfig({
   plugins: [react()],
   base: './',
+  // MediaPipe's tasks-genai pulls in dynamic imports inside our Web Worker
+  // (src/workers/mediapipeWorker.js). Rollup rejects the default IIFE output
+  // for workers that code-split, so emit ES-module workers and keep the
+  // `new Worker(url, { type: 'module' })` contract in gemmaWorker.js.
+  worker: {
+    format: 'es',
+  },
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test-setup.js'],
