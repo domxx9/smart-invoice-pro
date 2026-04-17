@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   MODELS as AI_MODELS,
   isModelDownloaded,
@@ -11,6 +11,7 @@ import {
 import { initGemma } from '../gemmaWorker.js'
 import { testConnection as byokTestConnection } from '../byok.js'
 import { getSecret, deleteSecret } from '../secure-storage.js'
+import { runInference as pipelineRunInference } from '../ai/pipeline.js'
 
 /**
  * Load a model via the worker facade (SMA-39) with a desktop fallback to
@@ -34,7 +35,7 @@ async function loadModelViaFacade(id) {
   return { ready: true }
 }
 
-export function useAiModel(toast) {
+export function useAiModel(toast, settings) {
   const [aiModelId, setAiModelId] = useState(() => localStorage.getItem('sip_ai_model') || 'small')
   const [aiDownloaded, setAiDownloaded] = useState({})
   const [aiDownloadProgress, setAiDownloadProgress] = useState({})
@@ -44,6 +45,13 @@ export function useAiModel(toast) {
   const [loadedModelId, setLoadedModelId] = useState(null)
   const [byokStatus, setByokStatus] = useState('idle')
   const [byokError, setByokError] = useState('')
+
+  // Keep current settings in a ref so `runInference` stays stable but always
+  // reads the latest aiMode / byok* values without stale closures.
+  const settingsRef = useRef(settings)
+  useEffect(() => {
+    settingsRef.current = settings
+  }, [settings])
 
   useEffect(() => {
     const check = async () => {
@@ -162,6 +170,12 @@ export function useAiModel(toast) {
     setByokError('')
   }, [])
 
+  const runInference = useCallback(
+    ({ prompt, maxTokens = 512 } = {}) =>
+      pipelineRunInference({ prompt, maxTokens, settings: settingsRef.current }),
+    [],
+  )
+
   return {
     aiModelId,
     aiDownloaded,
@@ -178,5 +192,6 @@ export function useAiModel(toast) {
     handleAiLoad,
     handleByokTest,
     handleByokClear,
+    runInference,
   }
 }

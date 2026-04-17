@@ -2,6 +2,9 @@ import { useState } from 'react'
 import { cleanWhatsApp, extractItems, matchItems, fmt } from '../helpers.js'
 import { Icon } from './Icon.jsx'
 
+const AI_CONFIDENCE_FLOOR = 65
+const AI_SUGGESTED_CONFIDENCE = 85
+
 function getPasteStatus(r, i, decisions) {
   const d = decisions[i]
   if (d === 'dismissed') return 'dismissed'
@@ -21,10 +24,40 @@ const PASTE_SORT = {
   dismissed: 3,
 }
 
-export function SmartPasteWidget({ products, onAddItems }) {
+function buildAiPrompt(r, products) {
+  const lines = products
+    .slice(0, 50)
+    .map((p, i) => `${i + 1}. ${p.name}`)
+    .join('\n')
+  return [
+    'You match order lines to a product catalog.',
+    'Reply with ONLY a single number.',
+    'Reply 0 if no catalog item matches.',
+    'Reply 1..N where N is the chosen catalog number.',
+    '',
+    `Order line: "${r.name}"`,
+    '',
+    'Catalog:',
+    lines,
+    '',
+    'Number:',
+  ].join('\n')
+}
+
+function parseAiIndex(text, max) {
+  if (!text) return 0
+  const m = String(text).match(/-?\d+/)
+  if (!m) return 0
+  const n = parseInt(m[0], 10)
+  if (Number.isNaN(n) || n < 0 || n > max) return 0
+  return n
+}
+
+export function SmartPasteWidget({ products, onAddItems, aiMode, runInference, toast }) {
   const [pasteText, setPasteText] = useState('')
   const [pasteResults, setPasteResults] = useState(null)
   const [pasteDecisions, setPasteDecisions] = useState({})
+  const [aiPending, setAiPending] = useState({})
 
   const decide = (i, val) => setPasteDecisions((d) => ({ ...d, [i]: val }))
   const unmatch = (i) =>
@@ -39,12 +72,56 @@ export function SmartPasteWidget({ products, onAddItems }) {
       return updated
     })
 
+  const refineWithAi = (results) => {
+    if (!runInference || !aiMode || aiMode === 'off') return
+    if (!products?.length) return
+    results.forEach((r, i) => {
+      if (r.product) return
+      if ((r.confidence ?? 0) >= AI_CONFIDENCE_FLOOR) return
+      setAiPending((p) => ({ ...p, [i]: true }))
+      runInference({ prompt: buildAiPrompt(r, products), maxTokens: 8 })
+        .then((res) => {
+          setAiPending((p) => ({ ...p, [i]: false }))
+          if (!res) return
+          const pick = parseAiIndex(res.text, Math.min(products.length, 50))
+          setPasteResults((prev) => {
+            if (!prev) return prev
+            const updated = [...prev]
+            const current = updated[i]
+            if (!current) return prev
+            if (pick > 0) {
+              updated[i] = {
+                ...current,
+                bestGuess: products[pick - 1],
+                confidence: Math.max(current.confidence ?? 0, AI_SUGGESTED_CONFIDENCE),
+                aiSuggested: true,
+              }
+            } else {
+              updated[i] = {
+                ...current,
+                bestGuess: null,
+                aiSuggested: true,
+              }
+            }
+            return updated
+          })
+        })
+        .catch((e) => {
+          setAiPending((p) => ({ ...p, [i]: false }))
+          toast?.(e?.message || 'AI match failed', 'error')
+        })
+    })
+  }
+
   const runParse = () => {
     if (!pasteText.trim()) return
     setPasteDecisions({})
+    setAiPending({})
     const cleaned = cleanWhatsApp(pasteText)
     const extracted = extractItems(cleaned)
-    setPasteResults(matchItems(extracted, products))
+    const results = matchItems(extracted, products)
+    setPasteResults(results)
+    refineWithAi(results)
   }
 
   const addMatched = () => {
@@ -111,7 +188,15 @@ export function SmartPasteWidget({ products, onAddItems }) {
       {pasteResults && sorted.length > 0 && (
         <div style={{ marginTop: 8 }}>
           {sorted.map(({ r, i, s }) => (
-            <PasteResultRow key={i} r={r} i={i} status={s} onDecide={decide} onUnmatch={unmatch} />
+            <PasteResultRow
+              key={i}
+              r={r}
+              i={i}
+              status={s}
+              pending={!!aiPending[i]}
+              onDecide={decide}
+              onUnmatch={unmatch}
+            />
           ))}
 
           {matchCount > 0 && (
@@ -125,7 +210,7 @@ export function SmartPasteWidget({ products, onAddItems }) {
   )
 }
 
-function PasteResultRow({ r, i, status, onDecide, onUnmatch }) {
+function PasteResultRow({ r, i, status, pending, onDecide, onUnmatch }) {
   const isGreen = status === 'auto_match' || status === 'confirmed'
   const isAmber = status === 'best_guess'
   const isRed = status === 'no_match' || status === 'discarded'
@@ -197,9 +282,20 @@ function PasteResultRow({ r, i, status, onDecide, onUnmatch }) {
         <div>
           <div style={{ fontSize: '.78rem', color: 'var(--muted)', marginBottom: 2 }}>
             &ldquo;{r.name}&rdquo; — {r.confidence}% match
+            {pending && (
+              <span
+                aria-label="AI matching"
+                role="status"
+                data-testid={`ai-pending-${i}`}
+                style={{ marginLeft: 6, color: 'var(--accent)' }}
+              >
+                · AI matching…
+              </span>
+            )}
           </div>
           <div style={{ fontSize: '.84rem', fontWeight: 600, marginBottom: 8 }}>
-            Best guess: {r.bestGuess.name}
+            {r.aiSuggested ? 'AI suggested: ' : 'Best guess: '}
+            {r.bestGuess.name}
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
             <button
@@ -246,6 +342,16 @@ function PasteResultRow({ r, i, status, onDecide, onUnmatch }) {
             {status === 'discarded' && (
               <span style={{ fontSize: '.72rem', color: 'var(--muted)', marginLeft: 6 }}>
                 Discarded
+              </span>
+            )}
+            {pending && (
+              <span
+                aria-label="AI matching"
+                role="status"
+                data-testid={`ai-pending-${i}`}
+                style={{ fontSize: '.72rem', color: 'var(--accent)', marginLeft: 6 }}
+              >
+                · AI matching…
               </span>
             )}
             <div style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 2 }}>
