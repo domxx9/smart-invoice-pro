@@ -1,9 +1,13 @@
 import { useState } from 'react'
 import { cleanWhatsApp, extractItems, matchItems, fmt } from '../helpers.js'
+import { runSmartPastePipeline } from '../ai/smartPastePipeline.js'
+import { isSmartPasteContextSet } from '../contexts/SettingsContext.jsx'
 import { Icon } from './Icon.jsx'
 
 const AI_CONFIDENCE_FLOOR = 65
-const AI_SUGGESTED_CONFIDENCE = 85
+// Mirrors MATCH_BATCH_SIZE in src/ai/smartPastePipeline.js — kept in sync so
+// the widget can map `batchIndex` back to row indices for spinners.
+const MATCH_BATCH_SIZE = 2
 
 function getPasteStatus(r, i, decisions) {
   const d = decisions[i]
@@ -24,44 +28,48 @@ const PASTE_SORT = {
   dismissed: 3,
 }
 
-function buildAiPrompt(r, products) {
-  const lines = products
-    .slice(0, 50)
-    .map((p, i) => `${i + 1}. ${p.name}`)
-    .join('\n')
-  return [
-    'You match order lines to a product catalog.',
-    'Reply with ONLY a single number.',
-    'Reply 0 if no catalog item matches.',
-    'Reply 1..N where N is the chosen catalog number.',
-    '',
-    `Order line: "${r.name}"`,
-    '',
-    'Catalog:',
-    lines,
-    '',
-    'Number:',
-  ].join('\n')
+function convertPipelineRow(row) {
+  const product = row?.product || null
+  const confidence = Math.max(0, Math.min(100, Math.round(row?.confidence ?? 0)))
+  const aiPicked = row?.source === 'ai' && !!product
+  // Pipeline rows surface a single `product` candidate with a confidence score.
+  // Treat AI-picked rows at or above the confidence floor as auto-matches;
+  // lower-confidence AI picks and fuzzy-only candidates land in `bestGuess` so
+  // the user still confirms them explicitly.
+  return {
+    name: row?.extracted?.text ?? row?.extracted?.description ?? '',
+    qty: Math.max(1, Math.floor(row?.extracted?.qty ?? 1)),
+    product: aiPicked && confidence >= AI_CONFIDENCE_FLOOR ? product : null,
+    bestGuess: aiPicked && confidence >= AI_CONFIDENCE_FLOOR ? null : product,
+    confidence,
+    aiSuggested: row?.source === 'ai',
+  }
 }
 
-function parseAiIndex(text, max) {
-  if (!text) return 0
-  const m = String(text).match(/-?\d+/)
-  if (!m) return 0
-  const n = parseInt(m[0], 10)
-  if (Number.isNaN(n) || n < 0 || n > max) return 0
-  return n
-}
-
-export function SmartPasteWidget({ products, onAddItems, aiMode, runInference, toast }) {
+export function SmartPasteWidget({
+  products,
+  onAddItems,
+  aiMode,
+  runInference,
+  toast,
+  smartPasteContext,
+  onOpenSettings,
+}) {
   const [pasteText, setPasteText] = useState('')
   const [pasteResults, setPasteResults] = useState(null)
   const [pasteDecisions, setPasteDecisions] = useState({})
   const [aiPending, setAiPending] = useState({})
+  const [batchFailed, setBatchFailed] = useState({})
+  const [pipelineStage, setPipelineStage] = useState(null)
+  const [bannerDismissed, setBannerDismissed] = useState(false)
+
+  const contextReady = isSmartPasteContextSet({ smartPasteContext })
+  const showContextBanner = aiMode === 'byok' && !contextReady && !bannerDismissed
 
   const decide = (i, val) => setPasteDecisions((d) => ({ ...d, [i]: val }))
   const unmatch = (i) =>
     setPasteResults((prev) => {
+      if (!prev) return prev
       const updated = [...prev]
       updated[i] = {
         ...updated[i],
@@ -72,62 +80,95 @@ export function SmartPasteWidget({ products, onAddItems, aiMode, runInference, t
       return updated
     })
 
-  const refineWithAi = (results) => {
-    if (!runInference || !aiMode || aiMode === 'off') return
-    if (!products?.length) return
-    // Dedupe: when the BYOK key/model is misconfigured, every row fails with
-    // the same error. Show the first failure once, swallow the rest.
-    const seenErrors = new Set()
-    results.forEach((r, i) => {
-      if (r.product) return
-      if ((r.confidence ?? 0) >= AI_CONFIDENCE_FLOOR) return
-      setAiPending((p) => ({ ...p, [i]: true }))
-      runInference({ prompt: buildAiPrompt(r, products), maxTokens: 512 })
-        .then((res) => {
-          setAiPending((p) => ({ ...p, [i]: false }))
-          if (!res) return
-          const pick = parseAiIndex(res.text, Math.min(products.length, 50))
-          setPasteResults((prev) => {
-            if (!prev) return prev
-            const updated = [...prev]
-            const current = updated[i]
-            if (!current) return prev
-            if (pick > 0) {
-              updated[i] = {
-                ...current,
-                bestGuess: products[pick - 1],
-                confidence: Math.max(current.confidence ?? 0, AI_SUGGESTED_CONFIDENCE),
-                aiSuggested: true,
-              }
-            } else {
-              updated[i] = {
-                ...current,
-                bestGuess: null,
-                aiSuggested: true,
-              }
-            }
-            return updated
-          })
-        })
-        .catch((e) => {
-          setAiPending((p) => ({ ...p, [i]: false }))
-          const msg = e?.message || 'AI match failed'
-          if (seenErrors.has(msg)) return
-          seenErrors.add(msg)
-          toast?.(msg, 'error')
-        })
-    })
+  const handleOpenSettings = (e) => {
+    if (typeof onOpenSettings === 'function') {
+      e.preventDefault()
+      onOpenSettings('smart-paste-ai-context')
+    }
   }
 
-  const runParse = () => {
+  const runParse = async () => {
     if (!pasteText.trim()) return
     setPasteDecisions({})
     setAiPending({})
+    setBatchFailed({})
+    setPipelineStage(null)
+
     const cleaned = cleanWhatsApp(pasteText)
     const extracted = extractItems(cleaned)
     const results = matchItems(extracted, products)
     setPasteResults(results)
-    refineWithAi(results)
+
+    const shouldRunPipeline =
+      aiMode === 'byok' &&
+      contextReady &&
+      typeof runInference === 'function' &&
+      !!products?.length &&
+      results.some((r) => !r.product && (r.confidence ?? 0) < AI_CONFIDENCE_FLOOR)
+
+    if (!shouldRunPipeline) return
+
+    const onStage = ({ stage, batchIndex, error }) => {
+      if (stage === 'extract') {
+        setPipelineStage('extract')
+        return
+      }
+      if (stage !== 'match') return
+      setPipelineStage('match')
+      const start = batchIndex * MATCH_BATCH_SIZE
+      const indices = []
+      for (let k = 0; k < MATCH_BATCH_SIZE; k++) indices.push(start + k)
+      if (error) {
+        setAiPending((prev) => {
+          const next = { ...prev }
+          indices.forEach((i) => delete next[i])
+          return next
+        })
+        setBatchFailed((prev) => {
+          const next = { ...prev }
+          indices.forEach((i) => {
+            next[i] = true
+          })
+          return next
+        })
+      } else {
+        setAiPending(() => {
+          const next = {}
+          indices.forEach((i) => {
+            next[i] = true
+          })
+          return next
+        })
+      }
+    }
+
+    let pipelineResult
+    try {
+      pipelineResult = await runSmartPastePipeline({
+        text: cleaned,
+        products,
+        context: smartPasteContext,
+        runInference,
+        onStage,
+      })
+    } catch {
+      setPipelineStage(null)
+      setAiPending({})
+      toast?.('AI extract failed — using fallback')
+      return
+    }
+
+    setPipelineStage(null)
+    setAiPending({})
+
+    if (!pipelineResult || pipelineResult.fallback) {
+      toast?.('AI extract failed — using fallback')
+      return
+    }
+
+    const converted = pipelineResult.rows.map(convertPipelineRow)
+    setPasteResults(converted)
+    setPasteDecisions({})
   }
 
   const addMatched = () => {
@@ -170,6 +211,54 @@ export function SmartPasteWidget({ products, onAddItems, aiMode, runInference, t
           Paste order text · auto-match catalog
         </span>
       </div>
+
+      {showContextBanner && (
+        <div
+          role="note"
+          data-testid="smart-paste-context-banner"
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 8,
+            padding: '10px 12px',
+            borderRadius: 8,
+            marginBottom: 10,
+            background: 'rgba(90,140,255,.08)',
+            border: '1px solid rgba(90,140,255,.3)',
+          }}
+        >
+          <div style={{ flex: 1, fontSize: '.78rem', lineHeight: 1.4 }}>
+            <div style={{ fontWeight: 600, marginBottom: 2 }}>Set up AI context</div>
+            <div style={{ color: 'var(--muted)' }}>
+              Tell Smart Paste what you sell and who you sell to so AI matching stays accurate.{' '}
+              <a
+                href="#smart-paste-ai-context"
+                onClick={handleOpenSettings}
+                style={{ color: 'var(--accent)', fontWeight: 600 }}
+              >
+                Open Settings
+              </a>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setBannerDismissed(true)}
+            aria-label="Dismiss AI context banner"
+            style={{
+              flexShrink: 0,
+              background: 'none',
+              border: 'none',
+              color: 'var(--muted)',
+              fontSize: '.95rem',
+              cursor: 'pointer',
+              padding: 2,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       <textarea
         aria-label="Smart paste order text"
         value={pasteText}
@@ -185,11 +274,22 @@ export function SmartPasteWidget({ products, onAddItems, aiMode, runInference, t
       <button
         className="btn btn-primary btn-full"
         onClick={runParse}
-        disabled={!pasteText.trim()}
+        disabled={!pasteText.trim() || pipelineStage !== null}
         style={{ marginBottom: pasteResults ? 12 : 0 }}
       >
         <Icon name="send" /> Parse &amp; Match
       </button>
+
+      {pipelineStage === 'extract' && (
+        <div
+          role="status"
+          aria-live="polite"
+          data-testid="smart-paste-parsing"
+          style={{ fontSize: '.75rem', color: 'var(--accent)', marginTop: 8 }}
+        >
+          Parsing…
+        </div>
+      )}
 
       {pasteResults && sorted.length > 0 && (
         <div style={{ marginTop: 8 }}>
@@ -200,6 +300,7 @@ export function SmartPasteWidget({ products, onAddItems, aiMode, runInference, t
               i={i}
               status={s}
               pending={!!aiPending[i]}
+              failed={!!batchFailed[i]}
               onDecide={decide}
               onUnmatch={unmatch}
             />
@@ -216,7 +317,7 @@ export function SmartPasteWidget({ products, onAddItems, aiMode, runInference, t
   )
 }
 
-function PasteResultRow({ r, i, status, pending, onDecide, onUnmatch }) {
+function PasteResultRow({ r, i, status, pending, failed, onDecide, onUnmatch }) {
   const isGreen = status === 'auto_match' || status === 'confirmed'
   const isAmber = status === 'best_guess'
   const isRed = status === 'no_match' || status === 'discarded'
@@ -231,6 +332,15 @@ function PasteResultRow({ r, i, status, pending, onDecide, onUnmatch }) {
       ? 'rgba(245,166,35,.25)'
       : 'rgba(224,82,82,.3)'
   const prod = r.product ?? r.bestGuess
+
+  const failedMarker = failed ? (
+    <span
+      data-testid={`batch-failed-${i}`}
+      style={{ marginLeft: 6, color: 'var(--danger)', fontSize: '.7rem' }}
+    >
+      · batch failed
+    </span>
+  ) : null
 
   return (
     <div
@@ -260,6 +370,7 @@ function PasteResultRow({ r, i, status, pending, onDecide, onUnmatch }) {
               {status === 'confirmed' && (
                 <span style={{ color: 'var(--success)', marginLeft: 6 }}>· Confirmed</span>
               )}
+              {failedMarker}
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
@@ -298,6 +409,7 @@ function PasteResultRow({ r, i, status, pending, onDecide, onUnmatch }) {
                 · AI matching…
               </span>
             )}
+            {failedMarker}
           </div>
           <div style={{ fontSize: '.84rem', fontWeight: 600, marginBottom: 8 }}>
             {r.aiSuggested ? 'AI suggested: ' : 'Best guess: '}
@@ -360,6 +472,7 @@ function PasteResultRow({ r, i, status, pending, onDecide, onUnmatch }) {
                 · AI matching…
               </span>
             )}
+            {failedMarker}
             <div style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 2 }}>
               Add manually then tap Handled
             </div>

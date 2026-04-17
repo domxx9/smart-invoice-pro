@@ -14,6 +14,8 @@ export function InvoiceEditor({
   aiMode,
   runInference,
   toast,
+  smartPasteContext,
+  onOpenSettings,
 }) {
   const [inv, setInv] = useState(invoice)
 
@@ -51,6 +53,8 @@ export function InvoiceEditor({
         aiMode={aiMode}
         runInference={runInference}
         toast={toast}
+        smartPasteContext={smartPasteContext}
+        onOpenSettings={onOpenSettings}
       />
 
       <div className="card">
