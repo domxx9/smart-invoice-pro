@@ -1,3 +1,5 @@
+import { logger } from '../utils/logger.js'
+
 export async function fetchSquarespaceProducts(apiKey, onProgress) {
   const winCap = window.Capacitor
   const isNative = winCap?.isNativePlatform?.()
@@ -42,7 +44,7 @@ export async function fetchSquarespaceProducts(apiKey, onProgress) {
       .trim()
       .slice(0, 80)
   }
-  console.log(`[SIP] SQSP synced ${allProducts.length} products`)
+  logger.info('squarespace', `synced ${allProducts.length} products`)
   return allProducts.flatMap((p) => {
     const variants = p.variants ?? []
     const desc = stripDesc(p.description || p.body || '')
@@ -130,6 +132,6 @@ export async function fetchSquarespaceOrders(apiKey, onProgress) {
     const refDate = new Date(o.modifiedOn || o.createdOn).getTime()
     return now - refDate <= THIRTY_DAYS
   })
-  console.log(`[SIP] SQSP synced ${all.length} orders (${filtered.length} within window)`)
+  logger.info('squarespace', `synced ${all.length} orders (${filtered.length} within window)`)
   return filtered.sort((a, b) => new Date(b.createdOn) - new Date(a.createdOn))
 }
