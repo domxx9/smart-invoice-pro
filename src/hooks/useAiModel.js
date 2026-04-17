@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   MODELS as AI_MODELS,
   isModelDownloaded,
@@ -8,6 +8,8 @@ import {
   isGemmaReady,
   getLoadedModelId,
 } from '../gemma.js'
+import { testConnection as byokTestConnection } from '../byok.js'
+import { getSecret, deleteSecret } from '../secure-storage.js'
 
 export function useAiModel(toast) {
   const [aiModelId, setAiModelId] = useState(() => localStorage.getItem('sip_ai_model') || 'small')
@@ -16,8 +18,8 @@ export function useAiModel(toast) {
   const [aiDownloading, setAiDownloading] = useState(null)
   const [aiLoading, setAiLoading] = useState(false)
   const [aiReady, setAiReady] = useState(false)
-  const [byokStatus] = useState('idle')
-  const [byokError] = useState('')
+  const [byokStatus, setByokStatus] = useState('idle')
+  const [byokError, setByokError] = useState('')
 
   useEffect(() => {
     const check = async () => {
@@ -84,6 +86,42 @@ export function useAiModel(toast) {
     }
   }
 
+  const handleByokTest = useCallback(
+    async ({ provider, baseUrl, model }) => {
+      if (!provider) {
+        setByokStatus('error')
+        setByokError('Pick a provider first')
+        return { ok: false, error: 'Pick a provider first' }
+      }
+      const apiKey = await getSecret(`sip_byok_${provider}`)
+      if (!apiKey) {
+        setByokStatus('error')
+        setByokError('Enter an API key first')
+        return { ok: false, error: 'Enter an API key first' }
+      }
+      setByokStatus('testing')
+      setByokError('')
+      const result = await byokTestConnection({ provider, apiKey, baseUrl, model })
+      if (result.ok) {
+        setByokStatus('ok')
+        setByokError('')
+        toast?.('Cloud AI connected', 'success', '✓')
+      } else {
+        setByokStatus('error')
+        setByokError(result.error || 'Connection failed')
+      }
+      return result
+    },
+    [toast],
+  )
+
+  const handleByokClear = useCallback(async (provider) => {
+    if (!provider) return
+    await deleteSecret(`sip_byok_${provider}`)
+    setByokStatus('idle')
+    setByokError('')
+  }, [])
+
   return {
     aiModelId,
     aiDownloaded,
@@ -97,5 +135,7 @@ export function useAiModel(toast) {
     handleAiDownload,
     handleAiDelete,
     handleAiLoad,
+    handleByokTest,
+    handleByokClear,
   }
 }

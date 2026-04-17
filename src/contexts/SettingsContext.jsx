@@ -21,6 +21,8 @@ const DEFAULTS = {
   sqDomain: '',
   aiMode: 'small',
   byokProvider: '',
+  byokBaseUrl: '',
+  byokModel: '',
   pdfTemplate: {},
 }
 

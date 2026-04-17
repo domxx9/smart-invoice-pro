@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { CURRENCY_TAX } from '../constants.js'
 import { fetchSquarespaceProducts } from '../api/squarespace.js'
 import { getSecret, setSecret } from '../secure-storage.js'
+import { BYOK_PROVIDERS as BYOK_PRESETS } from '../byok.js'
 import {
   MODELS as AI_MODELS,
   getLoadedModelId,
@@ -29,6 +30,8 @@ export function Settings({ ai, onStartTour }) {
     handleAiLoad: onAiLoad,
     byokStatus,
     byokError,
+    handleByokTest,
+    handleByokClear,
   } = ai
   const { settings, saveSettings } = useSettings()
   const { toast } = useToast()
@@ -38,14 +41,22 @@ export function Settings({ ai, onStartTour }) {
   const [byokKey, setByokKey] = useState('')
   const set = (k, v) => setS((p) => ({ ...p, [k]: v }))
 
-  // Load BYOK key from secure storage when provider changes
+  // Load BYOK key from secure storage when provider changes.
+  // Guard against the async resolution overwriting keystrokes typed
+  // before getSecret resolves (see SMA-34 test).
   const byokProvider = s.byokProvider || ''
   useEffect(() => {
     if (!byokProvider) {
       setByokKey('')
       return
     }
-    getSecret(`sip_byok_${byokProvider}`).then((v) => setByokKey(v || ''))
+    let cancelled = false
+    getSecret(`sip_byok_${byokProvider}`).then((v) => {
+      if (!cancelled) setByokKey((prev) => (prev ? prev : v || ''))
+    })
+    return () => {
+      cancelled = true
+    }
   }, [byokProvider])
 
   const handleTest = async () => {
@@ -367,7 +378,18 @@ export function Settings({ ai, onStartTour }) {
               <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
                 {modeBtn('small', 'On-Device', '~300 MB · CPU/RAM')}
                 {modeBtn('byok', 'BYOK', 'Your API key')}
+                {modeBtn('off', 'Off', 'Rule-based only')}
               </div>
+
+              {aiMode === 'off' && (
+                <p
+                  className="text-muted"
+                  style={{ fontSize: '.78rem', marginBottom: 4, lineHeight: 1.5 }}
+                >
+                  AI is disabled. Smart Paste still matches via the fuzzy catalog index — free-form
+                  AI features will be unavailable until you pick a mode.
+                </p>
+              )}
 
               {/* ── On-device model ── */}
               {aiMode === 'small' &&
@@ -641,6 +663,8 @@ export function Settings({ ai, onStartTour }) {
                               {provider.label} API Key
                               <input
                                 type="password"
+                                autoComplete="off"
+                                spellCheck="false"
                                 placeholder={provider.keyHint}
                                 value={byokKey}
                                 onChange={(e) => {
@@ -652,8 +676,70 @@ export function Settings({ ai, onStartTour }) {
                             </label>
                           </div>
 
+                          <details style={{ marginBottom: 12 }}>
+                            <summary
+                              style={{
+                                fontSize: '.75rem',
+                                color: 'var(--muted)',
+                                cursor: 'pointer',
+                                marginBottom: 8,
+                              }}
+                            >
+                              Advanced — base URL &amp; model
+                            </summary>
+                            <div className="field">
+                              <label>
+                                Base URL
+                                <input
+                                  value={s.byokBaseUrl || ''}
+                                  onChange={(e) => set('byokBaseUrl', e.target.value.trim())}
+                                  placeholder={BYOK_PRESETS[byokProvider]?.defaultBaseUrl || ''}
+                                />
+                              </label>
+                            </div>
+                            <div className="field">
+                              <label>
+                                Model
+                                <input
+                                  value={s.byokModel || ''}
+                                  onChange={(e) => set('byokModel', e.target.value.trim())}
+                                  placeholder={BYOK_PRESETS[byokProvider]?.defaultModel || ''}
+                                />
+                              </label>
+                            </div>
+                          </details>
+
+                          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              disabled={!byokKey || byokStatus === 'testing'}
+                              onClick={() =>
+                                handleByokTest?.({
+                                  provider: byokProvider,
+                                  baseUrl: s.byokBaseUrl,
+                                  model: s.byokModel,
+                                })
+                              }
+                            >
+                              {byokStatus === 'testing' ? 'Testing…' : 'Test Connection'}
+                            </button>
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              style={{ color: 'var(--danger)' }}
+                              disabled={!byokKey}
+                              onClick={async () => {
+                                await handleByokClear?.(byokProvider)
+                                setByokKey('')
+                              }}
+                            >
+                              Clear Key
+                            </button>
+                          </div>
+
                           {byokStatus && byokStatus !== 'idle' && (
                             <div
+                              role="status"
+                              aria-live="polite"
                               style={{
                                 fontSize: '.78rem',
                                 padding: '6px 10px',
