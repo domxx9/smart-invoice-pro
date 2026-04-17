@@ -4,6 +4,14 @@ import { setSecret, getSecret, migrateKeysFromLocalStorage } from '../secure-sto
 
 const SettingsContext = createContext(null)
 
+const EMPTY_SMART_PASTE_CONTEXT = {
+  productType: '',
+  shopType: '',
+  customerType: '',
+  vocabulary: '',
+  locale: '',
+}
+
 const DEFAULTS = {
   businessName: 'My Business',
   email: '',
@@ -26,13 +34,26 @@ const DEFAULTS = {
   byokProvider: '',
   byokBaseUrl: '',
   byokModel: '',
+  smartPasteContext: { ...EMPTY_SMART_PASTE_CONTEXT },
   pdfTemplate: {},
+}
+
+export function isSmartPasteContextSet(settings) {
+  const ctx = settings?.smartPasteContext
+  if (!ctx) return false
+  return Object.keys(EMPTY_SMART_PASTE_CONTEXT).every(
+    (k) => typeof ctx[k] === 'string' && ctx[k].trim().length > 0,
+  )
 }
 
 function loadSettings() {
   const saved = localStorage.getItem('sip_settings')
   const s = saved ? JSON.parse(saved) : {}
-  const merged = { ...DEFAULTS, ...s }
+  const merged = {
+    ...DEFAULTS,
+    ...s,
+    smartPasteContext: { ...EMPTY_SMART_PASTE_CONTEXT, ...(s.smartPasteContext || {}) },
+  }
   setCurrency(merged.currency)
   setInvoicePrefix(merged.invoicePrefix)
   setInvoicePadding(merged.invoicePadding)
