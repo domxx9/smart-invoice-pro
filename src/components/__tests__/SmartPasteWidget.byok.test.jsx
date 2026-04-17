@@ -54,7 +54,7 @@ describe('SmartPasteWidget BYOK refinement', () => {
     expect(runInference).toHaveBeenCalledTimes(1)
     const [[call]] = runInference.mock.calls
     expect(call.prompt).toContain('Blue Molar Extractor')
-    expect(call.maxTokens).toBe(32)
+    expect(call.maxTokens).toBe(512)
 
     // Model picks catalog item #1 → row should promote to best_guess with AI label.
     resolveCall({ text: '1', source: 'byok' })
