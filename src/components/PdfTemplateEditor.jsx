@@ -68,7 +68,7 @@ export function PdfTemplateEditor({ tmpl, onChange, businessName }) {
         {/* Logo */}
         {tmpl.showLogo && tmpl.logo && (
           <div style={{ padding: '6px 10px 0' }}>
-            <img src={tmpl.logo} alt="logo" style={{ height: 22, display: 'block' }} />
+            <img src={tmpl.logo} alt="Logo preview" style={{ height: 22, display: 'block' }} />
           </div>
         )}
         {/* Business + meta */}
@@ -232,19 +232,21 @@ export function PdfTemplateEditor({ tmpl, onChange, businessName }) {
       />
 
       <div className="field">
-        <label>Logo</label>
-        <input
-          type="file"
-          accept="image/*"
-          ref={fileRef}
-          style={{ display: 'none' }}
-          onChange={handleLogo}
-        />
+        <label>
+          Logo
+          <input
+            type="file"
+            accept="image/*"
+            ref={fileRef}
+            style={{ display: 'none' }}
+            onChange={handleLogo}
+          />
+        </label>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {tmpl.logo && (
             <img
               src={tmpl.logo}
-              alt="logo"
+              alt="Logo preview"
               style={{
                 height: 40,
                 borderRadius: 4,
@@ -254,11 +256,16 @@ export function PdfTemplateEditor({ tmpl, onChange, businessName }) {
               }}
             />
           )}
-          <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current.click()}>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => fileRef.current.click()}
+          >
             {tmpl.logo ? 'Change Logo' : 'Upload Logo'}
           </button>
           {tmpl.logo && (
             <button
+              type="button"
               className="btn btn-ghost btn-sm"
               style={{ color: 'var(--danger)' }}
               onClick={() => set('logo', null)}
@@ -270,16 +277,28 @@ export function PdfTemplateEditor({ tmpl, onChange, businessName }) {
       </div>
 
       <div className="field">
-        <label>Footer Message</label>
-        <input
-          value={tmpl.footerText || ''}
-          onChange={(e) => set('footerText', e.target.value)}
-          placeholder="Thank you for your business."
-        />
+        <label>
+          Footer Message
+          <input
+            value={tmpl.footerText || ''}
+            onChange={(e) => set('footerText', e.target.value)}
+            placeholder="Thank you for your business."
+          />
+        </label>
       </div>
 
-      <div className="field">
-        <label>Show / Hide Sections</label>
+      <fieldset className="field" style={{ border: 'none', padding: 0, margin: 0 }}>
+        <legend
+          style={{
+            font: 'inherit',
+            fontSize: '.8rem',
+            color: 'var(--muted)',
+            padding: 0,
+            marginBottom: 4,
+          }}
+        >
+          Show / Hide Sections
+        </legend>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 6 }}>
           {[
             ['showLogo', 'Logo (when uploaded)'],
@@ -308,7 +327,7 @@ export function PdfTemplateEditor({ tmpl, onChange, businessName }) {
             </label>
           ))}
         </div>
-      </div>
+      </fieldset>
     </div>
   )
 }

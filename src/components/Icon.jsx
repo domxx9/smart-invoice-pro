@@ -1,4 +1,4 @@
-export function Icon({ name }) {
+export function Icon({ name, label }) {
   const icons = {
     dashboard: <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
     invoice: (
@@ -65,6 +65,9 @@ export function Icon({ name }) {
       </>
     ),
   }
+  const a11yProps = label
+    ? { role: 'img', 'aria-label': label }
+    : { 'aria-hidden': 'true', focusable: 'false' }
   return (
     <svg
       viewBox="0 0 24 24"
@@ -73,6 +76,7 @@ export function Icon({ name }) {
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
+      {...a11yProps}
     >
       {icons[name]}
     </svg>

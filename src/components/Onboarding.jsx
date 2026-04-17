@@ -70,18 +70,20 @@ export function Onboarding({ onConnect, onDemo }) {
           </p>
         </div>
         <div className="field">
-          <label>Squarespace API Key</label>
-          <input
-            type="password"
-            placeholder="Paste your API key here"
-            value={apiKey}
-            onChange={(e) => {
-              setApiKey(e.target.value)
-              setStatus('idle')
-              setErrMsg('')
-            }}
-            onKeyDown={(e) => e.key === 'Enter' && handleConnect()}
-          />
+          <label>
+            Squarespace API Key
+            <input
+              type="password"
+              placeholder="Paste your API key here"
+              value={apiKey}
+              onChange={(e) => {
+                setApiKey(e.target.value)
+                setStatus('idle')
+                setErrMsg('')
+              }}
+              onKeyDown={(e) => e.key === 'Enter' && handleConnect()}
+            />
+          </label>
         </div>
         {errMsg && (
           <div
@@ -184,76 +186,88 @@ export function Onboarding({ onConnect, onDemo }) {
           ['Address Line 2', 'address2', 'text', 'Suite / Unit (optional)'],
         ].map(([lbl, key, type, ph]) => (
           <div className="field" key={key}>
-            <label>{lbl}</label>
-            <input
-              type={type}
-              placeholder={ph}
-              value={biz[key]}
-              onChange={(e) => setBiz((b) => ({ ...b, [key]: e.target.value }))}
-            />
+            <label>
+              {lbl}
+              <input
+                type={type}
+                placeholder={ph}
+                value={biz[key]}
+                onChange={(e) => setBiz((b) => ({ ...b, [key]: e.target.value }))}
+              />
+            </label>
           </div>
         ))}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <div className="field">
-            <label>City</label>
-            <input
-              type="text"
-              placeholder="London"
-              value={biz.city}
-              onChange={(e) => setBiz((b) => ({ ...b, city: e.target.value }))}
-            />
+            <label>
+              City
+              <input
+                type="text"
+                placeholder="London"
+                value={biz.city}
+                onChange={(e) => setBiz((b) => ({ ...b, city: e.target.value }))}
+              />
+            </label>
           </div>
           <div className="field">
-            <label>Postcode / ZIP</label>
-            <input
-              type="text"
-              placeholder="SW1A 1AA"
-              value={biz.postcode}
-              onChange={(e) => setBiz((b) => ({ ...b, postcode: e.target.value }))}
-            />
+            <label>
+              Postcode / ZIP
+              <input
+                type="text"
+                placeholder="SW1A 1AA"
+                value={biz.postcode}
+                onChange={(e) => setBiz((b) => ({ ...b, postcode: e.target.value }))}
+              />
+            </label>
           </div>
         </div>
         <div className="field">
-          <label>Country</label>
-          <input
-            type="text"
-            placeholder="United Kingdom"
-            value={biz.country}
-            onChange={(e) => setBiz((b) => ({ ...b, country: e.target.value }))}
-          />
+          <label>
+            Country
+            <input
+              type="text"
+              placeholder="United Kingdom"
+              value={biz.country}
+              onChange={(e) => setBiz((b) => ({ ...b, country: e.target.value }))}
+            />
+          </label>
         </div>
         <div className="field">
-          <label>Currency</label>
-          <select
-            value={biz.currency}
-            onChange={(e) => {
-              const cur = e.target.value
-              const suggested = CURRENCY_TAX[cur]?.tax
-              setBiz((b) => ({
-                ...b,
-                currency: cur,
-                ...(suggested !== undefined ? { defaultTax: String(suggested) } : {}),
-              }))
-            }}
-          >
-            {Object.entries(CURRENCY_TAX).map(([code, { label }]) => (
-              <option key={code} value={code}>
-                {label}
-              </option>
-            ))}
-          </select>
+          <label>
+            Currency
+            <select
+              value={biz.currency}
+              onChange={(e) => {
+                const cur = e.target.value
+                const suggested = CURRENCY_TAX[cur]?.tax
+                setBiz((b) => ({
+                  ...b,
+                  currency: cur,
+                  ...(suggested !== undefined ? { defaultTax: String(suggested) } : {}),
+                }))
+              }}
+            >
+              {Object.entries(CURRENCY_TAX).map(([code, { label }]) => (
+                <option key={code} value={code}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
         <div className="field">
-          <label>Default Tax Rate (%)</label>
-          <input
-            type="number"
-            placeholder="20"
-            min="0"
-            max="100"
-            step="0.1"
-            value={biz.defaultTax}
-            onChange={(e) => setBiz((b) => ({ ...b, defaultTax: e.target.value }))}
-          />
+          <label>
+            Default Tax Rate (%)
+            <input
+              type="number"
+              placeholder="20"
+              min="0"
+              max="100"
+              step="0.1"
+              value={biz.defaultTax}
+              onChange={(e) => setBiz((b) => ({ ...b, defaultTax: e.target.value }))}
+            />
+          </label>
           <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
             Auto-suggested from currency. Override if needed.
           </p>

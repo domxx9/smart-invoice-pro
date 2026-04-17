@@ -112,6 +112,9 @@ export function PickSheet({ order, picks, onPickChange, onClose }) {
               </div>
               {li.qty === 1 ? (
                 <button
+                  type="button"
+                  aria-label={done ? `Mark ${li.name} as not picked` : `Mark ${li.name} as picked`}
+                  aria-pressed={done}
                   onClick={() => onPickChange(order.id, i, done ? 0 : 1)}
                   style={{
                     width: 34,
@@ -128,6 +131,8 @@ export function PickSheet({ order, picks, onPickChange, onClose }) {
                 >
                   {done && (
                     <svg
+                      aria-hidden="true"
+                      focusable="false"
                       width="16"
                       height="16"
                       viewBox="0 0 24 24"
@@ -142,6 +147,8 @@ export function PickSheet({ order, picks, onPickChange, onClose }) {
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                   <button
+                    type="button"
+                    aria-label={`Decrease picked quantity of ${li.name}`}
                     onClick={() => onPickChange(order.id, i, Math.max(0, picked - 1))}
                     disabled={picked === 0}
                     style={{
@@ -162,6 +169,8 @@ export function PickSheet({ order, picks, onPickChange, onClose }) {
                     −
                   </button>
                   <span
+                    aria-live="polite"
+                    aria-atomic="true"
                     style={{
                       minWidth: 44,
                       textAlign: 'center',
@@ -173,6 +182,8 @@ export function PickSheet({ order, picks, onPickChange, onClose }) {
                     {picked}/{li.qty}
                   </span>
                   <button
+                    type="button"
+                    aria-label={`Increase picked quantity of ${li.name}`}
                     onClick={() => onPickChange(order.id, i, Math.min(li.qty, picked + 1))}
                     disabled={picked >= li.qty}
                     style={{

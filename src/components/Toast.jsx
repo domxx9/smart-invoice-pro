@@ -1,6 +1,9 @@
 export function Toast({ toasts, onDismiss }) {
   return (
     <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
       style={{
         position: 'fixed',
         bottom: 82,
@@ -15,9 +18,11 @@ export function Toast({ toasts, onDismiss }) {
       }}
     >
       {toasts.map((t) => (
-        <div
+        <button
           key={t.id}
+          type="button"
           onClick={() => onDismiss(t.id)}
+          aria-label={`Dismiss notification: ${t.message}`}
           style={{
             background:
               t.type === 'error' ? '#7f1d1d' : t.type === 'success' ? '#14532d' : 'var(--card)',
@@ -35,11 +40,16 @@ export function Toast({ toasts, onDismiss }) {
             maxWidth: 300,
             textAlign: 'center',
             cursor: 'pointer',
+            font: 'inherit',
           }}
         >
-          {t.icon && <span style={{ marginRight: 6 }}>{t.icon}</span>}
+          {t.icon && (
+            <span style={{ marginRight: 6 }} aria-hidden="true">
+              {t.icon}
+            </span>
+          )}
           {t.message}
-        </div>
+        </button>
       ))}
     </div>
   )

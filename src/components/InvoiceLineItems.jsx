@@ -15,12 +15,14 @@ export function InvoiceLineItems({ inv, products, setItem, addItem, removeItem, 
   return (
     <>
       <div className="field">
-        <label>Add from catalog</label>
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search products…"
-        />
+        <label>
+          Add from catalog
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search products…"
+          />
+        </label>
         {filteredGroups.length > 0 && (
           <div
             style={{
@@ -43,21 +45,30 @@ export function InvoiceLineItems({ inv, products, setItem, addItem, removeItem, 
                   }}
                 >
                   {single && (
-                    <div
+                    <button
+                      type="button"
+                      className="catalog-pick-btn"
                       onClick={() => handleAddProduct(g.variants[0])}
+                      aria-label={`Add ${g.name} for ${fmt(g.variants[0].price)}`}
                       style={{
                         padding: '10px 12px',
                         cursor: 'pointer',
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'center',
+                        width: '100%',
+                        background: 'none',
+                        border: 'none',
+                        color: 'inherit',
+                        font: 'inherit',
+                        textAlign: 'left',
                       }}
                     >
                       <span style={{ fontSize: '.88rem' }}>{g.name}</span>
                       <span style={{ color: 'var(--accent)', fontWeight: 600, fontSize: '.85rem' }}>
                         {fmt(g.variants[0].price)}
                       </span>
-                    </div>
+                    </button>
                   )}
                   {!single && (
                     <>
@@ -77,9 +88,12 @@ export function InvoiceLineItems({ inv, products, setItem, addItem, removeItem, 
                           ? v.name.split(' — ').slice(1).join(' — ')
                           : v.name
                         return (
-                          <div
+                          <button
                             key={v.id}
+                            type="button"
+                            className="catalog-pick-btn"
                             onClick={() => handleAddProduct(v)}
+                            aria-label={`Add ${g.name} — ${label} for ${fmt(v.price)}`}
                             style={{
                               padding: '8px 12px 8px 22px',
                               cursor: 'pointer',
@@ -87,7 +101,14 @@ export function InvoiceLineItems({ inv, products, setItem, addItem, removeItem, 
                               justifyContent: 'space-between',
                               alignItems: 'center',
                               borderTop: vi === 0 ? '1px solid var(--border)' : 'none',
+                              borderLeft: 'none',
+                              borderRight: 'none',
+                              borderBottom: 'none',
                               background: 'var(--card)',
+                              width: '100%',
+                              color: 'inherit',
+                              font: 'inherit',
+                              textAlign: 'left',
                             }}
                           >
                             <span style={{ fontSize: '.85rem' }}>{label}</span>
@@ -100,7 +121,7 @@ export function InvoiceLineItems({ inv, products, setItem, addItem, removeItem, 
                             >
                               {fmt(v.price)}
                             </span>
-                          </div>
+                          </button>
                         )
                       })}
                     </>
@@ -116,39 +137,77 @@ export function InvoiceLineItems({ inv, products, setItem, addItem, removeItem, 
         {inv.items.map((item, idx) => (
           <div key={idx} className="line-item">
             <div className="field" style={{ marginBottom: 0 }}>
-              {idx === 0 && <label>Description</label>}
-              <input
-                value={item.desc}
-                onChange={(e) => setItem(idx, 'desc', e.target.value)}
-                placeholder="Service or product description"
-              />
+              {idx === 0 ? (
+                <label>
+                  Description
+                  <input
+                    value={item.desc}
+                    onChange={(e) => setItem(idx, 'desc', e.target.value)}
+                    placeholder="Service or product description"
+                  />
+                </label>
+              ) : (
+                <input
+                  aria-label={`Item ${idx + 1} description`}
+                  value={item.desc}
+                  onChange={(e) => setItem(idx, 'desc', e.target.value)}
+                  placeholder="Service or product description"
+                />
+              )}
             </div>
             <div className="li-row2">
               <div className="li-qty field" style={{ marginBottom: 0 }}>
-                {idx === 0 && <label>Qty</label>}
-                <input
-                  value={item.qty}
-                  onChange={(e) => setItem(idx, 'qty', e.target.value)}
-                  type="number"
-                  min="1"
-                />
+                {idx === 0 ? (
+                  <label>
+                    Qty
+                    <input
+                      value={item.qty}
+                      onChange={(e) => setItem(idx, 'qty', e.target.value)}
+                      type="number"
+                      min="1"
+                    />
+                  </label>
+                ) : (
+                  <input
+                    aria-label={`Item ${idx + 1} quantity`}
+                    value={item.qty}
+                    onChange={(e) => setItem(idx, 'qty', e.target.value)}
+                    type="number"
+                    min="1"
+                  />
+                )}
               </div>
               <div className="li-price field" style={{ marginBottom: 0 }}>
-                {idx === 0 && <label>Unit Price</label>}
-                <input
-                  value={item.price}
-                  onChange={(e) => setItem(idx, 'price', e.target.value)}
-                  type="number"
-                  min="0"
-                  placeholder="0.00"
-                />
+                {idx === 0 ? (
+                  <label>
+                    Unit Price
+                    <input
+                      value={item.price}
+                      onChange={(e) => setItem(idx, 'price', e.target.value)}
+                      type="number"
+                      min="0"
+                      placeholder="0.00"
+                    />
+                  </label>
+                ) : (
+                  <input
+                    aria-label={`Item ${idx + 1} unit price`}
+                    value={item.price}
+                    onChange={(e) => setItem(idx, 'price', e.target.value)}
+                    type="number"
+                    min="0"
+                    placeholder="0.00"
+                  />
+                )}
               </div>
               <div className="li-total">
                 {fmt((parseFloat(item.qty) || 0) * (parseFloat(item.price) || 0))}
               </div>
               <div className="li-del">
                 <button
+                  type="button"
                   className="btn btn-ghost btn-sm"
+                  aria-label={`Remove item ${idx + 1}`}
                   onClick={() => removeItem(idx)}
                   style={{ padding: '6px 8px' }}
                 >
@@ -160,7 +219,7 @@ export function InvoiceLineItems({ inv, products, setItem, addItem, removeItem, 
         ))}
       </div>
 
-      <button className="btn btn-ghost btn-sm btn-full mt-8" onClick={addItem}>
+      <button type="button" className="btn btn-ghost btn-sm btn-full mt-8" onClick={addItem}>
         <Icon name="plus" /> Add Line Item
       </button>
 
