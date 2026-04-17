@@ -75,11 +75,14 @@ export function SmartPasteWidget({ products, onAddItems, aiMode, runInference, t
   const refineWithAi = (results) => {
     if (!runInference || !aiMode || aiMode === 'off') return
     if (!products?.length) return
+    // Dedupe: when the BYOK key/model is misconfigured, every row fails with
+    // the same error. Show the first failure once, swallow the rest.
+    const seenErrors = new Set()
     results.forEach((r, i) => {
       if (r.product) return
       if ((r.confidence ?? 0) >= AI_CONFIDENCE_FLOOR) return
       setAiPending((p) => ({ ...p, [i]: true }))
-      runInference({ prompt: buildAiPrompt(r, products), maxTokens: 8 })
+      runInference({ prompt: buildAiPrompt(r, products), maxTokens: 32 })
         .then((res) => {
           setAiPending((p) => ({ ...p, [i]: false }))
           if (!res) return
@@ -108,7 +111,10 @@ export function SmartPasteWidget({ products, onAddItems, aiMode, runInference, t
         })
         .catch((e) => {
           setAiPending((p) => ({ ...p, [i]: false }))
-          toast?.(e?.message || 'AI match failed', 'error')
+          const msg = e?.message || 'AI match failed'
+          if (seenErrors.has(msg)) return
+          seenErrors.add(msg)
+          toast?.(msg, 'error')
         })
     })
   }

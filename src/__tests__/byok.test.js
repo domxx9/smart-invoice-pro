@@ -180,4 +180,98 @@ describe('generate', () => {
       /prompt/i,
     )
   })
+
+  // ── SMA-51: response parsing should not produce empty-text false negatives ──
+  describe('extractText robustness (SMA-51)', () => {
+    it('handles OpenAI content returned as an array of parts', async () => {
+      const { fetchImpl } = makeFetch([
+        {
+          status: 200,
+          body: {
+            choices: [
+              {
+                message: {
+                  content: [
+                    { type: 'text', text: '4' },
+                    { type: 'text', text: '2' },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ])
+      const out = await generate({
+        provider: 'openai',
+        apiKey: 'sk',
+        prompt: 'pick',
+        fetchImpl,
+      })
+      expect(out).toBe('42')
+    })
+
+    it('includes finish_reason in the error when OpenAI returns empty content', async () => {
+      const { fetchImpl } = makeFetch([
+        {
+          status: 200,
+          body: {
+            choices: [{ message: { content: '' }, finish_reason: 'length' }],
+          },
+        },
+      ])
+      await expect(
+        generate({ provider: 'openai', apiKey: 'sk', prompt: 'x', fetchImpl }),
+      ).rejects.toThrow(/finish_reason=length/)
+    })
+
+    it('reports refusal when OpenAI returns a structured refusal', async () => {
+      const { fetchImpl } = makeFetch([
+        {
+          status: 200,
+          body: {
+            choices: [{ message: { content: '', refusal: 'I cannot help with that.' } }],
+          },
+        },
+      ])
+      await expect(
+        generate({ provider: 'openai', apiKey: 'sk', prompt: 'x', fetchImpl }),
+      ).rejects.toThrow(/refused/i)
+    })
+
+    it('includes finishReason in the error when Gemini truncates with no parts', async () => {
+      const { fetchImpl } = makeFetch([
+        {
+          status: 200,
+          body: { candidates: [{ finishReason: 'MAX_TOKENS', content: { parts: [] } }] },
+        },
+      ])
+      await expect(
+        generate({ provider: 'gemini', apiKey: 'AIza', prompt: 'x', fetchImpl }),
+      ).rejects.toThrow(/finishReason=MAX_TOKENS/)
+    })
+
+    it('surfaces Gemini promptFeedback when the prompt itself is blocked', async () => {
+      const { fetchImpl } = makeFetch([
+        {
+          status: 200,
+          body: { promptFeedback: { blockReason: 'SAFETY' } },
+        },
+      ])
+      await expect(
+        generate({ provider: 'gemini', apiKey: 'AIza', prompt: 'x', fetchImpl }),
+      ).rejects.toThrow(/promptFeedback=SAFETY/)
+    })
+
+    it('includes stop_reason in the error when Anthropic blocks contain no text', async () => {
+      const { fetchImpl } = makeFetch([
+        {
+          status: 200,
+          body: { content: [{ type: 'tool_use', id: 't1' }], stop_reason: 'max_tokens' },
+        },
+      ])
+      await expect(
+        generate({ provider: 'anthropic', apiKey: 'sk-ant', prompt: 'x', fetchImpl }),
+      ).rejects.toThrow(/stop_reason=max_tokens/)
+    })
+  })
 })
