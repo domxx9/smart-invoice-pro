@@ -11,6 +11,8 @@
  *   stop() // logs p50 / p95 / max
  */
 
+import { logger } from '../utils/logger.js'
+
 export function observeLongTasks(label) {
   if (typeof PerformanceObserver === 'undefined') {
     return () => ({ p50: null, p95: null, max: null, samples: 0 })
@@ -36,7 +38,7 @@ export function observeLongTasks(label) {
     }
     if (durations.length === 0) {
       const empty = { p50: 0, p95: 0, max: 0, samples: 0 }
-      console.log(`[longtask:${label}]`, empty)
+      logger.debug('perf', `longtask:${label}`, empty)
       return empty
     }
     const sorted = [...durations].sort((a, b) => a - b)
@@ -47,7 +49,7 @@ export function observeLongTasks(label) {
       max: +sorted[sorted.length - 1].toFixed(1),
       samples: sorted.length,
     }
-    console.log(`[longtask:${label}]`, summary)
+    logger.debug('perf', `longtask:${label}`, summary)
     return summary
   }
 }

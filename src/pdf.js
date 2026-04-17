@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf'
 import { Share } from '@capacitor/share'
 import { calcTotals } from './helpers.js'
+import { logger } from './utils/logger.js'
 
 function hexToRgb(hex) {
   const r = parseInt(hex.slice(1, 3), 16)
@@ -359,7 +360,7 @@ export async function savePDFToPhone(inv, settings, filenameOverride) {
       const { uri } = await Filesystem.getUri({ path: filename, directory: Directory.Documents })
       return { uri, filename }
     } catch (e) {
-      console.error('[SIP] savePDF error:', e)
+      logger.error('pdf', 'savePDF error:', e)
       return { uri: null, dataUrl: null, filename, error: String(e) }
     }
   } else {
@@ -374,7 +375,7 @@ export async function openPDF(uri) {
     const { FileOpener } = await import('@capacitor-community/file-opener')
     await FileOpener.open({ filePath: uri, contentType: 'application/pdf' })
   } catch (e) {
-    console.error('[SIP] openPDF error:', e)
+    logger.error('pdf', 'openPDF error:', e)
   }
 }
 
