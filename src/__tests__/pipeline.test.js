@@ -9,7 +9,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
-const workerMocks = { inferGemma: vi.fn() }
+const workerMocks = { inferGemma: vi.fn(), cancelGemma: vi.fn() }
 const byokMocks = { generate: vi.fn() }
 const storageMocks = { getSecret: vi.fn() }
 
@@ -25,6 +25,7 @@ async function importPipeline() {
 beforeEach(() => {
   vi.resetModules()
   workerMocks.inferGemma.mockReset()
+  workerMocks.cancelGemma.mockReset()
   byokMocks.generate.mockReset()
   storageMocks.getSecret.mockReset()
 })
@@ -41,16 +42,61 @@ describe('runInference — routing', () => {
     expect(byokMocks.generate).not.toHaveBeenCalled()
   })
 
-  it("routes 'small' to the Gemma worker and tags the source", async () => {
-    workerMocks.inferGemma.mockResolvedValue('on-device response')
+  it("routes 'small' to the Gemma worker, forwards maxTokens, and tags the source", async () => {
+    workerMocks.inferGemma.mockResolvedValue({ text: 'on-device response', stopReason: null })
     const runInference = await importPipeline()
     const result = await runInference({
       prompt: 'hello',
+      maxTokens: 1024,
       settings: { aiMode: 'small' },
     })
-    expect(workerMocks.inferGemma).toHaveBeenCalledWith('hello')
+    expect(workerMocks.inferGemma).toHaveBeenCalledWith('hello', { maxTokens: 1024 })
     expect(byokMocks.generate).not.toHaveBeenCalled()
     expect(result).toEqual({ text: 'on-device response', source: 'small', stopReason: null })
+  })
+
+  it('forwards stopReason=length from the worker when the maxTokens guard trips (SMA-78)', async () => {
+    workerMocks.inferGemma.mockResolvedValue({ text: '[{"text":"blade"', stopReason: 'length' })
+    const runInference = await importPipeline()
+    const result = await runInference({
+      prompt: 'extract',
+      maxTokens: 2048,
+      settings: { aiMode: 'small' },
+    })
+    expect(workerMocks.inferGemma).toHaveBeenCalledWith('extract', { maxTokens: 2048 })
+    expect(result).toEqual({
+      text: '[{"text":"blade"',
+      source: 'small',
+      stopReason: 'length',
+    })
+  })
+
+  it("'small' mode aborts and throws stage1_timeout when inference exceeds the wall-clock (SMA-78)", async () => {
+    vi.useFakeTimers()
+    try {
+      // Never-resolving inference — the timer must be what rejects the call.
+      workerMocks.inferGemma.mockReturnValue(new Promise(() => {}))
+      const runInference = await importPipeline()
+
+      const pending = runInference({
+        prompt: 'forever',
+        maxTokens: 2048,
+        settings: { aiMode: 'small', smallModeTimeoutMs: 500 },
+      })
+      // Swallow the expected rejection so the runner doesn't flag an unhandled
+      // promise rejection when we advance the fake timer.
+      const settle = pending.catch((err) => err)
+
+      await vi.advanceTimersByTimeAsync(500)
+      const err = await settle
+
+      expect(err).toBeInstanceOf(Error)
+      expect(err.code).toBe('stage1_timeout')
+      expect(err.timeoutMs).toBe(500)
+      expect(workerMocks.cancelGemma).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("'small' mode throws when the worker reports unavailable (no WebGPU)", async () => {

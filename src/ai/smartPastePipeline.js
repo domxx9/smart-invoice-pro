@@ -205,6 +205,16 @@ async function invokeExtract({ prompt, maxTokens, runInference }) {
     result = await runInference({ prompt, maxTokens })
   } catch (err) {
     const message = String(err?.message ?? err)
+    // SMA-78: wall-clock timeout surfaces as a distinct kind so the
+    // orchestrator can skip retry (no point burning another 60s) and
+    // surface a fallbackReason the widget can hand to the user.
+    if (err?.code === 'stage1_timeout') {
+      logger.warn('smartPaste.stage1_timeout', {
+        message,
+        timeoutMs: err?.timeoutMs ?? null,
+      })
+      return { kind: 'timeout', message, timeoutMs: err?.timeoutMs ?? null }
+    }
     logger.warn('smartPaste.stage1_runtime_error', { message })
     return { kind: 'runtime', message }
   }
@@ -269,6 +279,11 @@ export async function extractLineItems({
 
   const first = await invokeExtract({ prompt, maxTokens, runInference })
   if (first.kind === 'runtime') return { items: [], callCount: 1 }
+  // Fail-fast on timeout: a second 60s budget on a model that just hung
+  // helps no one, and the UI needs to offer BYOK immediately (SMA-78).
+  if (first.kind === 'timeout') {
+    return { items: [], callCount: 1, timedOut: true, timeoutMs: first.timeoutMs }
+  }
   if (first.kind === 'parsed') {
     if (first.salvaged) reportSalvaged('first', first)
     return { items: normalizeExtracted(first.value), callCount: 1 }
@@ -282,6 +297,10 @@ export async function extractLineItems({
   if (second.kind === 'runtime') {
     logger.warn('smartPaste.stage1_retry_failed', { reason: `runtime: ${second.message}` })
     return { items: [], callCount: 2 }
+  }
+  if (second.kind === 'timeout') {
+    logger.warn('smartPaste.stage1_retry_failed', { reason: `timeout: ${second.message}` })
+    return { items: [], callCount: 2, timedOut: true, timeoutMs: second.timeoutMs }
   }
   if (second.kind === 'parsed') {
     if (second.salvaged) reportSalvaged('retry', second)
@@ -384,9 +403,20 @@ export async function runSmartPastePipeline({
   const stage1CallCount = Math.max(extractResult.callCount, 1)
 
   if (!extracted.length) {
-    logger.warn('smartPaste.stage1_empty')
-    logger.info('smartPaste.pipeline_complete', { fallback: true, callCount: stage1CallCount })
-    return { extracted: [], rows: [], callCount: stage1CallCount, fallback: true }
+    const fallbackReason = extractResult.timedOut ? 'stage1_timeout' : null
+    if (!extractResult.timedOut) logger.warn('smartPaste.stage1_empty')
+    logger.info('smartPaste.pipeline_complete', {
+      fallback: true,
+      callCount: stage1CallCount,
+      ...(fallbackReason ? { fallbackReason } : {}),
+    })
+    return {
+      extracted: [],
+      rows: [],
+      callCount: stage1CallCount,
+      fallback: true,
+      ...(fallbackReason ? { fallbackReason } : {}),
+    }
   }
   logger.info('smartPaste.stage1_complete', {
     extracted: extracted.length,

@@ -14,9 +14,34 @@
  * console logs.
  */
 
-import { inferGemma } from '../gemmaWorker.js'
+import { inferGemma, cancelGemma } from '../gemmaWorker.js'
 import { generate as byokGenerate } from '../byok.js'
 import { getSecret } from '../secure-storage.js'
+
+// Default wall-clock ceiling for a single on-device inference call (SMA-78).
+// Dogfood traces showed Stage 1 hanging for ~2 hours producing degenerate
+// parroted output; 60s is long enough for a legitimate 16-line paste on a
+// mid-range WebGPU device and short enough to fail fast so the widget can
+// suggest BYOK. Overridable via settings.smallModeTimeoutMs (0 disables).
+const SMALL_MODE_DEFAULT_TIMEOUT_MS = 60_000
+
+export class StageTimeoutError extends Error {
+  constructor(message, { source, timeoutMs } = {}) {
+    super(message)
+    this.name = 'StageTimeoutError'
+    this.code = 'stage1_timeout'
+    this.source = source
+    this.timeoutMs = timeoutMs
+  }
+}
+
+function resolveSmallTimeout(settings) {
+  const raw = settings?.smallModeTimeoutMs
+  if (raw === 0) return 0 // explicit opt-out
+  const n = Number(raw)
+  if (Number.isFinite(n) && n > 0) return n
+  return SMALL_MODE_DEFAULT_TIMEOUT_MS
+}
 
 export async function runInference({ prompt, maxTokens = 512, settings } = {}) {
   if (!prompt || !String(prompt).trim()) {
@@ -27,7 +52,36 @@ export async function runInference({ prompt, maxTokens = 512, settings } = {}) {
   if (mode === 'off') return null
 
   if (mode === 'small') {
-    const result = await inferGemma(prompt)
+    const timeoutMs = resolveSmallTimeout(settings)
+    const inferPromise = inferGemma(prompt, { maxTokens })
+
+    let result
+    if (timeoutMs > 0) {
+      let timeoutId
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          try {
+            cancelGemma()
+          } catch {
+            /* best-effort — the worker may already be idle */
+          }
+          reject(
+            new StageTimeoutError(`On-device inference exceeded ${timeoutMs}ms — aborted`, {
+              source: 'small',
+              timeoutMs,
+            }),
+          )
+        }, timeoutMs)
+      })
+      try {
+        result = await Promise.race([inferPromise, timeoutPromise])
+      } finally {
+        if (timeoutId) clearTimeout(timeoutId)
+      }
+    } else {
+      result = await inferPromise
+    }
+
     if (result && typeof result === 'object' && result.unavailable) {
       throw new Error('On-device AI unavailable on this device')
     }

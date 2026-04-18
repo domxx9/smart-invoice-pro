@@ -62,7 +62,11 @@ function handleMessage(e) {
     case 'INFER_DONE': {
       const entry = _infers.get(msg.id)
       entry?.onToken?.(msg.text, msg.text, true)
-      entry?.resolve?.(msg.text)
+      // Always resolve with { text, stopReason } so callers can tell a
+      // length-cap abort from a natural end (SMA-78). pipeline.js already
+      // normalises string vs object shapes so older callers still work.
+      const stopReason = 'stopReason' in msg ? msg.stopReason : null
+      entry?.resolve?.({ text: msg.text, stopReason })
       _infers.delete(msg.id)
       break
     }
@@ -136,7 +140,7 @@ export async function initGemma(modelOptions, onProgress) {
   })
 }
 
-export async function inferGemma(prompt, onToken) {
+export async function inferGemma(prompt, optionsOrOnToken, maybeOnToken) {
   if (!isWorkerGlobalAvailable()) {
     return { unavailable: true, reason: 'no-worker' }
   }
@@ -146,11 +150,21 @@ export async function inferGemma(prompt, onToken) {
       return { unavailable: true, reason: 'no-webgpu-in-worker' }
     }
   }
+  // Backwards-compat shim: `inferGemma(prompt, onToken)` (pre-SMA-78) and
+  // `inferGemma(prompt, { maxTokens }, onToken?)` both work.
+  const options = optionsOrOnToken && typeof optionsOrOnToken === 'object' ? optionsOrOnToken : null
+  const onToken = typeof optionsOrOnToken === 'function' ? optionsOrOnToken : maybeOnToken || null
+  const maxTokens =
+    options && typeof options.maxTokens === 'number' && Number.isFinite(options.maxTokens)
+      ? options.maxTokens
+      : null
   const w = ensureWorker()
   const id = ++_inferSeq
   return new Promise((resolve, reject) => {
     _infers.set(id, { onToken, resolve, reject })
-    w.postMessage({ type: 'INFER', id, prompt })
+    const msg = { type: 'INFER', id, prompt }
+    if (maxTokens != null) msg.maxTokens = maxTokens
+    w.postMessage(msg)
   })
 }
 

@@ -175,7 +175,7 @@ describe('INFER protocol', () => {
     return facade
   }
 
-  it('streams INFER_TOKEN and resolves on INFER_DONE', async () => {
+  it('streams INFER_TOKEN and resolves on INFER_DONE with { text, stopReason }', async () => {
     const { inferGemma, resetGemmaWorker } = await primeLoadedFacade()
 
     MockWorker.script = (msg) => {
@@ -183,7 +183,7 @@ describe('INFER protocol', () => {
         return [
           { type: 'INFER_TOKEN', id: msg.id, token: 'he', partial: 'he' },
           { type: 'INFER_TOKEN', id: msg.id, token: 'llo', partial: 'hello' },
-          { type: 'INFER_DONE', id: msg.id, text: 'hello' },
+          { type: 'INFER_DONE', id: msg.id, text: 'hello', stopReason: null },
         ]
       }
       return null
@@ -194,11 +194,32 @@ describe('INFER protocol', () => {
       tokens.push({ token, partial, done })
     })
 
-    expect(final).toBe('hello')
+    expect(final).toEqual({ text: 'hello', stopReason: null })
     // Final INFER_DONE also fires the callback with done=true
     expect(tokens[0]).toEqual({ token: 'he', partial: 'he', done: false })
     expect(tokens[1]).toEqual({ token: 'llo', partial: 'hello', done: false })
     expect(tokens[2]).toEqual({ token: 'hello', partial: 'hello', done: true })
+    resetGemmaWorker()
+  })
+
+  it('forwards maxTokens to the worker and surfaces stopReason=length on cap (SMA-78)', async () => {
+    const { inferGemma, resetGemmaWorker } = await primeLoadedFacade()
+
+    let seenMaxTokens
+    MockWorker.script = (msg) => {
+      if (msg.type === 'INFER') {
+        seenMaxTokens = msg.maxTokens
+        return [
+          { type: 'INFER_TOKEN', id: msg.id, token: 'a', partial: 'a' },
+          { type: 'INFER_DONE', id: msg.id, text: 'a', stopReason: 'length' },
+        ]
+      }
+      return null
+    }
+
+    const result = await inferGemma('hi', { maxTokens: 64 })
+    expect(seenMaxTokens).toBe(64)
+    expect(result).toEqual({ text: 'a', stopReason: 'length' })
     resetGemmaWorker()
   })
 
