@@ -207,7 +207,14 @@ export function SmartPasteWidget({
     setAiPending({})
 
     if (!pipelineResult || pipelineResult.fallback) {
-      toast?.('AI extract failed — using fallback')
+      // SMA-78: the on-device small model can hang indefinitely on
+      // pathological pastes. When the pipeline aborts via the wall-clock
+      // guard, route the user toward BYOK instead of silently blaming "AI".
+      if (pipelineResult?.fallbackReason === 'stage1_timeout') {
+        toast?.('On-device model taking too long — try cloud (BYOK)')
+      } else {
+        toast?.('AI extract failed — using fallback')
+      }
       return
     }
 

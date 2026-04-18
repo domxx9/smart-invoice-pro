@@ -30,6 +30,8 @@ if (typeof self !== 'undefined' && typeof self.import !== 'function') {
   }
 }
 
+import { createCappedStreamer } from './streamingGuard.js'
+
 const WASM_CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai/wasm'
 
 let _llm = null
@@ -59,17 +61,30 @@ async function handleLoad({ modelOptions }) {
   post({ type: 'LOAD_DONE' })
 }
 
-function handleInfer({ id, prompt }) {
+function handleInfer({ id, prompt, maxTokens }) {
   if (!_llm) {
     post({ type: 'ERROR', id, message: 'Model not loaded' })
     return
   }
-  let out = ''
+  const guard = createCappedStreamer({
+    maxTokens,
+    onToken: (chunk, partial) => {
+      post({ type: 'INFER_TOKEN', id, token: chunk, partial })
+    },
+    onDone: (text, stopReason) => {
+      post({ type: 'INFER_DONE', id, text, stopReason })
+    },
+    onAbort: () => {
+      try {
+        _llm.cancelProcessing?.()
+      } catch {
+        /* best-effort: underlying processor may already be idle */
+      }
+    },
+  })
   try {
     _llm.generateResponse(prompt, (chunk, done) => {
-      out += chunk
-      post({ type: 'INFER_TOKEN', id, token: chunk, partial: out })
-      if (done) post({ type: 'INFER_DONE', id, text: out })
+      guard.feed(chunk, done)
     })
   } catch (err) {
     post({ type: 'ERROR', id, message: err?.message || String(err) })

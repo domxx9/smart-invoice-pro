@@ -207,6 +207,37 @@ describe('extractLineItems', () => {
     expect(out.callCount).toBe(1)
   })
 
+  it('retries then falls through cleanly when the small model parrots its input (SMA-78)', async () => {
+    // The failure mode that motivated SMA-78: small Gemma echoes the paste
+    // instead of producing JSON. safeParseJsonArray fails ("no JSON array
+    // found"), the retry fails the same way, and extractLineItems must
+    // return items=[] with callCount=2 rather than loop or throw.
+    const parroted = '1 x 10 and 15 wire cassette\n'.repeat(40) + '1 x spark plug\n'.repeat(20)
+    const runInference = vi.fn().mockResolvedValue({
+      text: parroted,
+      source: 'test',
+      stopReason: 'length',
+    })
+    const out = await extractLineItems({ text: 'paste', runInference })
+    expect(runInference).toHaveBeenCalledTimes(2)
+    expect(out.items).toEqual([])
+    expect(out.callCount).toBe(2)
+  })
+
+  it('fails fast without retry when runInference throws stage1_timeout (SMA-78)', async () => {
+    const timeoutErr = Object.assign(new Error('On-device inference exceeded 60000ms — aborted'), {
+      code: 'stage1_timeout',
+      timeoutMs: 60000,
+    })
+    const runInference = vi.fn().mockRejectedValue(timeoutErr)
+    const out = await extractLineItems({ text: 'paste', runInference })
+    expect(runInference).toHaveBeenCalledTimes(1)
+    expect(out.items).toEqual([])
+    expect(out.callCount).toBe(1)
+    expect(out.timedOut).toBe(true)
+    expect(out.timeoutMs).toBe(60000)
+  })
+
   it('returns empty without calling the model for blank input', async () => {
     const runInference = vi.fn()
     const out = await extractLineItems({ text: '   ', runInference })
@@ -448,6 +479,28 @@ describe('runSmartPastePipeline', () => {
       /runInference/,
     )
   })
+
+  it('surfaces fallbackReason=stage1_timeout when the small model wall-clock fires (SMA-78)', async () => {
+    const timeoutErr = Object.assign(new Error('On-device inference exceeded 60000ms — aborted'), {
+      code: 'stage1_timeout',
+      timeoutMs: 60000,
+    })
+    const runInference = vi.fn().mockRejectedValue(timeoutErr)
+    const result = await runSmartPastePipeline({
+      text: 'paste',
+      products: PRODUCTS,
+      context: CONTEXT,
+      runInference,
+    })
+    expect(runInference).toHaveBeenCalledTimes(1)
+    expect(result).toMatchObject({
+      extracted: [],
+      rows: [],
+      callCount: 1,
+      fallback: true,
+      fallbackReason: 'stage1_timeout',
+    })
+  })
 })
 
 describe('smartPastePipeline logger instrumentation (SMA-68)', () => {
@@ -597,6 +650,28 @@ describe('smartPastePipeline logger instrumentation (SMA-68)', () => {
     expect(emptyWarn).toBeTruthy()
   })
 
+  it('logs stage1_timeout (not stage1_empty) and pipeline_complete with fallbackReason (SMA-78)', async () => {
+    const timeoutErr = Object.assign(new Error('On-device inference exceeded 60000ms — aborted'), {
+      code: 'stage1_timeout',
+      timeoutMs: 60000,
+    })
+    const runInference = vi.fn().mockRejectedValue(timeoutErr)
+    await runSmartPastePipeline({
+      text: 'paste',
+      products: PRODUCTS,
+      context: CONTEXT,
+      runInference,
+    })
+    const timeoutWarn = warnSpy.mock.calls.find(([tag]) => tag === 'smartPaste.stage1_timeout')
+    expect(timeoutWarn).toBeTruthy()
+    expect(timeoutWarn[1]).toMatchObject({ timeoutMs: 60000 })
+    // Timeout is not the same as "model returned []" — no stage1_empty.
+    const emptyWarn = warnSpy.mock.calls.find(([tag]) => tag === 'smartPaste.stage1_empty')
+    expect(emptyWarn).toBeFalsy()
+    const completion = infoSpy.mock.calls.find(([tag]) => tag === 'smartPaste.pipeline_complete')
+    expect(completion?.[1]).toMatchObject({ fallback: true, fallbackReason: 'stage1_timeout' })
+  })
+
   // ── SMA-71: stop-reason aware salvage logging ──
 
   it('logs stage1_salvaged with counts when the first response is truncated (SMA-71)', async () => {
@@ -700,7 +775,9 @@ describe('smartPastePipeline logger instrumentation (SMA-68)', () => {
       context: CONTEXT,
       runInference,
     })
-    const shape = debugSpy.mock.calls.find(([tag]) => tag === 'smartPaste.stage3_parse_failed_shape')
+    const shape = debugSpy.mock.calls.find(
+      ([tag]) => tag === 'smartPaste.stage3_parse_failed_shape',
+    )
     expect(shape).toBeTruthy()
     const payload = shape[1]
     expect(payload).toMatchObject({
@@ -741,7 +818,9 @@ describe('smartPastePipeline logger instrumentation (SMA-68)', () => {
     const infoTags = infoSpy.mock.calls.map(([tag]) => tag)
     expect(infoTags).toContain('smartPaste.stage3_retry_attempt')
     expect(infoTags).toContain('smartPaste.stage3_retry_succeeded')
-    const retryAttempt = infoSpy.mock.calls.find(([tag]) => tag === 'smartPaste.stage3_retry_attempt')
+    const retryAttempt = infoSpy.mock.calls.find(
+      ([tag]) => tag === 'smartPaste.stage3_retry_attempt',
+    )
     expect(retryAttempt[1]).toMatchObject({ batchIndex: 0 })
 
     const warnTags = warnSpy.mock.calls.map(([tag]) => tag)
