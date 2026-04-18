@@ -142,7 +142,12 @@ export function Settings({ ai, onStartTour }) {
             display: 'flex',
             flexDirection: 'column',
             zIndex: 40,
-            padding: 16,
+            // Respect device safe-area insets so the header row (Download/Clear/Close)
+            // isn't hidden under the Android status bar when viewport-fit=cover.
+            paddingTop: 'calc(env(safe-area-inset-top) + 16px)',
+            paddingRight: 'calc(env(safe-area-inset-right) + 16px)',
+            paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)',
+            paddingLeft: 'calc(env(safe-area-inset-left) + 16px)',
           }}
         >
           <div
