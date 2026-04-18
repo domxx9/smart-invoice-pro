@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { setCurrency, setInvoicePrefix, setInvoicePadding } from '../helpers.js'
 import { setSecret, getSecret, migrateKeysFromLocalStorage } from '../secure-storage.js'
+import { logger } from '../utils/logger.js'
 
 const SettingsContext = createContext(null)
 
@@ -11,6 +12,8 @@ const EMPTY_SMART_PASTE_CONTEXT = {
   vocabulary: '',
   locale: '',
 }
+
+const DEFAULT_DEBUG = { logLevel: 'error' }
 
 const DEFAULTS = {
   businessName: 'My Business',
@@ -36,6 +39,7 @@ const DEFAULTS = {
   byokModel: '',
   smartPasteContext: { ...EMPTY_SMART_PASTE_CONTEXT },
   pdfTemplate: {},
+  debug: { ...DEFAULT_DEBUG },
 }
 
 export function isSmartPasteContextSet(settings) {
@@ -53,10 +57,12 @@ function loadSettings() {
     ...DEFAULTS,
     ...s,
     smartPasteContext: { ...EMPTY_SMART_PASTE_CONTEXT, ...(s.smartPasteContext || {}) },
+    debug: { ...DEFAULT_DEBUG, ...(s.debug || {}) },
   }
   setCurrency(merged.currency)
   setInvoicePrefix(merged.invoicePrefix)
   setInvoicePadding(merged.invoicePadding)
+  logger.setMinLevel(merged.debug.logLevel)
   return merged
 }
 
@@ -90,6 +96,7 @@ export function SettingsProvider({ children }) {
     setCurrency(s.currency)
     setInvoicePrefix(s.invoicePrefix || 'INV')
     setInvoicePadding(s.invoicePadding || 4)
+    logger.setMinLevel(s.debug?.logLevel || DEFAULT_DEBUG.logLevel)
   }, [])
 
   return (
