@@ -96,6 +96,29 @@ describe('gemma._downloadWeb — progress signals', () => {
     expect(calls[calls.length - 1]).toBe(1)
   })
 
+  it('removes the 0-byte OPFS entry when the stream errors mid-flight (SMA-69)', async () => {
+    const { root } = installOpfs()
+    const streamErr = new Error('stream blew up')
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      body: {
+        getReader: () => ({
+          async read() {
+            throw streamErr
+          },
+        }),
+      },
+    })
+
+    const { downloadModel, MODELS } = await import('../gemma.js')
+    await expect(downloadModel('small', () => {})).rejects.toBe(streamErr)
+
+    expect(root.removeEntry).toHaveBeenCalledTimes(1)
+    expect(root.removeEntry).toHaveBeenCalledWith(MODELS.small.filename)
+  })
+
   it('emits -1 on chunks when content-length is absent (indeterminate with bytes)', async () => {
     const chunk = new Uint8Array([9, 9, 9])
     globalThis.fetch = vi

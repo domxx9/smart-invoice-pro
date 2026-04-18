@@ -334,6 +334,14 @@ export async function buildModelOptions(modelId) {
     'file:',
     filename,
   )
+  if (modelAssetBuffer.byteLength === 0) {
+    try {
+      await root.removeEntry(filename)
+    } catch {
+      /* ignore */
+    }
+    throw new Error('Model file is 0 bytes — please re-download')
+  }
   return { baseOptions: { modelAssetBuffer } }
 }
 
