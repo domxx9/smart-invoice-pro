@@ -19,21 +19,49 @@ import { logger } from '../utils/logger.js'
 
 const MATCH_BATCH_SIZE = 2
 
+// Parse a JSON array out of a possibly-noisy model response. Tries a clean
+// parse first, then falls through to truncation salvage when the response
+// is cut off before its closing `]` (or a `]` is present but the tail
+// doesn't parse — some providers emit a stray bracket after a truncated
+// object). On salvage, the result is marked `salvaged: true` so callers
+// can log or react differently (e.g. SMA-71 `stage1_truncated`).
 export function safeParseJsonArray(text, { schema } = {}) {
   if (typeof text !== 'string' || !text.trim()) {
     return { ok: false, error: 'empty response' }
   }
   const stripped = stripCodeFences(text)
   const start = stripped.indexOf('[')
-  const end = stripped.lastIndexOf(']')
-  if (start === -1 || end === -1 || end < start) {
+  if (start === -1) {
     return { ok: false, error: 'no JSON array found' }
   }
+  const end = stripped.lastIndexOf(']')
+  if (end !== -1 && end >= start) {
+    const clean = parseAndValidateArray(stripped.slice(start, end + 1), schema)
+    if (clean.ok) return { ok: true, value: clean.value }
+    // A schema failure on a cleanly-parsed array is the final word — salvage
+    // would only drop items the caller has already rejected. Only truncation-
+    // style parse errors fall through.
+    if (!clean.parseError) return { ok: false, error: clean.error }
+  }
+  const salvage = salvagePartialJsonArray(stripped, { schema })
+  if (salvage.ok) {
+    return {
+      ok: true,
+      value: salvage.value,
+      salvaged: true,
+      salvagedCount: salvage.salvagedCount,
+      attemptedCount: salvage.attemptedCount,
+    }
+  }
+  return { ok: false, error: end === -1 ? 'no JSON array found' : salvage.error }
+}
+
+function parseAndValidateArray(slice, schema) {
   let parsed
   try {
-    parsed = JSON.parse(stripped.slice(start, end + 1))
+    parsed = JSON.parse(slice)
   } catch (e) {
-    return { ok: false, error: `JSON parse failed: ${e.message}` }
+    return { ok: false, error: `JSON parse failed: ${e.message}`, parseError: true }
   }
   if (!Array.isArray(parsed)) {
     return { ok: false, error: 'parsed value is not an array' }
@@ -47,6 +75,81 @@ export function safeParseJsonArray(text, { schema } = {}) {
     }
   }
   return { ok: true, value: parsed }
+}
+
+// Recover complete objects from a JSON array that was cut off before its
+// closing `]`. Walks the response char-by-char (string- and brace-aware),
+// slices up to the last fully closed top-level object, then appends `]` so
+// JSON.parse succeeds. Schema-invalid items are dropped rather than failing
+// the whole salvage.
+function salvagePartialJsonArray(text, { schema } = {}) {
+  if (typeof text !== 'string' || !text.trim()) {
+    return { ok: false, error: 'empty response' }
+  }
+  const start = text.indexOf('[')
+  if (start === -1) return { ok: false, error: 'no array start' }
+
+  let depth = 0
+  let inString = false
+  let escaped = false
+  let lastCompleteEnd = -1
+
+  for (let i = start + 1; i < text.length; i++) {
+    const c = text[i]
+    if (inString) {
+      if (escaped) {
+        escaped = false
+        continue
+      }
+      if (c === '\\') {
+        escaped = true
+        continue
+      }
+      if (c === '"') inString = false
+      continue
+    }
+    if (c === '"') {
+      inString = true
+      continue
+    }
+    if (c === '{') {
+      depth++
+      continue
+    }
+    if (c === '}') {
+      depth--
+      if (depth === 0) lastCompleteEnd = i
+      continue
+    }
+    // A top-level `]` after a completed object means the array closed
+    // cleanly — the caller's clean-parse path already handled that case,
+    // so salvage refuses to run.
+    if (c === ']' && depth === 0 && lastCompleteEnd !== -1) {
+      return { ok: false, error: 'array already closed' }
+    }
+  }
+
+  if (lastCompleteEnd === -1) return { ok: false, error: 'no complete object to salvage' }
+
+  const candidate = `${text.slice(start, lastCompleteEnd + 1)}]`
+  let parsed
+  try {
+    parsed = JSON.parse(candidate)
+  } catch (e) {
+    return { ok: false, error: `salvage parse failed: ${e.message}` }
+  }
+  if (!Array.isArray(parsed)) return { ok: false, error: 'salvage value is not an array' }
+
+  const validated =
+    typeof schema === 'function' ? parsed.filter((item) => schema(item) === true) : parsed
+  if (!validated.length) return { ok: false, error: 'salvage yielded zero valid items' }
+
+  return {
+    ok: true,
+    value: validated,
+    salvagedCount: validated.length,
+    attemptedCount: parsed.length,
+  }
 }
 
 function stripCodeFences(text) {
@@ -106,12 +209,58 @@ async function invokeExtract({ prompt, maxTokens, runInference }) {
     return { kind: 'runtime', message }
   }
   const raw = typeof result === 'string' ? result : result?.text
+  const stopReason =
+    result && typeof result === 'object' && 'stopReason' in result ? result.stopReason : null
   const parsed = safeParseJsonArray(raw, { schema: isExtractedLine })
-  if (!parsed.ok) return { kind: 'parse_failed', reason: parsed.error, raw }
-  return { kind: 'parsed', value: parsed.value }
+  if (!parsed.ok) return { kind: 'parse_failed', reason: parsed.error, raw, stopReason }
+  return {
+    kind: 'parsed',
+    value: parsed.value,
+    raw,
+    stopReason,
+    salvaged: parsed.salvaged === true,
+    salvagedCount: parsed.salvagedCount,
+    attemptedCount: parsed.attemptedCount,
+  }
 }
 
-export async function extractLineItems({ text, context, runInference, maxTokens = 1024 } = {}) {
+// Provider-reported stop reasons that mean the generation hit its token cap
+// mid-response. OpenAI → 'length', Anthropic → 'max_tokens', Gemini →
+// 'MAX_TOKENS'. Compared case-insensitively so casing differences across
+// providers/models don't silently bypass the check.
+const LENGTH_CAP_STOP_REASONS = new Set(['length', 'max_tokens', 'max-tokens'])
+
+function isLengthCapStopReason(stopReason) {
+  if (typeof stopReason !== 'string' || !stopReason) return false
+  return LENGTH_CAP_STOP_REASONS.has(stopReason.toLowerCase())
+}
+
+function reportSalvaged(attempt, parsed) {
+  logger.info('smartPaste.stage1_salvaged', {
+    attempt,
+    salvagedCount: parsed.salvagedCount,
+    attemptedCount: parsed.attemptedCount,
+  })
+  if (isLengthCapStopReason(parsed.stopReason)) {
+    logger.warn('smartPaste.stage1_truncated', {
+      stopReason: parsed.stopReason,
+      rawLength: typeof parsed.raw === 'string' ? parsed.raw.length : 0,
+      salvagedItems: parsed.value.length,
+    })
+  }
+}
+
+// Stage 1 LLM budget. 2048 tokens gives ~8 KB of JSON room — comfortable
+// for a 20-item paste — and salvage recovers complete items if the model
+// truncates anyway.
+const STAGE1_DEFAULT_MAX_TOKENS = 2048
+
+export async function extractLineItems({
+  text,
+  context,
+  runInference,
+  maxTokens = STAGE1_DEFAULT_MAX_TOKENS,
+} = {}) {
   if (typeof runInference !== 'function') {
     throw new Error('extractLineItems: runInference is required')
   }
@@ -121,6 +270,7 @@ export async function extractLineItems({ text, context, runInference, maxTokens 
   const first = await invokeExtract({ prompt, maxTokens, runInference })
   if (first.kind === 'runtime') return { items: [], callCount: 1 }
   if (first.kind === 'parsed') {
+    if (first.salvaged) reportSalvaged('first', first)
     return { items: normalizeExtracted(first.value), callCount: 1 }
   }
 
@@ -134,6 +284,7 @@ export async function extractLineItems({ text, context, runInference, maxTokens 
     return { items: [], callCount: 2 }
   }
   if (second.kind === 'parsed') {
+    if (second.salvaged) reportSalvaged('retry', second)
     logger.info('smartPaste.stage1_retry_succeeded')
     return { items: normalizeExtracted(second.value), callCount: 2 }
   }

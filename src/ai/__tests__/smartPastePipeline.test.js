@@ -76,6 +76,66 @@ describe('safeParseJsonArray', () => {
     expect(r.ok).toBe(false)
     expect(r.error).toMatch(/x must be number/)
   })
+
+  // ── SMA-71: truncation salvage folded into safeParseJsonArray ──
+
+  it('salvages a truncated array missing its closing ] and marks salvaged=true (SMA-71)', () => {
+    // Mirrors the real dogfood trace — array opens, two complete items, then
+    // cuts off mid-third with no closing `]`. Salvage should recover items 1-2.
+    const truncated =
+      '[{"text":"blade holder","qty":1,"description":""},{"text":"anvil","qty":2,"description":"longs ones"},{"text":"unc probe","qty":1,"description":"'
+    const extractSchema = (item) =>
+      item &&
+      typeof item.text === 'string' &&
+      typeof item.qty === 'number' &&
+      typeof item.description === 'string'
+        ? true
+        : 'bad shape'
+    const r = safeParseJsonArray(truncated, { schema: extractSchema })
+    expect(r.ok).toBe(true)
+    expect(r.salvaged).toBe(true)
+    expect(r.value).toEqual([
+      { text: 'blade holder', qty: 1, description: '' },
+      { text: 'anvil', qty: 2, description: 'longs ones' },
+    ])
+    expect(r.salvagedCount).toBe(2)
+    expect(r.attemptedCount).toBe(2)
+  })
+
+  it('does not mark salvaged when the clean parse succeeds (SMA-71)', () => {
+    const r = safeParseJsonArray('[{"a":1}]')
+    expect(r.ok).toBe(true)
+    expect(r.salvaged).toBeUndefined()
+  })
+
+  it('trims back past a truncated final string, returning N-1 items (SMA-71)', () => {
+    // Only one complete object closes; the partial second object must be
+    // dropped so the candidate re-parses cleanly.
+    const truncated = '[{"text":"first","qty":1,"description":""},{"text":"partia'
+    const r = safeParseJsonArray(truncated)
+    expect(r.ok).toBe(true)
+    expect(r.salvaged).toBe(true)
+    expect(r.value).toHaveLength(1)
+    expect(r.value[0]).toMatchObject({ text: 'first', qty: 1 })
+  })
+
+  it('falls back to failure when no complete object has closed (SMA-71)', () => {
+    const r = safeParseJsonArray('[{"text":"only started')
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/no complete object|no JSON array/)
+  })
+
+  it('is not fooled by a `}` inside a string literal (SMA-71)', () => {
+    // Without string-awareness the inner `}` inside the description would
+    // close the outer object prematurely, producing garbled items. With
+    // string-awareness, only the real closing brace counts.
+    const truncated =
+      '[{"text":"widget","qty":1,"description":"weird } inside"},{"text":"next","qty":2,"description":"'
+    const r = safeParseJsonArray(truncated)
+    expect(r.ok).toBe(true)
+    expect(r.salvaged).toBe(true)
+    expect(r.value).toEqual([{ text: 'widget', qty: 1, description: 'weird } inside' }])
+  })
 })
 
 describe('extractLineItems', () => {
@@ -535,5 +595,94 @@ describe('smartPastePipeline logger instrumentation (SMA-68)', () => {
     expect(completion?.[1]).toMatchObject({ fallback: true })
     const emptyWarn = warnSpy.mock.calls.find(([tag]) => tag === 'smartPaste.stage1_empty')
     expect(emptyWarn).toBeTruthy()
+  })
+
+  // ── SMA-71: stop-reason aware salvage logging ──
+
+  it('logs stage1_salvaged with counts when the first response is truncated (SMA-71)', async () => {
+    const truncated =
+      '[{"text":"a","qty":1,"description":""},{"text":"b","qty":2,"description":""},{"text":"c'
+    const runInference = vi.fn().mockResolvedValue({ text: truncated, source: 'test' })
+    const out = await extractLineItems({ text: 'paste', runInference })
+    expect(runInference).toHaveBeenCalledTimes(1)
+    expect(out.items).toHaveLength(2)
+    const salvaged = infoSpy.mock.calls.find(([tag]) => tag === 'smartPaste.stage1_salvaged')
+    expect(salvaged).toBeTruthy()
+    expect(salvaged[1]).toMatchObject({
+      attempt: 'first',
+      salvagedCount: 2,
+      attemptedCount: 2,
+    })
+    // Salvage on first attempt means no retry fires.
+    const infoTags = infoSpy.mock.calls.map(([tag]) => tag)
+    expect(infoTags).not.toContain('smartPaste.stage1_retry_attempt')
+  })
+
+  it('warns stage1_truncated when salvage + stopReason=max_tokens line up (SMA-71)', async () => {
+    const truncated =
+      '[{"text":"a","qty":1,"description":""},{"text":"b","qty":2,"description":""},{"text":"c'
+    const runInference = vi.fn().mockResolvedValue({
+      text: truncated,
+      source: 'test',
+      stopReason: 'max_tokens',
+    })
+    const out = await extractLineItems({ text: 'paste', runInference })
+    expect(out.items).toHaveLength(2)
+    const truncatedWarn = warnSpy.mock.calls.find(([tag]) => tag === 'smartPaste.stage1_truncated')
+    expect(truncatedWarn).toBeTruthy()
+    expect(truncatedWarn[1]).toMatchObject({
+      stopReason: 'max_tokens',
+      rawLength: truncated.length,
+      salvagedItems: 2,
+    })
+  })
+
+  it('also warns stage1_truncated for stopReason=length (OpenAI) (SMA-71)', async () => {
+    const truncated = '[{"text":"one","qty":1,"description":""},{"text":"tw'
+    const runInference = vi.fn().mockResolvedValue({
+      text: truncated,
+      source: 'test',
+      stopReason: 'length',
+    })
+    await extractLineItems({ text: 'paste', runInference })
+    const truncatedWarn = warnSpy.mock.calls.find(([tag]) => tag === 'smartPaste.stage1_truncated')
+    expect(truncatedWarn).toBeTruthy()
+    expect(truncatedWarn[1]).toMatchObject({ stopReason: 'length' })
+  })
+
+  it('skips stage1_truncated when salvage fires but stopReason is not a length cap (SMA-71)', async () => {
+    // Some providers report a natural-stop reason even on truncated output
+    // (model bug, prompt-edge case). If the reason isn't a length cap, don't
+    // cry truncation — we can't prove it.
+    const truncated = '[{"text":"one","qty":1,"description":""},{"text":"tw'
+    const runInference = vi.fn().mockResolvedValue({
+      text: truncated,
+      source: 'test',
+      stopReason: 'stop',
+    })
+    await extractLineItems({ text: 'paste', runInference })
+    const salvaged = infoSpy.mock.calls.find(([tag]) => tag === 'smartPaste.stage1_salvaged')
+    expect(salvaged).toBeTruthy()
+    const truncatedWarn = warnSpy.mock.calls.find(([tag]) => tag === 'smartPaste.stage1_truncated')
+    expect(truncatedWarn).toBeFalsy()
+  })
+
+  it('skips stage1_truncated when the clean response parses without salvage (SMA-71)', async () => {
+    // Even if the provider reports stopReason=length on a clean response,
+    // we don't warn — the text parsed as-is so there was no truncation.
+    const runInference = vi.fn().mockResolvedValue({
+      text: JSON.stringify([{ text: 'x', qty: 1, description: '' }]),
+      source: 'test',
+      stopReason: 'length',
+    })
+    await extractLineItems({ text: 'paste', runInference })
+    const truncatedWarn = warnSpy.mock.calls.find(([tag]) => tag === 'smartPaste.stage1_truncated')
+    expect(truncatedWarn).toBeFalsy()
+  })
+
+  it('requests 2048 max tokens for Stage 1 by default (SMA-71)', async () => {
+    const runInference = vi.fn().mockResolvedValue(jsonResponse([]))
+    await extractLineItems({ text: 'hi', runInference })
+    expect(runInference.mock.calls[0][0].maxTokens).toBe(2048)
   })
 })

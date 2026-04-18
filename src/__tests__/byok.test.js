@@ -115,11 +115,11 @@ describe('testConnection', () => {
 })
 
 describe('generate', () => {
-  it('returns the completion string from OpenAI-shaped responses', async () => {
+  it('returns { text, stopReason } from OpenAI-shaped responses', async () => {
     const { fetchImpl } = makeFetch([
       {
         status: 200,
-        body: { choices: [{ message: { content: 'hello world' } }] },
+        body: { choices: [{ message: { content: 'hello world' }, finish_reason: 'stop' }] },
       },
     ])
     const out = await generate({
@@ -128,14 +128,14 @@ describe('generate', () => {
       prompt: 'Say hi',
       fetchImpl,
     })
-    expect(out).toBe('hello world')
+    expect(out).toEqual({ text: 'hello world', stopReason: 'stop' })
   })
 
-  it('extracts text from Anthropic content blocks', async () => {
+  it('extracts text and stop_reason from Anthropic content blocks', async () => {
     const { fetchImpl } = makeFetch([
       {
         status: 200,
-        body: { content: [{ type: 'text', text: 'claude hi' }] },
+        body: { content: [{ type: 'text', text: 'claude hi' }], stop_reason: 'end_turn' },
       },
     ])
     const out = await generate({
@@ -144,15 +144,17 @@ describe('generate', () => {
       prompt: 'hi',
       fetchImpl,
     })
-    expect(out).toBe('claude hi')
+    expect(out).toEqual({ text: 'claude hi', stopReason: 'end_turn' })
   })
 
-  it('extracts text from Gemini candidates', async () => {
+  it('extracts text and finishReason from Gemini candidates', async () => {
     const { fetchImpl } = makeFetch([
       {
         status: 200,
         body: {
-          candidates: [{ content: { parts: [{ text: 'gemini hi' }] } }],
+          candidates: [
+            { content: { parts: [{ text: 'gemini hi' }] }, finishReason: 'STOP' },
+          ],
         },
       },
     ])
@@ -162,7 +164,61 @@ describe('generate', () => {
       prompt: 'hi',
       fetchImpl,
     })
-    expect(out).toBe('gemini hi')
+    expect(out).toEqual({ text: 'gemini hi', stopReason: 'STOP' })
+  })
+
+  // ── SMA-71: stop reason plumbs through alongside the text ──
+  it('exposes finish_reason=length to the caller on OpenAI truncation (SMA-71)', async () => {
+    const { fetchImpl } = makeFetch([
+      {
+        status: 200,
+        body: {
+          choices: [{ message: { content: '[{"text":"blade' }, finish_reason: 'length' }],
+        },
+      },
+    ])
+    const out = await generate({
+      provider: 'openai',
+      apiKey: 'sk',
+      prompt: 'extract',
+      fetchImpl,
+    })
+    expect(out).toEqual({ text: '[{"text":"blade', stopReason: 'length' })
+  })
+
+  it('exposes stop_reason=max_tokens to the caller on Anthropic truncation (SMA-71)', async () => {
+    const { fetchImpl } = makeFetch([
+      {
+        status: 200,
+        body: {
+          content: [{ type: 'text', text: '[{"text":"widget' }],
+          stop_reason: 'max_tokens',
+        },
+      },
+    ])
+    const out = await generate({
+      provider: 'anthropic',
+      apiKey: 'sk-ant',
+      prompt: 'extract',
+      fetchImpl,
+    })
+    expect(out).toEqual({ text: '[{"text":"widget', stopReason: 'max_tokens' })
+  })
+
+  it('returns stopReason=null when the provider omits the reason', async () => {
+    const { fetchImpl } = makeFetch([
+      {
+        status: 200,
+        body: { choices: [{ message: { content: 'hi' } }] },
+      },
+    ])
+    const out = await generate({
+      provider: 'openai',
+      apiKey: 'sk',
+      prompt: 'x',
+      fetchImpl,
+    })
+    expect(out).toEqual({ text: 'hi', stopReason: null })
   })
 
   it('throws with the provider error message on non-2xx', async () => {
@@ -207,7 +263,7 @@ describe('generate', () => {
         prompt: 'pick',
         fetchImpl,
       })
-      expect(out).toBe('42')
+      expect(out.text).toBe('42')
     })
 
     it('includes finish_reason in the error when OpenAI returns empty content', async () => {
