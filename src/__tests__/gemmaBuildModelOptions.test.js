@@ -13,7 +13,10 @@ function installOpfsMock(bytes) {
     arrayBuffer: vi.fn().mockResolvedValue(bytes.buffer ?? bytes),
   }
   const fh = { getFile: vi.fn().mockResolvedValue(file) }
-  const root = { getFileHandle: vi.fn().mockResolvedValue(fh) }
+  const root = {
+    getFileHandle: vi.fn().mockResolvedValue(fh),
+    removeEntry: vi.fn().mockResolvedValue(undefined),
+  }
   globalThis.navigator = {
     ...(globalThis.navigator || {}),
     storage: { getDirectory: vi.fn().mockResolvedValue(root) },
@@ -40,6 +43,16 @@ describe('buildModelOptions (web/OPFS)', () => {
 
     expect(options.baseOptions.modelAssetBuffer).toBeInstanceOf(Uint8Array)
     expect(options.baseOptions.modelAssetBuffer.byteLength).toBe(8)
+  })
+
+  it('removes a 0-byte OPFS entry and throws a re-download hint (SMA-69)', async () => {
+    const { root } = installOpfsMock(new Uint8Array(0))
+
+    const { buildModelOptions, MODELS } = await import('../gemma.js')
+    await expect(buildModelOptions('small')).rejects.toThrow(/0 bytes.*re-download/i)
+
+    expect(root.removeEntry).toHaveBeenCalledTimes(1)
+    expect(root.removeEntry).toHaveBeenCalledWith(MODELS.small.filename)
   })
 
   it('throws a re-download hint when the OPFS file handle is missing', async () => {
