@@ -46,6 +46,7 @@ const EMPTY_CONTEXT = {
 function setup({
   runInference = vi.fn(),
   aiMode = 'byok',
+  aiReady = true,
   toast = vi.fn(),
   smartPasteContext = FULL_CONTEXT,
   onOpenSettings = vi.fn(),
@@ -56,6 +57,7 @@ function setup({
       products={products}
       onAddItems={onAddItems}
       aiMode={aiMode}
+      aiReady={aiReady}
       runInference={runInference}
       toast={toast}
       smartPasteContext={smartPasteContext}
@@ -293,11 +295,76 @@ describe('SmartPasteWidget skip diagnostics (SMA-68)', () => {
     return calls[calls.length - 1]?.[1]?.reason
   }
 
-  it('logs mode_not_byok when aiMode is off', () => {
+  it('logs mode_off when aiMode is off', () => {
     setup({ aiMode: 'off' })
     typeAndParse('2 x Blue Molar Extractor')
-    expect(lastSkipReason()).toBe('mode_not_byok')
+    expect(lastSkipReason()).toBe('mode_off')
     expect(screen.queryByTestId('smart-paste-skip-hint')).not.toBeInTheDocument()
+  })
+
+  it('routes aiMode="small" with model loaded through the pipeline', async () => {
+    runSmartPastePipeline.mockResolvedValue({
+      extracted: [{ text: 'Mystery', qty: 1, description: '' }],
+      rows: [
+        {
+          extracted: { text: 'Mystery', qty: 1, description: '' },
+          product: products[0],
+          confidence: 82,
+          source: 'ai',
+        },
+      ],
+      callCount: 2,
+      fallback: false,
+    })
+    setup({ aiMode: 'small', aiReady: true })
+    typeAndParse('Mystery Item')
+    await waitFor(() => expect(runSmartPastePipeline).toHaveBeenCalledTimes(1))
+    const skipCall = infoSpy.mock.calls.find(([tag]) => tag === 'smartPaste.pipeline_skipped')
+    expect(skipCall).toBeFalsy()
+    const started = infoSpy.mock.calls.find(([tag]) => tag === 'smartPaste.pipeline_started')
+    expect(started).toBeTruthy()
+  })
+
+  it('skips the pipeline with model_not_loaded when small is selected but not loaded', () => {
+    setup({ aiMode: 'small', aiReady: false })
+    typeAndParse('4 x Mystery widget')
+    expect(lastSkipReason()).toBe('model_not_loaded')
+    expect(runSmartPastePipeline).not.toHaveBeenCalled()
+    const hint = screen.getByTestId('smart-paste-skip-hint')
+    expect(hint).toHaveTextContent(/On-device model isn.?t loaded/i)
+    expect(hint).toHaveTextContent(/Settings → AI/i)
+  })
+
+  it('model_not_loaded hint link calls onOpenSettings with "ai"', () => {
+    const onOpenSettings = vi.fn()
+    setup({ aiMode: 'small', aiReady: false, onOpenSettings })
+    typeAndParse('4 x Mystery widget')
+    const hint = screen.getByTestId('smart-paste-skip-hint')
+    fireEvent.click(within(hint).getByRole('link', { name: /Load into memory/i }))
+    expect(onOpenSettings).toHaveBeenCalledWith('ai')
+  })
+
+  it('does not gate on context for aiMode="small" — pipeline runs without it', async () => {
+    runSmartPastePipeline.mockResolvedValue({
+      extracted: [{ text: 'Mystery', qty: 1, description: '' }],
+      rows: [
+        {
+          extracted: { text: 'Mystery', qty: 1, description: '' },
+          product: products[0],
+          confidence: 70,
+          source: 'ai',
+        },
+      ],
+      callCount: 2,
+      fallback: false,
+    })
+    setup({ aiMode: 'small', aiReady: true, smartPasteContext: EMPTY_CONTEXT })
+    // The banner is BYOK-only; on-device should never render it.
+    expect(screen.queryByTestId('smart-paste-context-banner')).not.toBeInTheDocument()
+    typeAndParse('Mystery Item')
+    await waitFor(() => expect(runSmartPastePipeline).toHaveBeenCalledTimes(1))
+    const skipCall = infoSpy.mock.calls.find(([tag]) => tag === 'smartPaste.pipeline_skipped')
+    expect(skipCall).toBeFalsy()
   })
 
   it('logs context_missing and renders the inline hint', () => {

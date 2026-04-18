@@ -12,6 +12,7 @@ export function InvoiceEditor({
   onDelete,
   onDraftChange,
   aiMode,
+  aiReady,
   runInference,
   toast,
   smartPasteContext,
@@ -51,6 +52,7 @@ export function InvoiceEditor({
         products={products}
         onAddItems={addItems}
         aiMode={aiMode}
+        aiReady={aiReady}
         runInference={runInference}
         toast={toast}
         smartPasteContext={smartPasteContext}

@@ -51,6 +51,7 @@ export function SmartPasteWidget({
   products,
   onAddItems,
   aiMode,
+  aiReady,
   runInference,
   toast,
   smartPasteContext,
@@ -107,15 +108,20 @@ export function SmartPasteWidget({
     ).length
 
     let skipReason = null
-    if (aiMode !== 'byok') skipReason = 'mode_not_byok'
-    else if (!contextReady) skipReason = 'context_missing'
+    if (aiMode !== 'byok' && aiMode !== 'small') skipReason = 'mode_off'
+    else if (aiMode === 'small' && !aiReady) skipReason = 'model_not_loaded'
+    else if (aiMode === 'byok' && !contextReady) skipReason = 'context_missing'
     else if (typeof runInference !== 'function') skipReason = 'no_runinference'
     else if (!products?.length) skipReason = 'no_products'
     else if (lowConfidenceCount === 0) skipReason = 'no_low_confidence_rows'
 
     if (skipReason) {
       logger.info('smartPaste.pipeline_skipped', { reason: skipReason })
-      if (skipReason === 'context_missing' || skipReason === 'no_products') {
+      if (
+        skipReason === 'context_missing' ||
+        skipReason === 'no_products' ||
+        skipReason === 'model_not_loaded'
+      ) {
         setSkipHint(skipReason)
       }
       return
@@ -351,6 +357,23 @@ export function SmartPasteWidget({
                 style={{ color: 'var(--accent)', fontWeight: 600 }}
               >
                 set it up in Settings
+              </a>
+            </>
+          )}
+          {skipHint === 'model_not_loaded' && (
+            <>
+              On-device model isn&rsquo;t loaded —{' '}
+              <a
+                href="#ai"
+                onClick={(e) => {
+                  if (typeof onOpenSettings === 'function') {
+                    e.preventDefault()
+                    onOpenSettings('ai')
+                  }
+                }}
+                style={{ color: 'var(--accent)', fontWeight: 600 }}
+              >
+                Load into memory in Settings → AI
               </a>
             </>
           )}
