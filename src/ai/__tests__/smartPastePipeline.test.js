@@ -685,4 +685,174 @@ describe('smartPastePipeline logger instrumentation (SMA-68)', () => {
     await extractLineItems({ text: 'hi', runInference })
     expect(runInference.mock.calls[0][0].maxTokens).toBe(2048)
   })
+
+  // ── SMA-75: Stage 3 parse-failure diagnostic + retry ──
+
+  it('emits debug stage3_parse_failed_shape with batchIndex/stopReason/head/tail when matchBatch parse fails (SMA-75)', async () => {
+    const extract = [{ text: 'front shock', qty: 1, description: '' }]
+    const runInference = vi.fn(async ({ prompt }) => {
+      if (prompt.includes('Customer message:')) return jsonResponse(extract)
+      return { text: 'Sorry, I cannot follow that format.', source: 'test', stopReason: 'stop' }
+    })
+    await runSmartPastePipeline({
+      text: 'order',
+      products: PRODUCTS,
+      context: CONTEXT,
+      runInference,
+    })
+    const shape = debugSpy.mock.calls.find(([tag]) => tag === 'smartPaste.stage3_parse_failed_shape')
+    expect(shape).toBeTruthy()
+    const payload = shape[1]
+    expect(payload).toMatchObject({
+      batchIndex: 0,
+      stopReason: 'stop',
+      rawLength: expect.any(Number),
+      head: expect.any(String),
+      tail: expect.any(String),
+    })
+    expect(payload.rawLength).toBeGreaterThan(0)
+    expect(payload.head.length).toBeLessThanOrEqual(60)
+    expect(payload.tail.length).toBeLessThanOrEqual(60)
+  })
+
+  it('logs stage3_retry_attempt + stage3_retry_succeeded when retry parses cleanly (SMA-75)', async () => {
+    const extract = [{ text: 'front shock', qty: 1, description: '' }]
+    let stage3Call = 0
+    const runInference = vi.fn(async ({ prompt }) => {
+      if (prompt.includes('Customer message:')) return jsonResponse(extract)
+      stage3Call += 1
+      if (stage3Call === 1) {
+        return { text: 'no array here', source: 'test' }
+      }
+      return jsonResponse([{ lineIndex: 0, productId: 'p1', confidence: 91 }])
+    })
+    const result = await runSmartPastePipeline({
+      text: 'order',
+      products: PRODUCTS,
+      context: CONTEXT,
+      runInference,
+    })
+    expect(stage3Call).toBe(2)
+    // 1 extract + 2 stage3 calls (first parse failed, retry succeeded)
+    expect(result.callCount).toBe(3)
+    expect(result.rows[0].source).toBe('ai')
+    expect(result.rows[0].product?.id).toBe('p1')
+
+    const infoTags = infoSpy.mock.calls.map(([tag]) => tag)
+    expect(infoTags).toContain('smartPaste.stage3_retry_attempt')
+    expect(infoTags).toContain('smartPaste.stage3_retry_succeeded')
+    const retryAttempt = infoSpy.mock.calls.find(([tag]) => tag === 'smartPaste.stage3_retry_attempt')
+    expect(retryAttempt[1]).toMatchObject({ batchIndex: 0 })
+
+    const warnTags = warnSpy.mock.calls.map(([tag]) => tag)
+    expect(warnTags).toContain('smartPaste.stage3_parse_failed')
+    // Retry succeeded → no batch failure log.
+    expect(warnTags).not.toContain('smartPaste.stage3_batch_failed')
+  })
+
+  it('still warns stage3_batch_failed after both attempts fail to parse, with shape logged on each (SMA-75)', async () => {
+    const extract = [{ text: 'front shock', qty: 1, description: '' }]
+    const runInference = vi.fn(async ({ prompt }) => {
+      if (prompt.includes('Customer message:')) return jsonResponse(extract)
+      return { text: 'still no json', source: 'test' }
+    })
+    const result = await runSmartPastePipeline({
+      text: 'order',
+      products: PRODUCTS,
+      context: CONTEXT,
+      runInference,
+    })
+    // Retry burns one call → 1 extract + 2 stage3 = 3 total.
+    expect(result.callCount).toBe(3)
+    expect(result.rows[0].source).toBe('fuzzy')
+
+    const infoTags = infoSpy.mock.calls.map(([tag]) => tag)
+    expect(infoTags).toContain('smartPaste.stage3_retry_attempt')
+    expect(infoTags).not.toContain('smartPaste.stage3_retry_succeeded')
+
+    const failed = warnSpy.mock.calls.find(([tag]) => tag === 'smartPaste.stage3_batch_failed')
+    expect(failed).toBeTruthy()
+    expect(failed[1]).toMatchObject({
+      batchIndex: 0,
+      message: expect.stringContaining('matchBatch'),
+    })
+
+    // Shape log fires on both first parse failure and retry failure.
+    const shapeLogs = debugSpy.mock.calls.filter(
+      ([tag]) => tag === 'smartPaste.stage3_parse_failed_shape',
+    )
+    expect(shapeLogs).toHaveLength(2)
+  })
+
+  it('does not retry stage3 when runInference throws a runtime error — keeps existing behavior (SMA-75)', async () => {
+    const extract = [{ text: 'front shock', qty: 1, description: '' }]
+    let stage3Call = 0
+    const runInference = vi.fn(async ({ prompt }) => {
+      if (prompt.includes('Customer message:')) return jsonResponse(extract)
+      stage3Call += 1
+      throw new Error('rate limit')
+    })
+    const result = await runSmartPastePipeline({
+      text: 'order',
+      products: PRODUCTS,
+      context: CONTEXT,
+      runInference,
+    })
+    // No retry on runtime error → 1 extract + 1 stage3 = 2 total.
+    expect(stage3Call).toBe(1)
+    expect(result.callCount).toBe(2)
+
+    const infoTags = infoSpy.mock.calls.map(([tag]) => tag)
+    expect(infoTags).not.toContain('smartPaste.stage3_retry_attempt')
+
+    const failed = warnSpy.mock.calls.find(([tag]) => tag === 'smartPaste.stage3_batch_failed')
+    expect(failed).toBeTruthy()
+    expect(failed[1]).toMatchObject({ batchIndex: 0, message: expect.stringContaining('rate') })
+  })
+
+  it('matchBatch salvage path covers Stage 3 truncation (no regression from SMA-71) (SMA-75)', async () => {
+    // Provider truncates the array mid-second-object — first object is complete
+    // and matches a real productId, so salvage should yield a usable match
+    // without retry.
+    const extract = [
+      { text: 'front shock', qty: 1, description: '' },
+      { text: 'rear shock', qty: 1, description: '' },
+    ]
+    const truncated =
+      '[{"lineIndex":0,"productId":"p1","confidence":92},{"lineIndex":1,"productId":"p2","confide'
+    const runInference = vi.fn(async ({ prompt }) => {
+      if (prompt.includes('Customer message:')) return jsonResponse(extract)
+      return { text: truncated, source: 'test', stopReason: 'max_tokens' }
+    })
+    const result = await runSmartPastePipeline({
+      text: 'order',
+      products: PRODUCTS,
+      context: CONTEXT,
+      runInference,
+    })
+    // Salvage succeeds → no retry, no batch failure.
+    expect(result.callCount).toBe(2)
+    expect(result.rows[0].product?.id).toBe('p1')
+    const warnTags = warnSpy.mock.calls.map(([tag]) => tag)
+    expect(warnTags).not.toContain('smartPaste.stage3_parse_failed')
+    expect(warnTags).not.toContain('smartPaste.stage3_batch_failed')
+  })
+
+  it('requests 512 max tokens for Stage 3 by default (SMA-75)', async () => {
+    const extract = [{ text: 'front shock', qty: 1, description: '' }]
+    const runInference = vi.fn(async ({ prompt }) => {
+      if (prompt.includes('Customer message:')) return jsonResponse(extract)
+      return jsonResponse([{ lineIndex: 0, productId: 'p1', confidence: 90 }])
+    })
+    await runSmartPastePipeline({
+      text: 'order',
+      products: PRODUCTS,
+      context: CONTEXT,
+      runInference,
+    })
+    const stage3Call = runInference.mock.calls.find(
+      ([args]) => !args.prompt.includes('Customer message:'),
+    )
+    expect(stage3Call?.[0].maxTokens).toBe(512)
+  })
 })
