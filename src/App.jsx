@@ -183,6 +183,7 @@ function AppShell() {
                   onDelete={inv.handleDeleteInvoice}
                   onDraftChange={inv.handleDraftChange}
                   aiMode={settings.aiMode}
+                  aiReady={ai.aiReady}
                   runInference={ai.runInference}
                   toast={toast}
                   smartPasteContext={settings.smartPasteContext}
