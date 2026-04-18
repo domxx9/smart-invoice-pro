@@ -15,6 +15,7 @@
 import { getTopCandidates } from '../matcher.js'
 import { buildExtractPrompt } from './prompts/extractPrompt.js'
 import { buildMatchPrompt } from './prompts/matchPrompt.js'
+import { logger } from '../utils/logger.js'
 
 const MATCH_BATCH_SIZE = 2
 
@@ -87,12 +88,16 @@ export async function extractLineItems({ text, context, runInference, maxTokens 
   let result
   try {
     result = await runInference({ prompt, maxTokens })
-  } catch {
+  } catch (err) {
+    logger.warn('smartPaste.stage1_runtime_error', { message: String(err?.message ?? err) })
     return []
   }
   const raw = typeof result === 'string' ? result : result?.text
   const parsed = safeParseJsonArray(raw, { schema: isExtractedLine })
-  if (!parsed.ok) return []
+  if (!parsed.ok) {
+    logger.warn('smartPaste.stage1_parse_failed', { reason: parsed.error })
+    return []
+  }
   return parsed.value.map((item) => ({
     text: item.text,
     qty: Math.max(1, Math.floor(item.qty)),
@@ -148,18 +153,24 @@ export async function runSmartPastePipeline({
   }
   const emit = typeof onStage === 'function' ? onStage : () => {}
 
+  logger.info('smartPaste.stage1_start')
   emit({ stage: 'extract' })
   let extracted
   try {
     extracted = await extractLineItems({ text, context, runInference })
   } catch (error) {
+    logger.warn('smartPaste.stage1_runtime_error', { message: String(error?.message ?? error) })
     emit({ stage: 'extract', error })
+    logger.info('smartPaste.pipeline_complete', { fallback: true, callCount: 1 })
     return { extracted: [], rows: [], callCount: 1, fallback: true }
   }
 
   if (!extracted.length) {
+    logger.warn('smartPaste.stage1_empty')
+    logger.info('smartPaste.pipeline_complete', { fallback: true, callCount: 1 })
     return { extracted: [], rows: [], callCount: 1, fallback: true }
   }
+  logger.info('smartPaste.stage1_complete', { extracted: extracted.length, callCount: 1 })
 
   const filtered = filterCandidates({ extracted, products })
   const batches = chunk(filtered, MATCH_BATCH_SIZE)
@@ -176,14 +187,24 @@ export async function runSmartPastePipeline({
     const batch = batches[batchIndex]
     const offset = batchIndex * MATCH_BATCH_SIZE
     callCount += 1
+    logger.info('smartPaste.stage3_batch_start', { batchIndex, totalBatches: batches.length })
     emit({ stage: 'match', batchIndex, totalBatches: batches.length })
     let matches
     try {
       matches = await matchBatch({ batch, context, runInference })
     } catch (error) {
+      logger.warn('smartPaste.stage3_batch_failed', {
+        batchIndex,
+        message: String(error?.message ?? error),
+      })
       emit({ stage: 'match', batchIndex, totalBatches: batches.length, error })
       continue
     }
+    logger.info('smartPaste.stage3_batch_complete', {
+      batchIndex,
+      totalBatches: batches.length,
+      matched: matches.length,
+    })
     for (const m of matches) {
       const localIdx = m.lineIndex
       if (!Number.isInteger(localIdx) || localIdx < 0 || localIdx >= batch.length) continue
@@ -208,5 +229,6 @@ export async function runSmartPastePipeline({
     }
   }
 
+  logger.info('smartPaste.pipeline_complete', { fallback: false, callCount })
   return { extracted, rows, callCount, fallback: false }
 }

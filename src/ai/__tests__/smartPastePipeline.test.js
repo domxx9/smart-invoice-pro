@@ -7,7 +7,7 @@
  * builders are validated indirectly through the prompt strings the stub sees.
  */
 
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 import {
   extractLineItems,
@@ -16,6 +16,7 @@ import {
   runSmartPastePipeline,
   safeParseJsonArray,
 } from '../smartPastePipeline.js'
+import { logger } from '../../utils/logger.js'
 
 const CONTEXT = {
   productType: 'auto parts',
@@ -351,5 +352,99 @@ describe('runSmartPastePipeline', () => {
     await expect(runSmartPastePipeline({ text: 'x', products: PRODUCTS })).rejects.toThrow(
       /runInference/,
     )
+  })
+})
+
+describe('smartPastePipeline logger instrumentation (SMA-68)', () => {
+  let infoSpy
+  let warnSpy
+
+  beforeEach(() => {
+    infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {})
+    warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {})
+    infoSpy.mockClear()
+    warnSpy.mockClear()
+  })
+
+  it('logs stage1 parse failure when extract response is not JSON', async () => {
+    const runInference = vi.fn().mockResolvedValue({ text: 'no idea, sorry', source: 'test' })
+    await extractLineItems({ text: 'nonsense', context: CONTEXT, runInference })
+    const tags = warnSpy.mock.calls.map(([tag]) => tag)
+    expect(tags).toContain('smartPaste.stage1_parse_failed')
+  })
+
+  it('logs stage1 runtime error when runInference throws', async () => {
+    const runInference = vi.fn().mockRejectedValue(new Error('network down'))
+    await extractLineItems({ text: 'hi', runInference })
+    const call = warnSpy.mock.calls.find(([tag]) => tag === 'smartPaste.stage1_runtime_error')
+    expect(call).toBeTruthy()
+    expect(call[1]).toMatchObject({ message: expect.stringContaining('network down') })
+  })
+
+  it('emits stage1/stage3 lifecycle logs on a successful run', async () => {
+    const extract = [
+      { text: 'a', qty: 1, description: '' },
+      { text: 'b', qty: 1, description: '' },
+      { text: 'c', qty: 1, description: '' },
+    ]
+    let call = 0
+    const runInference = vi.fn(async ({ prompt }) => {
+      if (prompt.includes('Customer message:')) return jsonResponse(extract)
+      call += 1
+      if (call === 1) {
+        return jsonResponse([
+          { lineIndex: 0, productId: 'p1', confidence: 90 },
+          { lineIndex: 1, productId: 'p2', confidence: 85 },
+        ])
+      }
+      return jsonResponse([{ lineIndex: 0, productId: 'p3', confidence: 70 }])
+    })
+    await runSmartPastePipeline({
+      text: 'order',
+      products: PRODUCTS,
+      context: CONTEXT,
+      runInference,
+    })
+    const tags = infoSpy.mock.calls.map(([tag]) => tag)
+    expect(tags).toContain('smartPaste.stage1_start')
+    expect(tags).toContain('smartPaste.stage1_complete')
+    expect(tags).toContain('smartPaste.stage3_batch_start')
+    expect(tags).toContain('smartPaste.stage3_batch_complete')
+    const completion = infoSpy.mock.calls.find(([tag]) => tag === 'smartPaste.pipeline_complete')
+    expect(completion?.[1]).toMatchObject({ fallback: false, callCount: 3 })
+  })
+
+  it('warns on stage3 batch failure with batchIndex and reason', async () => {
+    const extract = [{ text: 'front shock', qty: 1, description: '' }]
+    let call = 0
+    const runInference = vi.fn(async ({ prompt }) => {
+      if (prompt.includes('Customer message:')) return jsonResponse(extract)
+      call += 1
+      throw new Error('rate limit')
+    })
+    await runSmartPastePipeline({
+      text: 'order',
+      products: PRODUCTS,
+      context: CONTEXT,
+      runInference,
+    })
+    const failed = warnSpy.mock.calls.find(([tag]) => tag === 'smartPaste.stage3_batch_failed')
+    expect(failed).toBeTruthy()
+    expect(failed[1]).toMatchObject({ batchIndex: 0, message: expect.stringContaining('rate') })
+    expect(call).toBeGreaterThan(0)
+  })
+
+  it('logs pipeline_complete with fallback=true when extract is empty', async () => {
+    const runInference = vi.fn().mockResolvedValue(jsonResponse([]))
+    await runSmartPastePipeline({
+      text: 'hi',
+      products: PRODUCTS,
+      context: CONTEXT,
+      runInference,
+    })
+    const completion = infoSpy.mock.calls.find(([tag]) => tag === 'smartPaste.pipeline_complete')
+    expect(completion?.[1]).toMatchObject({ fallback: true })
+    const emptyWarn = warnSpy.mock.calls.find(([tag]) => tag === 'smartPaste.stage1_empty')
+    expect(emptyWarn).toBeTruthy()
   })
 })

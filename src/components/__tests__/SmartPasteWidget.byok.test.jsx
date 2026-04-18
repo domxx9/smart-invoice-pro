@@ -17,6 +17,7 @@ vi.mock('../../ai/smartPastePipeline.js', () => ({
 
 import { runSmartPastePipeline } from '../../ai/smartPastePipeline.js'
 import { SmartPasteWidget } from '../SmartPasteWidget.jsx'
+import { logger } from '../../utils/logger.js'
 
 const products = [
   { id: 'p1', name: 'Blue Molar Extractor', price: 25 },
@@ -269,5 +270,147 @@ describe('SmartPasteWidget pipeline wiring', () => {
     typeAndParse('2 x Blue Molar Extractor')
     expect(runSmartPastePipeline).not.toHaveBeenCalled()
     expect(screen.getByText(/100% match/)).toBeInTheDocument()
+  })
+})
+
+describe('SmartPasteWidget skip diagnostics (SMA-68)', () => {
+  let infoSpy
+  let warnSpy
+  let errorSpy
+
+  beforeEach(() => {
+    runSmartPastePipeline.mockReset()
+    infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {})
+    warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {})
+    errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => {})
+    infoSpy.mockClear()
+    warnSpy.mockClear()
+    errorSpy.mockClear()
+  })
+
+  function lastSkipReason() {
+    const calls = infoSpy.mock.calls.filter(([tag]) => tag === 'smartPaste.pipeline_skipped')
+    return calls[calls.length - 1]?.[1]?.reason
+  }
+
+  it('logs mode_not_byok when aiMode is off', () => {
+    setup({ aiMode: 'off' })
+    typeAndParse('2 x Blue Molar Extractor')
+    expect(lastSkipReason()).toBe('mode_not_byok')
+    expect(screen.queryByTestId('smart-paste-skip-hint')).not.toBeInTheDocument()
+  })
+
+  it('logs context_missing and renders the inline hint', () => {
+    setup({ smartPasteContext: EMPTY_CONTEXT })
+    typeAndParse('4 x Unknown widget')
+    expect(lastSkipReason()).toBe('context_missing')
+    const hint = screen.getByTestId('smart-paste-skip-hint')
+    expect(hint).toHaveTextContent(/AI context missing/i)
+  })
+
+  it('inline hint "set it up in Settings" link calls onOpenSettings', () => {
+    const onOpenSettings = vi.fn()
+    setup({ smartPasteContext: EMPTY_CONTEXT, onOpenSettings })
+    typeAndParse('4 x Unknown widget')
+    const hint = screen.getByTestId('smart-paste-skip-hint')
+    fireEvent.click(within(hint).getByRole('link', { name: /set it up in Settings/i }))
+    expect(onOpenSettings).toHaveBeenCalledWith('smart-paste-ai-context')
+  })
+
+  it('logs no_runinference when runInference is not provided', () => {
+    // Pass null so the destructure default (`runInference = vi.fn()`) does not fire.
+    setup({ runInference: null })
+    typeAndParse('4 x Unknown widget')
+    expect(lastSkipReason()).toBe('no_runinference')
+    expect(screen.queryByTestId('smart-paste-skip-hint')).not.toBeInTheDocument()
+  })
+
+  it('logs no_products and renders the catalog hint', () => {
+    render(
+      <SmartPasteWidget
+        products={[]}
+        onAddItems={vi.fn()}
+        aiMode="byok"
+        runInference={vi.fn()}
+        toast={vi.fn()}
+        smartPasteContext={FULL_CONTEXT}
+        onOpenSettings={vi.fn()}
+      />,
+    )
+    typeAndParse('4 x Something')
+    expect(lastSkipReason()).toBe('no_products')
+    expect(screen.getByTestId('smart-paste-skip-hint')).toHaveTextContent(/Catalog is empty/i)
+  })
+
+  it('logs no_low_confidence_rows without rendering a hint when fuzzy covered everything', () => {
+    setup()
+    typeAndParse('2 x Blue Molar Extractor')
+    expect(lastSkipReason()).toBe('no_low_confidence_rows')
+    expect(screen.queryByTestId('smart-paste-skip-hint')).not.toBeInTheDocument()
+  })
+
+  it('logs pipeline_started before invoking the pipeline on happy path', async () => {
+    runSmartPastePipeline.mockResolvedValue({
+      extracted: [{ text: 'Mystery', qty: 1, description: '' }],
+      rows: [
+        {
+          extracted: { text: 'Mystery', qty: 1, description: '' },
+          product: products[0],
+          confidence: 82,
+          source: 'ai',
+        },
+      ],
+      callCount: 2,
+      fallback: false,
+    })
+    setup()
+    typeAndParse('Mystery Item')
+    await waitFor(() => expect(runSmartPastePipeline).toHaveBeenCalledTimes(1))
+    const started = infoSpy.mock.calls.find(([tag]) => tag === 'smartPaste.pipeline_started')
+    expect(started).toBeTruthy()
+    expect(started[1]).toMatchObject({
+      rowCount: expect.any(Number),
+      lowConfidenceCount: expect.any(Number),
+    })
+  })
+
+  it('logs pipeline_threw with the error message when the pipeline throws', async () => {
+    runSmartPastePipeline.mockRejectedValue(new Error('quota exceeded'))
+    const toast = vi.fn()
+    setup({ toast })
+    typeAndParse('Mystery Item')
+    await waitFor(() => {
+      const call = errorSpy.mock.calls.find(([tag]) => tag === 'smartPaste.pipeline_threw')
+      expect(call).toBeTruthy()
+      expect(call[1]).toMatchObject({ message: expect.stringContaining('quota exceeded') })
+    })
+    expect(toast).toHaveBeenCalledWith(expect.stringContaining('AI extract failed'))
+  })
+
+  it('retries once and warns when the pipeline throws "API key not configured"', async () => {
+    runSmartPastePipeline
+      .mockRejectedValueOnce(new Error('BYOK: API key not configured'))
+      .mockResolvedValueOnce({
+        extracted: [{ text: 'Mystery', qty: 1, description: '' }],
+        rows: [
+          {
+            extracted: { text: 'Mystery', qty: 1, description: '' },
+            product: products[0],
+            confidence: 82,
+            source: 'ai',
+          },
+        ],
+        callCount: 2,
+        fallback: false,
+      })
+    setup()
+    typeAndParse('Mystery Item')
+    await waitFor(() => expect(runSmartPastePipeline).toHaveBeenCalledTimes(2))
+    const warnCall = warnSpy.mock.calls.find(
+      ([tag]) => tag === 'smartPaste.byok_key_not_hydrated_yet',
+    )
+    expect(warnCall).toBeTruthy()
+    // The retry succeeded — no error log should have been emitted.
+    expect(errorSpy.mock.calls.find(([tag]) => tag === 'smartPaste.pipeline_threw')).toBeFalsy()
   })
 })

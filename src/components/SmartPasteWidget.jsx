@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { cleanWhatsApp, extractItems, matchItems, fmt } from '../helpers.js'
 import { runSmartPastePipeline } from '../ai/smartPastePipeline.js'
 import { isSmartPasteContextSet } from '../contexts/SettingsContext.jsx'
+import { logger } from '../utils/logger.js'
 import { Icon } from './Icon.jsx'
 
 const AI_CONFIDENCE_FLOOR = 65
@@ -62,6 +63,7 @@ export function SmartPasteWidget({
   const [batchFailed, setBatchFailed] = useState({})
   const [pipelineStage, setPipelineStage] = useState(null)
   const [bannerDismissed, setBannerDismissed] = useState(false)
+  const [skipHint, setSkipHint] = useState(null)
 
   const contextReady = isSmartPasteContextSet({ smartPasteContext })
   const showContextBanner = aiMode === 'byok' && !contextReady && !bannerDismissed
@@ -93,20 +95,33 @@ export function SmartPasteWidget({
     setAiPending({})
     setBatchFailed({})
     setPipelineStage(null)
+    setSkipHint(null)
 
     const cleaned = cleanWhatsApp(pasteText)
     const extracted = extractItems(cleaned)
     const results = matchItems(extracted, products)
     setPasteResults(results)
 
-    const shouldRunPipeline =
-      aiMode === 'byok' &&
-      contextReady &&
-      typeof runInference === 'function' &&
-      !!products?.length &&
-      results.some((r) => !r.product && (r.confidence ?? 0) < AI_CONFIDENCE_FLOOR)
+    const lowConfidenceCount = results.filter(
+      (r) => !r.product && (r.confidence ?? 0) < AI_CONFIDENCE_FLOOR,
+    ).length
 
-    if (!shouldRunPipeline) return
+    let skipReason = null
+    if (aiMode !== 'byok') skipReason = 'mode_not_byok'
+    else if (!contextReady) skipReason = 'context_missing'
+    else if (typeof runInference !== 'function') skipReason = 'no_runinference'
+    else if (!products?.length) skipReason = 'no_products'
+    else if (lowConfidenceCount === 0) skipReason = 'no_low_confidence_rows'
+
+    if (skipReason) {
+      logger.info('smartPaste.pipeline_skipped', { reason: skipReason })
+      if (skipReason === 'context_missing' || skipReason === 'no_products') {
+        setSkipHint(skipReason)
+      }
+      return
+    }
+
+    logger.info('smartPaste.pipeline_started', { rowCount: results.length, lowConfidenceCount })
 
     const onStage = ({ stage, batchIndex, error }) => {
       if (stage === 'extract') {
@@ -142,20 +157,44 @@ export function SmartPasteWidget({
       }
     }
 
-    let pipelineResult
-    try {
-      pipelineResult = await runSmartPastePipeline({
+    const invokePipeline = () =>
+      runSmartPastePipeline({
         text: cleaned,
         products,
         context: smartPasteContext,
         runInference,
         onStage,
       })
-    } catch {
-      setPipelineStage(null)
-      setAiPending({})
-      toast?.('AI extract failed — using fallback')
-      return
+
+    let pipelineResult
+    try {
+      pipelineResult = await invokePipeline()
+    } catch (err) {
+      const message = String(err?.message ?? err)
+      // BYOK secret hydrates asynchronously from secure storage on app start.
+      // If Parse fires before hydration completes, retry once after a short
+      // tick instead of surfacing the generic fallback toast.
+      if (aiMode === 'byok' && message.includes('API key not configured')) {
+        logger.warn('smartPaste.byok_key_not_hydrated_yet', { message })
+        await new Promise((resolve) => setTimeout(resolve, 200))
+        try {
+          pipelineResult = await invokePipeline()
+        } catch (err2) {
+          logger.error('smartPaste.pipeline_threw', {
+            message: String(err2?.message ?? err2),
+          })
+          setPipelineStage(null)
+          setAiPending({})
+          toast?.('AI extract failed — using fallback')
+          return
+        }
+      } else {
+        logger.error('smartPaste.pipeline_threw', { message })
+        setPipelineStage(null)
+        setAiPending({})
+        toast?.('AI extract failed — using fallback')
+        return
+      }
     }
 
     setPipelineStage(null)
@@ -265,6 +304,7 @@ export function SmartPasteWidget({
         onChange={(e) => {
           setPasteText(e.target.value)
           setPasteResults(null)
+          setSkipHint(null)
         }}
         placeholder={
           'Paste an order, email, or list here…\n\nExample:\n4 x Blue Molar Extractor\n2 x 10 Instruments Sterilisation Cassette'
@@ -288,6 +328,33 @@ export function SmartPasteWidget({
           style={{ fontSize: '.75rem', color: 'var(--accent)', marginTop: 8 }}
         >
           Parsing…
+        </div>
+      )}
+
+      {skipHint && (
+        <div
+          role="note"
+          data-testid="smart-paste-skip-hint"
+          style={{
+            fontSize: '.72rem',
+            color: 'var(--muted)',
+            marginTop: 8,
+            lineHeight: 1.4,
+          }}
+        >
+          {skipHint === 'context_missing' && (
+            <>
+              AI context missing —{' '}
+              <a
+                href="#smart-paste-ai-context"
+                onClick={handleOpenSettings}
+                style={{ color: 'var(--accent)', fontWeight: 600 }}
+              >
+                set it up in Settings
+              </a>
+            </>
+          )}
+          {skipHint === 'no_products' && <>Catalog is empty — sync products first</>}
         </div>
       )}
 
