@@ -11,6 +11,16 @@
  *   (anything)        → ERROR { id?, message }
  */
 
+// MediaPipe's genai bundle calls `self.import(url)` in module workers as a
+// fallback for `importScripts` (which module workers don't expose). Browsers
+// don't define `self.import`, so without this bridge the runtime throws
+// "self.import is not a function" the moment it tries to lazy-load the wasm
+// glue script. Route it to native dynamic import. `@vite-ignore` prevents the
+// bundler from resolving the MediaPipe CDN URL at build time. See SMA-47.
+if (typeof self !== 'undefined' && typeof self.import !== 'function') {
+  self.import = (url) => import(/* @vite-ignore */ url)
+}
+
 const WASM_CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai/wasm'
 
 let _llm = null

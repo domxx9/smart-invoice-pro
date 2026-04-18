@@ -12,6 +12,7 @@ import { initGemma } from '../gemmaWorker.js'
 import { testConnection as byokTestConnection } from '../byok.js'
 import { getSecret, deleteSecret } from '../secure-storage.js'
 import { runInference as pipelineRunInference } from '../ai/pipeline.js'
+import { logger } from '../utils/logger.js'
 
 /**
  * Load a model via the worker facade (SMA-39) with a desktop fallback to
@@ -72,7 +73,7 @@ export function useAiModel(toast, settings) {
           // When unavailable on native we stay quiet on auto-init; the
           // BYOK panel in Settings already tells the user what to do.
         } catch (e) {
-          console.error('[AI] auto-init error:', e)
+          logger.error('ai-model', 'auto-init error:', e)
         } finally {
           setAiLoading(false)
         }
@@ -95,7 +96,7 @@ export function useAiModel(toast, settings) {
       toast?.('AI model downloaded', 'success', '🤖')
     } catch (e) {
       if (e.name !== 'AbortError') {
-        console.error('[AI] download error:', e)
+        logger.error('ai-model', 'download error:', e)
         toast?.('Download failed — check your connection', 'error')
       }
     } finally {
@@ -127,7 +128,7 @@ export function useAiModel(toast, settings) {
       setLoadedModelId(id)
       toast?.('AI model loaded and ready', 'success', '⚡')
     } catch (e) {
-      console.error('[AI] load error:', e)
+      logger.error('ai-model', 'load error:', e)
       toast?.(e?.message || 'Failed to load AI model', 'error')
     } finally {
       setAiLoading(false)

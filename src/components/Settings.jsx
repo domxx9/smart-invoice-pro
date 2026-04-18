@@ -606,7 +606,13 @@ export function Settings({ ai, onStartTour }) {
                   const downloaded = !!aiDownloaded[m.id]
                   const downloading = aiDownloading === m.id
                   const progress = aiDownloadProgress[m.id]
-                  const indeterminate = downloading && (progress == null || progress === 0)
+                  // Progress sentinels (SMA-47):
+                  //   null  → pre-fetch, label "Connecting…"
+                  //   -1    → bytes flowing, size unknown → animate + "Downloading…"
+                  //   0..1  → determinate
+                  const connecting = downloading && progress == null
+                  const indeterminate =
+                    downloading && (connecting || progress === -1 || progress === 0)
                   const loaded = aiReady && loadedModelId === m.id
 
                   return (
@@ -676,12 +682,12 @@ export function Settings({ ai, onStartTour }) {
                                 marginBottom: 4,
                               }}
                             >
-                              <span>{indeterminate ? 'Connecting…' : 'Downloading…'}</span>
+                              <span>{connecting ? 'Connecting…' : 'Downloading…'}</span>
                               <span>{indeterminate ? '' : `${Math.round(progress * 100)}%`}</span>
                             </div>
                             <div
                               role="progressbar"
-                              aria-label={indeterminate ? 'Connecting' : 'Downloading AI model'}
+                              aria-label={connecting ? 'Connecting' : 'Downloading AI model'}
                               aria-valuemin={0}
                               aria-valuemax={100}
                               {...(indeterminate
