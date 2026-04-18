@@ -56,6 +56,83 @@ function stripCodeFences(text) {
     .trim()
 }
 
+// Recover complete objects from a JSON array that was cut off before its
+// closing `]` — chat models sometimes stop generating mid-array, and a
+// second identical call repeats the same truncation. Walks the response
+// char-by-char (string- and brace-aware), slices up to the last fully
+// closed top-level object, then appends `]` so JSON.parse succeeds.
+// Schema-invalid items are dropped rather than poisoning the salvage.
+export function salvagePartialJsonArray(text, { schema } = {}) {
+  if (typeof text !== 'string' || !text.trim()) {
+    return { ok: false, error: 'empty response' }
+  }
+  const stripped = stripCodeFences(text)
+  const start = stripped.indexOf('[')
+  if (start === -1) return { ok: false, error: 'no array start' }
+
+  let depth = 0
+  let inString = false
+  let escaped = false
+  let lastCompleteEnd = -1
+  let closedAtTopLevel = false
+
+  for (let i = start + 1; i < stripped.length; i++) {
+    const c = stripped[i]
+    if (inString) {
+      if (escaped) {
+        escaped = false
+        continue
+      }
+      if (c === '\\') {
+        escaped = true
+        continue
+      }
+      if (c === '"') inString = false
+      continue
+    }
+    if (c === '"') {
+      inString = true
+      continue
+    }
+    if (c === '{') {
+      depth++
+      continue
+    }
+    if (c === '}') {
+      depth--
+      if (depth === 0) lastCompleteEnd = i
+      continue
+    }
+    if (c === ']' && depth === 0) {
+      closedAtTopLevel = true
+      break
+    }
+  }
+
+  if (closedAtTopLevel) return { ok: false, error: 'array already closed' }
+  if (lastCompleteEnd === -1) return { ok: false, error: 'no complete object to salvage' }
+
+  const candidate = `${stripped.slice(start, lastCompleteEnd + 1)}]`
+  let parsed
+  try {
+    parsed = JSON.parse(candidate)
+  } catch (e) {
+    return { ok: false, error: `salvage parse failed: ${e.message}` }
+  }
+  if (!Array.isArray(parsed)) return { ok: false, error: 'salvage value is not an array' }
+
+  const validated =
+    typeof schema === 'function' ? parsed.filter((item) => schema(item) === true) : parsed
+  if (!validated.length) return { ok: false, error: 'salvage yielded zero valid items' }
+
+  return {
+    ok: true,
+    value: validated,
+    salvagedCount: validated.length,
+    attemptedCount: parsed.length,
+  }
+}
+
 function isExtractedLine(item) {
   if (!item || typeof item !== 'object') return 'item is not an object'
   if (typeof item.text !== 'string') return 'text is not a string'
@@ -111,7 +188,28 @@ async function invokeExtract({ prompt, maxTokens, runInference }) {
   return { kind: 'parsed', value: parsed.value }
 }
 
-export async function extractLineItems({ text, context, runInference, maxTokens = 1024 } = {}) {
+function trySalvage(raw, { attempt }) {
+  const salvage = salvagePartialJsonArray(raw, { schema: isExtractedLine })
+  if (!salvage.ok) return null
+  logger.info('smartPaste.stage1_salvaged', {
+    attempt,
+    salvagedCount: salvage.salvagedCount,
+    attemptedCount: salvage.attemptedCount,
+  })
+  return salvage.value
+}
+
+// Stage 1 LLM budget. 2048 tokens gives ~8 KB of JSON room — comfortable
+// for a 20-item paste — and salvagePartialJsonArray recovers complete
+// items if the model truncates anyway.
+const STAGE1_DEFAULT_MAX_TOKENS = 2048
+
+export async function extractLineItems({
+  text,
+  context,
+  runInference,
+  maxTokens = STAGE1_DEFAULT_MAX_TOKENS,
+} = {}) {
   if (typeof runInference !== 'function') {
     throw new Error('extractLineItems: runInference is required')
   }
@@ -126,6 +224,12 @@ export async function extractLineItems({ text, context, runInference, maxTokens 
 
   logger.warn('smartPaste.stage1_parse_failed', { reason: first.reason })
   logger.debug('smartPaste.stage1_parse_failed_shape', describeRawResponse(first.raw))
+
+  const firstSalvage = trySalvage(first.raw, { attempt: 'first' })
+  if (firstSalvage) {
+    return { items: normalizeExtracted(firstSalvage), callCount: 1 }
+  }
+
   logger.info('smartPaste.stage1_retry_attempt')
 
   const second = await invokeExtract({ prompt, maxTokens, runInference })
@@ -140,6 +244,12 @@ export async function extractLineItems({ text, context, runInference, maxTokens 
 
   logger.warn('smartPaste.stage1_retry_failed', { reason: second.reason })
   logger.debug('smartPaste.stage1_parse_failed_shape', describeRawResponse(second.raw))
+
+  const retrySalvage = trySalvage(second.raw, { attempt: 'retry' })
+  if (retrySalvage) {
+    return { items: normalizeExtracted(retrySalvage), callCount: 2 }
+  }
+
   return { items: [], callCount: 2 }
 }
 

@@ -15,6 +15,7 @@ import {
   matchBatch,
   runSmartPastePipeline,
   safeParseJsonArray,
+  salvagePartialJsonArray,
 } from '../smartPastePipeline.js'
 import { logger } from '../../utils/logger.js'
 
@@ -78,6 +79,86 @@ describe('safeParseJsonArray', () => {
   })
 })
 
+describe('salvagePartialJsonArray (SMA-70)', () => {
+  const extractSchema = (item) =>
+    item &&
+    typeof item.text === 'string' &&
+    typeof item.qty === 'number' &&
+    typeof item.description === 'string'
+      ? true
+      : 'bad shape'
+
+  it('recovers complete objects when the response is cut off mid-element', () => {
+    // Mirrors the real dogfood trace: array opens, two complete items, a third
+    // object started mid-generation, then EOF with no closing `]`.
+    const truncated =
+      '[{"text":"blade holder","qty":1,"description":""},{"text":"anvil","qty":2,"description":"longs ones"},{"text":"unc probe","qty":1,"description":"'
+    const r = salvagePartialJsonArray(truncated, { schema: extractSchema })
+    expect(r.ok).toBe(true)
+    expect(r.value).toEqual([
+      { text: 'blade holder', qty: 1, description: '' },
+      { text: 'anvil', qty: 2, description: 'longs ones' },
+    ])
+    expect(r.salvagedCount).toBe(2)
+    expect(r.attemptedCount).toBe(2)
+  })
+
+  it('refuses to salvage when the array already closed cleanly', () => {
+    // safeParseJsonArray is the right tool for well-formed input.
+    const r = salvagePartialJsonArray('[{"text":"a","qty":1,"description":""}]')
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/already closed/)
+  })
+
+  it('refuses to salvage when no complete object has closed yet', () => {
+    const r = salvagePartialJsonArray('[{"text":"only started')
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/no complete object/)
+  })
+
+  it('refuses to salvage when no `[` is present', () => {
+    const r = salvagePartialJsonArray('I cannot help with that.')
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/no array start/)
+  })
+
+  it('ignores braces inside strings (string-aware walk)', () => {
+    // An inner `}` inside a quoted description must not close the object.
+    const truncated =
+      '[{"text":"widget","qty":1,"description":"weird } inside"},{"text":"next","qty":2,"description":"'
+    const r = salvagePartialJsonArray(truncated, { schema: extractSchema })
+    expect(r.ok).toBe(true)
+    expect(r.value).toEqual([{ text: 'widget', qty: 1, description: 'weird } inside' }])
+  })
+
+  it('handles escaped quotes inside strings', () => {
+    const truncated = '[{"text":"foo \\"bar\\" baz","qty":1,"description":""},{"text":"next","qty":'
+    const r = salvagePartialJsonArray(truncated, { schema: extractSchema })
+    expect(r.ok).toBe(true)
+    expect(r.value).toEqual([{ text: 'foo "bar" baz', qty: 1, description: '' }])
+  })
+
+  it('drops schema-invalid items rather than failing the whole salvage', () => {
+    const truncated =
+      '[{"text":"good","qty":1,"description":""},{"text":123,"qty":"no","description":""},{"text":"also good","qty":2,"description":""},{"text":"partial"'
+    const r = salvagePartialJsonArray(truncated, { schema: extractSchema })
+    expect(r.ok).toBe(true)
+    expect(r.value).toEqual([
+      { text: 'good', qty: 1, description: '' },
+      { text: 'also good', qty: 2, description: '' },
+    ])
+    expect(r.salvagedCount).toBe(2)
+    expect(r.attemptedCount).toBe(3)
+  })
+
+  it('strips markdown code fences before walking', () => {
+    const truncated = '```json\n[{"text":"widget","qty":1,"description":""},{"text":"partial'
+    const r = salvagePartialJsonArray(truncated, { schema: extractSchema })
+    expect(r.ok).toBe(true)
+    expect(r.value).toEqual([{ text: 'widget', qty: 1, description: '' }])
+  })
+})
+
 describe('extractLineItems', () => {
   it('returns the parsed items on a clean response and clamps qty to >=1', async () => {
     const runInference = vi.fn().mockResolvedValue(
@@ -129,6 +210,58 @@ describe('extractLineItems', () => {
     expect(runInference).toHaveBeenCalledTimes(2)
     expect(out.items).toEqual([{ text: 'brake pad', qty: 1, description: 'front' }])
     expect(out.callCount).toBe(2)
+  })
+
+  it('salvages complete items from a truncated first response and skips the retry (SMA-70)', async () => {
+    // Mirrors the real dogfood trace — response opens correctly, completes two
+    // items, then cuts off mid-third with no closing `]`. Retries would repeat
+    // the same truncation, so salvage is the right escape hatch.
+    const truncated =
+      '[{"text":"blade holder","qty":1,"description":""},{"text":"anvil","qty":2,"description":"longs ones"},{"text":"unc probe","qty":1,"description":"'
+    const runInference = vi.fn().mockResolvedValue({ text: truncated, source: 'test' })
+    const out = await extractLineItems({ text: 'big paste', runInference })
+    expect(runInference).toHaveBeenCalledTimes(1)
+    expect(out.items).toEqual([
+      { text: 'blade holder', qty: 1, description: '' },
+      { text: 'anvil', qty: 2, description: 'longs ones' },
+    ])
+    expect(out.callCount).toBe(1)
+  })
+
+  it('falls through to the retry when the first response cannot be salvaged (SMA-70)', async () => {
+    // Response has no `[` — salvage can't help. Retry fires as usual.
+    const runInference = vi
+      .fn()
+      .mockResolvedValueOnce({ text: 'Sorry, I cannot help.', source: 'test' })
+      .mockResolvedValueOnce(jsonResponse([{ text: 'oil filter', qty: 1, description: '' }]))
+    const out = await extractLineItems({ text: 'oil filter', runInference })
+    expect(runInference).toHaveBeenCalledTimes(2)
+    expect(out.items).toEqual([{ text: 'oil filter', qty: 1, description: '' }])
+  })
+
+  it('salvages from the retry response when the first is unsalvageable (SMA-70)', async () => {
+    // First response opens `[` but never closes any object, so salvage fails
+    // and retry is needed. Retry is truncated too but has one complete item.
+    const unsalvageableFirst = '[{"text":"only started'
+    const truncatedRetry =
+      '[{"text":"widget","qty":1,"description":""},{"text":"gadget","qty":3,"description":"red"},{"text":"cut'
+    const runInference = vi
+      .fn()
+      .mockResolvedValueOnce({ text: unsalvageableFirst, source: 'test' })
+      .mockResolvedValueOnce({ text: truncatedRetry, source: 'test' })
+    const out = await extractLineItems({ text: 'paste', runInference })
+    expect(runInference).toHaveBeenCalledTimes(2)
+    expect(out.items).toEqual([
+      { text: 'widget', qty: 1, description: '' },
+      { text: 'gadget', qty: 3, description: 'red' },
+    ])
+    expect(out.callCount).toBe(2)
+  })
+
+  it('requests 2048 max tokens for Stage 1 by default (SMA-70)', async () => {
+    const runInference = vi.fn().mockResolvedValue(jsonResponse([]))
+    await extractLineItems({ text: 'hi', runInference })
+    expect(runInference.mock.calls[0][0].maxTokens).toBe(2048)
   })
 
   it('returns empty items after the retry also fails to parse', async () => {
@@ -498,6 +631,23 @@ describe('smartPastePipeline logger instrumentation (SMA-68)', () => {
     const runInference = vi.fn().mockRejectedValue(new Error('network down'))
     await extractLineItems({ text: 'hi', runInference })
     expect(runInference).toHaveBeenCalledTimes(1)
+    const infoTags = infoSpy.mock.calls.map(([tag]) => tag)
+    expect(infoTags).not.toContain('smartPaste.stage1_retry_attempt')
+  })
+
+  it('logs stage1_salvaged with counts when the first response is truncated (SMA-70)', async () => {
+    const truncated =
+      '[{"text":"a","qty":1,"description":""},{"text":"b","qty":2,"description":""},{"text":"c"'
+    const runInference = vi.fn().mockResolvedValue({ text: truncated, source: 'test' })
+    await extractLineItems({ text: 'paste', runInference })
+    const salvaged = infoSpy.mock.calls.find(([tag]) => tag === 'smartPaste.stage1_salvaged')
+    expect(salvaged).toBeTruthy()
+    expect(salvaged[1]).toMatchObject({
+      attempt: 'first',
+      salvagedCount: 2,
+      attemptedCount: 2,
+    })
+    // Salvage on first attempt means no retry fires.
     const infoTags = infoSpy.mock.calls.map(([tag]) => tag)
     expect(infoTags).not.toContain('smartPaste.stage1_retry_attempt')
   })
