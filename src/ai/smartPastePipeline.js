@@ -79,30 +79,68 @@ function isMatchResult(item) {
   return true
 }
 
-export async function extractLineItems({ text, context, runInference, maxTokens = 1024 } = {}) {
-  if (typeof runInference !== 'function') {
-    throw new Error('extractLineItems: runInference is required')
+function describeRawResponse(raw) {
+  const str = typeof raw === 'string' ? raw : ''
+  return {
+    rawLength: str.length,
+    head: str.slice(0, 60),
+    tail: str.length > 60 ? str.slice(-60) : '',
   }
-  if (typeof text !== 'string' || !text.trim()) return []
-  const prompt = buildExtractPrompt({ text, context })
-  let result
-  try {
-    result = await runInference({ prompt, maxTokens })
-  } catch (err) {
-    logger.warn('smartPaste.stage1_runtime_error', { message: String(err?.message ?? err) })
-    return []
-  }
-  const raw = typeof result === 'string' ? result : result?.text
-  const parsed = safeParseJsonArray(raw, { schema: isExtractedLine })
-  if (!parsed.ok) {
-    logger.warn('smartPaste.stage1_parse_failed', { reason: parsed.error })
-    return []
-  }
-  return parsed.value.map((item) => ({
+}
+
+function normalizeExtracted(items) {
+  return items.map((item) => ({
     text: item.text,
     qty: Math.max(1, Math.floor(item.qty)),
     description: item.description,
   }))
+}
+
+async function invokeExtract({ prompt, maxTokens, runInference }) {
+  let result
+  try {
+    result = await runInference({ prompt, maxTokens })
+  } catch (err) {
+    const message = String(err?.message ?? err)
+    logger.warn('smartPaste.stage1_runtime_error', { message })
+    return { kind: 'runtime', message }
+  }
+  const raw = typeof result === 'string' ? result : result?.text
+  const parsed = safeParseJsonArray(raw, { schema: isExtractedLine })
+  if (!parsed.ok) return { kind: 'parse_failed', reason: parsed.error, raw }
+  return { kind: 'parsed', value: parsed.value }
+}
+
+export async function extractLineItems({ text, context, runInference, maxTokens = 1024 } = {}) {
+  if (typeof runInference !== 'function') {
+    throw new Error('extractLineItems: runInference is required')
+  }
+  if (typeof text !== 'string' || !text.trim()) return { items: [], callCount: 0 }
+  const prompt = buildExtractPrompt({ text, context })
+
+  const first = await invokeExtract({ prompt, maxTokens, runInference })
+  if (first.kind === 'runtime') return { items: [], callCount: 1 }
+  if (first.kind === 'parsed') {
+    return { items: normalizeExtracted(first.value), callCount: 1 }
+  }
+
+  logger.warn('smartPaste.stage1_parse_failed', { reason: first.reason })
+  logger.debug('smartPaste.stage1_parse_failed_shape', describeRawResponse(first.raw))
+  logger.info('smartPaste.stage1_retry_attempt')
+
+  const second = await invokeExtract({ prompt, maxTokens, runInference })
+  if (second.kind === 'runtime') {
+    logger.warn('smartPaste.stage1_retry_failed', { reason: `runtime: ${second.message}` })
+    return { items: [], callCount: 2 }
+  }
+  if (second.kind === 'parsed') {
+    logger.info('smartPaste.stage1_retry_succeeded')
+    return { items: normalizeExtracted(second.value), callCount: 2 }
+  }
+
+  logger.warn('smartPaste.stage1_retry_failed', { reason: second.reason })
+  logger.debug('smartPaste.stage1_parse_failed_shape', describeRawResponse(second.raw))
+  return { items: [], callCount: 2 }
 }
 
 export function filterCandidates({ extracted, products, topN = 50 } = {}) {
@@ -155,9 +193,9 @@ export async function runSmartPastePipeline({
 
   logger.info('smartPaste.stage1_start')
   emit({ stage: 'extract' })
-  let extracted
+  let extractResult
   try {
-    extracted = await extractLineItems({ text, context, runInference })
+    extractResult = await extractLineItems({ text, context, runInference })
   } catch (error) {
     logger.warn('smartPaste.stage1_runtime_error', { message: String(error?.message ?? error) })
     emit({ stage: 'extract', error })
@@ -165,12 +203,18 @@ export async function runSmartPastePipeline({
     return { extracted: [], rows: [], callCount: 1, fallback: true }
   }
 
+  const extracted = extractResult.items
+  const stage1CallCount = Math.max(extractResult.callCount, 1)
+
   if (!extracted.length) {
     logger.warn('smartPaste.stage1_empty')
-    logger.info('smartPaste.pipeline_complete', { fallback: true, callCount: 1 })
-    return { extracted: [], rows: [], callCount: 1, fallback: true }
+    logger.info('smartPaste.pipeline_complete', { fallback: true, callCount: stage1CallCount })
+    return { extracted: [], rows: [], callCount: stage1CallCount, fallback: true }
   }
-  logger.info('smartPaste.stage1_complete', { extracted: extracted.length, callCount: 1 })
+  logger.info('smartPaste.stage1_complete', {
+    extracted: extracted.length,
+    callCount: stage1CallCount,
+  })
 
   const filtered = filterCandidates({ extracted, products })
   const batches = chunk(filtered, MATCH_BATCH_SIZE)
@@ -181,7 +225,7 @@ export async function runSmartPastePipeline({
     confidence: 0,
     source: 'fuzzy',
   }))
-  let callCount = 1
+  let callCount = stage1CallCount
 
   for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
     const batch = batches[batchIndex]

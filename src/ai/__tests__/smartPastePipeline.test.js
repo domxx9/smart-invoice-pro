@@ -92,32 +92,66 @@ describe('extractLineItems', () => {
       runInference,
     })
     expect(runInference).toHaveBeenCalledTimes(1)
-    expect(out).toEqual([
+    expect(out.items).toEqual([
       { text: '5100 fronts', qty: 2, description: 'lifted Tacoma' },
       { text: 'oil filter', qty: 1, description: '' },
     ])
+    expect(out.callCount).toBe(1)
   })
 
-  it('returns [] (fallback signal) when the model returns non-JSON', async () => {
-    const runInference = vi.fn().mockResolvedValue({ text: 'no idea, sorry', source: 'test' })
-    const out = await extractLineItems({
-      text: 'nonsense',
-      context: CONTEXT,
-      runInference,
+  it('returns items when response has a prose preamble wrapping the JSON array', async () => {
+    const runInference = vi.fn().mockResolvedValue({
+      text: 'Sure! Here you go:\n[{"text":"front shock","qty":1,"description":""}]',
+      source: 'test',
     })
-    expect(out).toEqual([])
+    const out = await extractLineItems({ text: 'front shock', runInference })
+    expect(runInference).toHaveBeenCalledTimes(1)
+    expect(out.items).toEqual([{ text: 'front shock', qty: 1, description: '' }])
+    expect(out.callCount).toBe(1)
   })
 
-  it('returns [] when runInference throws (network error etc.)', async () => {
+  it('returns items when response is wrapped in a ```json code fence', async () => {
+    const runInference = vi.fn().mockResolvedValue({
+      text: '```json\n[{"text":"oil filter","qty":3,"description":""}]\n```',
+      source: 'test',
+    })
+    const out = await extractLineItems({ text: 'three oil filters', runInference })
+    expect(runInference).toHaveBeenCalledTimes(1)
+    expect(out.items).toEqual([{ text: 'oil filter', qty: 3, description: '' }])
+  })
+
+  it('retries once when the first response has no JSON array and returns items on retry success', async () => {
+    const runInference = vi
+      .fn()
+      .mockResolvedValueOnce({ text: 'I cannot comply', source: 'test' })
+      .mockResolvedValueOnce(jsonResponse([{ text: 'brake pad', qty: 1, description: 'front' }]))
+    const out = await extractLineItems({ text: 'brake pad front', runInference })
+    expect(runInference).toHaveBeenCalledTimes(2)
+    expect(out.items).toEqual([{ text: 'brake pad', qty: 1, description: 'front' }])
+    expect(out.callCount).toBe(2)
+  })
+
+  it('returns empty items after the retry also fails to parse', async () => {
+    const runInference = vi.fn().mockResolvedValue({ text: 'still no json', source: 'test' })
+    const out = await extractLineItems({ text: 'nonsense', runInference })
+    expect(runInference).toHaveBeenCalledTimes(2)
+    expect(out.items).toEqual([])
+    expect(out.callCount).toBe(2)
+  })
+
+  it('does not retry when runInference throws a runtime error on the first attempt', async () => {
     const runInference = vi.fn().mockRejectedValue(new Error('boom'))
     const out = await extractLineItems({ text: 'hi', runInference })
-    expect(out).toEqual([])
+    expect(runInference).toHaveBeenCalledTimes(1)
+    expect(out.items).toEqual([])
+    expect(out.callCount).toBe(1)
   })
 
-  it('returns [] for empty input without calling the model', async () => {
+  it('returns empty without calling the model for blank input', async () => {
     const runInference = vi.fn()
     const out = await extractLineItems({ text: '   ', runInference })
-    expect(out).toEqual([])
+    expect(out.items).toEqual([])
+    expect(out.callCount).toBe(0)
     expect(runInference).not.toHaveBeenCalled()
   })
 
@@ -256,7 +290,7 @@ describe('runSmartPastePipeline', () => {
     expect(matchEvents[0][0]).toMatchObject({ batchIndex: 0, totalBatches: 3 })
   })
 
-  it('falls back when extract returns non-JSON', async () => {
+  it('falls back when extract returns non-JSON on both the first try and the retry', async () => {
     const runInference = vi.fn().mockResolvedValue({ text: 'sorry no', source: 'test' })
     const result = await runSmartPastePipeline({
       text: 'whatever',
@@ -264,7 +298,8 @@ describe('runSmartPastePipeline', () => {
       context: CONTEXT,
       runInference,
     })
-    expect(result).toEqual({ extracted: [], rows: [], callCount: 1, fallback: true })
+    expect(runInference).toHaveBeenCalledTimes(2)
+    expect(result).toEqual({ extracted: [], rows: [], callCount: 2, fallback: true })
   })
 
   it('continues when one match batch throws — fallback stays false, failed rows keep source=fuzzy', async () => {
@@ -358,12 +393,15 @@ describe('runSmartPastePipeline', () => {
 describe('smartPastePipeline logger instrumentation (SMA-68)', () => {
   let infoSpy
   let warnSpy
+  let debugSpy
 
   beforeEach(() => {
     infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {})
     warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {})
+    debugSpy = vi.spyOn(logger, 'debug').mockImplementation(() => {})
     infoSpy.mockClear()
     warnSpy.mockClear()
+    debugSpy.mockClear()
   })
 
   it('logs stage1 parse failure when extract response is not JSON', async () => {
@@ -432,6 +470,57 @@ describe('smartPastePipeline logger instrumentation (SMA-68)', () => {
     expect(failed).toBeTruthy()
     expect(failed[1]).toMatchObject({ batchIndex: 0, message: expect.stringContaining('rate') })
     expect(call).toBeGreaterThan(0)
+  })
+
+  it('logs retry lifecycle when the first parse fails and the retry succeeds (SMA-70)', async () => {
+    const runInference = vi
+      .fn()
+      .mockResolvedValueOnce({ text: 'no array here', source: 'test' })
+      .mockResolvedValueOnce(jsonResponse([{ text: 'item', qty: 1, description: '' }]))
+    await extractLineItems({ text: 'anything', runInference })
+    const warnTags = warnSpy.mock.calls.map(([tag]) => tag)
+    const infoTags = infoSpy.mock.calls.map(([tag]) => tag)
+    expect(warnTags).toContain('smartPaste.stage1_parse_failed')
+    expect(infoTags).toContain('smartPaste.stage1_retry_attempt')
+    expect(infoTags).toContain('smartPaste.stage1_retry_succeeded')
+    expect(warnTags).not.toContain('smartPaste.stage1_retry_failed')
+  })
+
+  it('logs stage1_retry_failed when both the first parse and the retry parse fail (SMA-70)', async () => {
+    const runInference = vi.fn().mockResolvedValue({ text: 'still no json', source: 'test' })
+    await extractLineItems({ text: 'anything', runInference })
+    const retryFailed = warnSpy.mock.calls.find(([tag]) => tag === 'smartPaste.stage1_retry_failed')
+    expect(retryFailed).toBeTruthy()
+    expect(retryFailed[1]).toMatchObject({ reason: expect.any(String) })
+  })
+
+  it('does not retry when the first call throws a runtime error (SMA-70)', async () => {
+    const runInference = vi.fn().mockRejectedValue(new Error('network down'))
+    await extractLineItems({ text: 'hi', runInference })
+    expect(runInference).toHaveBeenCalledTimes(1)
+    const infoTags = infoSpy.mock.calls.map(([tag]) => tag)
+    expect(infoTags).not.toContain('smartPaste.stage1_retry_attempt')
+  })
+
+  it('emits debug response-shape diagnostic on stage1 parse failure (SMA-70)', async () => {
+    const runInference = vi.fn().mockResolvedValue({
+      text: 'Hello! I would love to help but I cannot follow that format today.',
+      source: 'test',
+    })
+    await extractLineItems({ text: 'hi', runInference })
+    const shape = debugSpy.mock.calls.find(
+      ([tag]) => tag === 'smartPaste.stage1_parse_failed_shape',
+    )
+    expect(shape).toBeTruthy()
+    const payload = shape[1]
+    expect(payload).toMatchObject({
+      rawLength: expect.any(Number),
+      head: expect.any(String),
+      tail: expect.any(String),
+    })
+    expect(payload.rawLength).toBeGreaterThan(0)
+    expect(payload.head.length).toBeLessThanOrEqual(60)
+    expect(payload.tail.length).toBeLessThanOrEqual(60)
   })
 
   it('logs pipeline_complete with fallback=true when extract is empty', async () => {

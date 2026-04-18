@@ -41,12 +41,22 @@ export function buildExtractPrompt({ text, context } = {}) {
     [
       'Task: extract every line item the customer is asking to order from the message below.',
       'Rules:',
-      '- Output a single JSON array and nothing else. No prose, no markdown, no code fences.',
+      '- Respond with ONLY a JSON array. Your first character MUST be "[" and your last character MUST be "]".',
+      '- No preamble ("Sure,", "Here is..."), no explanation, no markdown, no code fences, no trailing commentary.',
       '- Each element must be {"text": string, "qty": number, "description": string}.',
       '- "text" is the customer\'s own wording for the item (one short phrase).',
       '- "qty" is an integer >= 1. If the customer did not give a number, use 1.',
       '- "description" is any size, colour, variant, or note attached to that item ("" if none).',
       '- Do not invent items. If the message contains zero items, output [].',
+    ].join('\n'),
+  )
+  sections.push(
+    [
+      'Example',
+      'Customer message:',
+      'hey can i get 2 front shocks for a lifted tacoma and an oil filter please',
+      'Response:',
+      '[{"text":"front shocks","qty":2,"description":"lifted tacoma"},{"text":"oil filter","qty":1,"description":""}]',
     ].join('\n'),
   )
   sections.push(['Customer message:', safeText].join('\n'))
