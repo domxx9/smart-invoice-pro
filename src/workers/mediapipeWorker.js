@@ -12,13 +12,22 @@
  */
 
 // MediaPipe's genai bundle calls `self.import(url)` in module workers as a
-// fallback for `importScripts` (which module workers don't expose). Browsers
-// don't define `self.import`, so without this bridge the runtime throws
-// "self.import is not a function" the moment it tries to lazy-load the wasm
-// glue script. Route it to native dynamic import. `@vite-ignore` prevents the
-// bundler from resolving the MediaPipe CDN URL at build time. See SMA-47.
+// fallback for `importScripts` (which module workers don't expose). The wasm
+// glue script it loads (`genai_wasm_internal.js`) declares
+// `var ModuleFactory = (() => {...})` and then asserts `self.ModuleFactory`
+// is defined. That contract only holds under classic-script semantics, where
+// top-level `var` becomes a global property. Native dynamic `import()` parses
+// the response as an ES module, so `ModuleFactory` stays module-scoped and
+// MediaPipe throws "ModuleFactory not set." (SMA-67 — SMA-47 polyfill
+// regression). Fetch the script as text and run it via indirect eval
+// (`(0, eval)`) so it evaluates in the worker's global scope.
 if (typeof self !== 'undefined' && typeof self.import !== 'function') {
-  self.import = (url) => import(/* @vite-ignore */ url)
+  self.import = async (url) => {
+    const res = await fetch(url, { credentials: 'omit' })
+    if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`)
+    const code = await res.text()
+    ;(0, eval)(code)
+  }
 }
 
 const WASM_CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai/wasm'
