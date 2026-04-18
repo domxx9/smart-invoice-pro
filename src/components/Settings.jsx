@@ -16,6 +16,14 @@ import { PdfTemplateEditor } from './PdfTemplateEditor.jsx'
 import { Icon } from './Icon.jsx'
 import { TOUR_SECTIONS } from './TourOverlay.jsx'
 import { logger } from '../utils/logger.js'
+import { shareOrDownload } from '../utils/shareBackup.js'
+import {
+  buildExportSnapshot,
+  snapshotToJson,
+  invoicesToCsv,
+  backupFilename,
+  EXPORT_KIND,
+} from '../utils/dataExport.js'
 
 const LOG_LEVELS = ['debug', 'info', 'warn', 'error']
 
@@ -47,6 +55,8 @@ export function Settings({ ai, onStartTour }) {
   const [byokKey, setByokKey] = useState('')
   const [showLogs, setShowLogs] = useState(false)
   const [logTick, setLogTick] = useState(0)
+  const [backupBusy, setBackupBusy] = useState(null)
+  const [backupError, setBackupError] = useState('')
   const set = (k, v) => setS((p) => ({ ...p, [k]: v }))
   const setDebug = (k, v) => setS((p) => ({ ...p, debug: { ...(p.debug || {}), [k]: v } }))
   const setSmartPasteContext = (k, v) =>
@@ -100,6 +110,44 @@ export function Settings({ ai, onStartTour }) {
       cancelled = true
     }
   }, [byokProvider])
+
+  const exportJson = async () => {
+    setBackupBusy('json')
+    setBackupError('')
+    try {
+      const snapshot = await buildExportSnapshot()
+      await shareOrDownload({
+        filename: backupFilename(EXPORT_KIND),
+        content: snapshotToJson(snapshot),
+        mimeType: 'application/json',
+      })
+      toast('Backup exported', 'success', '💾')
+    } catch (e) {
+      setBackupError(e?.message || 'Export failed')
+    } finally {
+      setBackupBusy(null)
+    }
+  }
+
+  const exportCsv = async () => {
+    setBackupBusy('csv')
+    setBackupError('')
+    try {
+      const snapshot = await buildExportSnapshot()
+      const d = new Date()
+      const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      await shareOrDownload({
+        filename: `smart-invoice-pro-invoices-${stamp}.csv`,
+        content: invoicesToCsv(snapshot.data.invoices),
+        mimeType: 'text/csv',
+      })
+      toast('Invoices exported', 'success', '📄')
+    } catch (e) {
+      setBackupError(e?.message || 'Export failed')
+    } finally {
+      setBackupBusy(null)
+    }
+  }
 
   const handleTest = async () => {
     if (!s.sqApiKey) return
@@ -1175,6 +1223,42 @@ export function Settings({ ai, onStartTour }) {
             <Icon name="refresh" /> Replay full tour
           </button>
         </div>
+      </SettingsSection>
+
+      <SettingsSection title="Backup & restore">
+        <p style={{ fontSize: '.78rem', color: 'var(--muted)', marginBottom: 12, lineHeight: 1.5 }}>
+          Export your invoices, products, and settings to a file you control. Stored locally — nothing
+          is uploaded.
+        </p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={exportJson}
+            disabled={backupBusy !== null}
+          >
+            {backupBusy === 'json' ? 'Exporting…' : 'Export all data (JSON)'}
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={exportCsv}
+            disabled={backupBusy !== null}
+          >
+            {backupBusy === 'csv' ? 'Exporting…' : 'Export invoices (CSV)'}
+          </button>
+        </div>
+        {backupError ? (
+          <p
+            role="alert"
+            style={{
+              fontSize: '.75rem',
+              color: '#f87171',
+              marginTop: 10,
+              wordBreak: 'break-all',
+            }}
+          >
+            {backupError}
+          </p>
+        ) : null}
       </SettingsSection>
 
       <SettingsSection title="Debugging">
