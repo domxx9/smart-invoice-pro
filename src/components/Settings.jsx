@@ -76,6 +76,13 @@ export function Settings({ ai, onStartTour }) {
     toast('Logs cleared', 'success', '🧹')
   }
 
+  const enableInfoLogging = () => {
+    const next = { ...s, debug: { ...(s.debug || {}), logLevel: 'info' } }
+    setS(next)
+    saveSettings(next)
+    toast('Log level set to info — pipeline traces now captured', 'success', '🔎')
+  }
+
   // Load BYOK key from secure storage when provider changes.
   // Guard against the async resolution overwriting keystrokes typed
   // before getSecret resolves (see SMA-34 test).
@@ -164,6 +171,33 @@ export function Settings({ ai, onStartTour }) {
               </button>
             </div>
           </div>
+          {(s.debug?.logLevel || 'error') !== 'debug' &&
+            (s.debug?.logLevel || 'error') !== 'info' && (
+              <div
+                data-testid="log-viewer-info-hint"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                  marginBottom: 8,
+                  padding: '8px 10px',
+                  borderRadius: 8,
+                  background: 'rgba(90,140,255,.1)',
+                  border: '1px solid rgba(90,140,255,.3)',
+                  color: 'var(--text)',
+                  fontSize: '.75rem',
+                  lineHeight: 1.4,
+                }}
+              >
+                <span>
+                  Bump log level to <code>info</code> to capture Smart Paste pipeline traces.
+                </span>
+                <button className="btn btn-ghost btn-sm" onClick={enableInfoLogging}>
+                  Enable info logs
+                </button>
+              </div>
+            )}
           <pre
             data-testid="log-viewer-body"
             style={{
