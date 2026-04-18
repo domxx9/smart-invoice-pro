@@ -91,6 +91,20 @@ describe('Settings — Debugging section', () => {
     expect(logger.getSnapshot()).toHaveLength(0)
   })
 
+  it('log viewer dialog pads for device safe-area insets (SMA-77)', async () => {
+    renderSettings()
+    fireEvent.click(screen.getByRole('button', { name: /^view logs$/i }))
+
+    const dialog = await screen.findByRole('dialog', { name: /log viewer/i })
+    // The header row (Download/Clear/Close) must not slide under the Android
+    // status bar when Capacitor renders with viewport-fit=cover, so the modal
+    // owns its own safe-area-aware padding instead of relying on `.app`.
+    expect(dialog.style.paddingTop).toMatch(/env\(safe-area-inset-top/)
+    expect(dialog.style.paddingBottom).toMatch(/env\(safe-area-inset-bottom/)
+    expect(dialog.style.paddingLeft).toMatch(/env\(safe-area-inset-left/)
+    expect(dialog.style.paddingRight).toMatch(/env\(safe-area-inset-right/)
+  })
+
   it('Download triggers a blob URL with sip-logs-* filename', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     logger.error('downloadable', 'something to save')
