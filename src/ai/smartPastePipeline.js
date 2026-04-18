@@ -303,7 +303,17 @@ export function filterCandidates({ extracted, products, topN = 50 } = {}) {
   }))
 }
 
-export async function matchBatch({ batch, context, runInference, maxTokens = 512 } = {}) {
+// Stage 3 LLM budget. 512 tokens covers a 2-line match-batch comfortably;
+// the response shape is small (one object per line). Salvage still kicks
+// in via safeParseJsonArray if a provider truncates anyway.
+const STAGE3_DEFAULT_MAX_TOKENS = 512
+
+export async function matchBatch({
+  batch,
+  context,
+  runInference,
+  maxTokens = STAGE3_DEFAULT_MAX_TOKENS,
+} = {}) {
   if (typeof runInference !== 'function') {
     throw new Error('matchBatch: runInference is required')
   }
@@ -317,6 +327,22 @@ export async function matchBatch({ batch, context, runInference, maxTokens = 512
     throw new Error(`matchBatch: ${parsed.error}`)
   }
   return parsed.value
+}
+
+async function invokeMatch({ prompt, maxTokens, runInference }) {
+  let result
+  try {
+    result = await runInference({ prompt, maxTokens })
+  } catch (err) {
+    const message = String(err?.message ?? err)
+    return { kind: 'runtime', message }
+  }
+  const raw = typeof result === 'string' ? result : result?.text
+  const stopReason =
+    result && typeof result === 'object' && 'stopReason' in result ? result.stopReason : null
+  const parsed = safeParseJsonArray(raw, { schema: isMatchResult })
+  if (!parsed.ok) return { kind: 'parse_failed', reason: parsed.error, raw, stopReason }
+  return { kind: 'parsed', value: parsed.value, raw, stopReason }
 }
 
 function chunk(items, size) {
@@ -381,23 +407,84 @@ export async function runSmartPastePipeline({
   for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
     const batch = batches[batchIndex]
     const offset = batchIndex * MATCH_BATCH_SIZE
+    const totalBatches = batches.length
     callCount += 1
-    logger.info('smartPaste.stage3_batch_start', { batchIndex, totalBatches: batches.length })
-    emit({ stage: 'match', batchIndex, totalBatches: batches.length })
-    let matches
-    try {
-      matches = await matchBatch({ batch, context, runInference })
-    } catch (error) {
-      logger.warn('smartPaste.stage3_batch_failed', {
+    logger.info('smartPaste.stage3_batch_start', { batchIndex, totalBatches })
+    emit({ stage: 'match', batchIndex, totalBatches })
+
+    const prompt = buildMatchPrompt({ batch, context })
+    const first = await invokeMatch({ prompt, maxTokens: STAGE3_DEFAULT_MAX_TOKENS, runInference })
+
+    let matches = null
+    if (first.kind === 'parsed') {
+      matches = first.value
+    } else if (first.kind === 'runtime') {
+      // Runtime errors (rate limit, network) skip retry — Stage 1 follows the
+      // same rule. The orchestrator surfaces them via stage3_batch_failed.
+      logger.warn('smartPaste.stage3_batch_failed', { batchIndex, message: first.message })
+      emit({
+        stage: 'match',
         batchIndex,
-        message: String(error?.message ?? error),
+        totalBatches,
+        error: new Error(first.message),
       })
-      emit({ stage: 'match', batchIndex, totalBatches: batches.length, error })
       continue
+    } else {
+      // parse_failed: log the response shape (SMA-70 stage1 mirror) and one
+      // paraphrased retry. Same rule as Stage 1: stopReason lets us tell
+      // truncation, refusal, and shape errors apart in the trace.
+      logger.warn('smartPaste.stage3_parse_failed', { batchIndex, reason: first.reason })
+      logger.debug('smartPaste.stage3_parse_failed_shape', {
+        batchIndex,
+        stopReason: first.stopReason,
+        ...describeRawResponse(first.raw),
+      })
+      logger.info('smartPaste.stage3_retry_attempt', { batchIndex })
+
+      callCount += 1
+      const second = await invokeMatch({
+        prompt,
+        maxTokens: STAGE3_DEFAULT_MAX_TOKENS,
+        runInference,
+      })
+      if (second.kind === 'parsed') {
+        logger.info('smartPaste.stage3_retry_succeeded', { batchIndex })
+        matches = second.value
+      } else if (second.kind === 'runtime') {
+        logger.warn('smartPaste.stage3_batch_failed', {
+          batchIndex,
+          message: `runtime: ${second.message}`,
+        })
+        emit({
+          stage: 'match',
+          batchIndex,
+          totalBatches,
+          error: new Error(second.message),
+        })
+        continue
+      } else {
+        logger.warn('smartPaste.stage3_batch_failed', {
+          batchIndex,
+          message: `matchBatch: ${second.reason}`,
+        })
+        logger.debug('smartPaste.stage3_parse_failed_shape', {
+          batchIndex,
+          stopReason: second.stopReason,
+          ...describeRawResponse(second.raw),
+        })
+        emit({
+          stage: 'match',
+          batchIndex,
+          totalBatches,
+          error: new Error(`matchBatch: ${second.reason}`),
+        })
+        continue
+      }
     }
+
     logger.info('smartPaste.stage3_batch_complete', {
       batchIndex,
-      totalBatches: batches.length,
+      totalBatches,
       matched: matches.length,
     })
     for (const m of matches) {
