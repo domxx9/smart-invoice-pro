@@ -25,13 +25,31 @@ export function safeParseJsonArray(text, { schema } = {}) {
   }
   const stripped = stripCodeFences(text)
   const start = stripped.indexOf('[')
+  if (start === -1) return { ok: false, error: 'no JSON array found' }
+
   const end = stripped.lastIndexOf(']')
-  if (start === -1 || end === -1 || end < start) {
-    return { ok: false, error: 'no JSON array found' }
+  if (end !== -1 && end > start) {
+    const direct = parseAndValidate(stripped.slice(start, end + 1), schema)
+    if (direct.ok) return direct
+    // Fall through to salvage — the closing `]` might belong to a truncated
+    // object that JSON.parse can't handle.
   }
+
+  // Salvage: walk from `[` char-by-char, string- and brace-aware, tracking
+  // the position of the last fully closed top-level `}`. If we find at least
+  // one, slice up to there and append `]` so JSON.parse can handle the tail.
+  const sliceEnd = findLastCompleteObjectEnd(stripped, start)
+  if (sliceEnd === -1) return { ok: false, error: 'no JSON array found' }
+
+  const salvaged = parseAndValidate(`${stripped.slice(start, sliceEnd + 1)}]`, schema)
+  if (!salvaged.ok) return salvaged
+  return { ...salvaged, salvaged: true }
+}
+
+function parseAndValidate(slice, schema) {
   let parsed
   try {
-    parsed = JSON.parse(stripped.slice(start, end + 1))
+    parsed = JSON.parse(slice)
   } catch (e) {
     return { ok: false, error: `JSON parse failed: ${e.message}` }
   }
@@ -47,6 +65,45 @@ export function safeParseJsonArray(text, { schema } = {}) {
     }
   }
   return { ok: true, value: parsed }
+}
+
+// Walks the response char-by-char starting after `[`, tracking string state
+// (so a `}` inside a quoted value can't close an object) and brace depth.
+// Returns the index of the last `}` that dropped depth back to 0 at the top
+// level, or -1 if no object has closed yet.
+function findLastCompleteObjectEnd(text, arrayStart) {
+  let depth = 0
+  let inString = false
+  let escaped = false
+  let lastComplete = -1
+  for (let i = arrayStart + 1; i < text.length; i++) {
+    const c = text[i]
+    if (inString) {
+      if (escaped) {
+        escaped = false
+        continue
+      }
+      if (c === '\\') {
+        escaped = true
+        continue
+      }
+      if (c === '"') inString = false
+      continue
+    }
+    if (c === '"') {
+      inString = true
+      continue
+    }
+    if (c === '{') {
+      depth++
+      continue
+    }
+    if (c === '}') {
+      depth--
+      if (depth === 0) lastComplete = i
+    }
+  }
+  return lastComplete
 }
 
 function stripCodeFences(text) {
@@ -96,6 +153,15 @@ function normalizeExtracted(items) {
   }))
 }
 
+// Length-cap stop reasons across the BYOK providers we support. Matches are
+// case-insensitive so OpenAI's 'length', Gemini's 'MAX_TOKENS', and
+// Anthropic's 'max_tokens' all count.
+const LENGTH_CAP_STOP_REASONS = new Set(['length', 'max_tokens', 'max-tokens'])
+
+function isLengthCapStopReason(reason) {
+  return typeof reason === 'string' && LENGTH_CAP_STOP_REASONS.has(reason.toLowerCase())
+}
+
 async function invokeExtract({ prompt, maxTokens, runInference }) {
   let result
   try {
@@ -106,9 +172,26 @@ async function invokeExtract({ prompt, maxTokens, runInference }) {
     return { kind: 'runtime', message }
   }
   const raw = typeof result === 'string' ? result : result?.text
+  const stopReason = typeof result === 'object' && result ? (result.stopReason ?? null) : null
   const parsed = safeParseJsonArray(raw, { schema: isExtractedLine })
-  if (!parsed.ok) return { kind: 'parse_failed', reason: parsed.error, raw }
-  return { kind: 'parsed', value: parsed.value }
+  if (!parsed.ok) return { kind: 'parse_failed', reason: parsed.error, raw, stopReason }
+  return {
+    kind: 'parsed',
+    value: parsed.value,
+    salvaged: !!parsed.salvaged,
+    raw,
+    stopReason,
+  }
+}
+
+function emitTruncationLogIfNeeded(extractResult) {
+  if (!extractResult.salvaged) return
+  if (!isLengthCapStopReason(extractResult.stopReason)) return
+  logger.warn('smartPaste.stage1_truncated', {
+    stopReason: extractResult.stopReason,
+    rawLength: (extractResult.raw ?? '').length,
+    salvagedItems: extractResult.value.length,
+  })
 }
 
 export async function extractLineItems({ text, context, runInference, maxTokens = 1024 } = {}) {
@@ -121,6 +204,7 @@ export async function extractLineItems({ text, context, runInference, maxTokens 
   const first = await invokeExtract({ prompt, maxTokens, runInference })
   if (first.kind === 'runtime') return { items: [], callCount: 1 }
   if (first.kind === 'parsed') {
+    emitTruncationLogIfNeeded(first)
     return { items: normalizeExtracted(first.value), callCount: 1 }
   }
 
@@ -135,6 +219,7 @@ export async function extractLineItems({ text, context, runInference, maxTokens 
   }
   if (second.kind === 'parsed') {
     logger.info('smartPaste.stage1_retry_succeeded')
+    emitTruncationLogIfNeeded(second)
     return { items: normalizeExtracted(second.value), callCount: 2 }
   }
 

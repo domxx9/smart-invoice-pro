@@ -91,7 +91,11 @@ export async function testConnection({ provider, apiKey, baseUrl, model, fetchIm
 }
 
 /**
- * Run a single-turn generation. Returns the full completion string.
+ * Run a single-turn generation. Returns `{ text, stopReason }` where
+ * `stopReason` is the raw provider-specific finish reason (e.g. 'stop',
+ * 'length', 'max_tokens', 'MAX_TOKENS') or null if the provider did not
+ * surface one. Callers can match known length-cap values to detect
+ * truncation without re-parsing the provider body.
  * Does NOT stream — callers that need streaming should build on buildRequest().
  */
 export async function generate({
@@ -117,11 +121,11 @@ export async function generate({
   if (!res.ok) {
     throw new Error(`BYOK ${res.status}: ${extractErrorMessage(body, 'request failed')}`)
   }
-  const { text, detail } = extractText(cfg.protocol, body)
+  const { text, stopReason, detail } = extractText(cfg.protocol, body)
   if (!text) {
     throw new Error(`BYOK response contained no text${detail ? ` (${detail})` : ''}`)
   }
-  return text
+  return { text, stopReason: stopReason ?? null }
 }
 
 function buildRequest(cfg, apiKey, prompt, { maxTokens }) {
@@ -179,17 +183,22 @@ function buildRequest(cfg, apiKey, prompt, { maxTokens }) {
 
 /**
  * Pull the assistant text out of a provider response. Returns
- * `{ text, detail }` where `detail` is a short diagnostic ("finish_reason=length",
- * "stop_reason=max_tokens", "no candidates", …) when the response parsed but
- * yielded no usable text. Callers surface `detail` so users know *why* the
- * response was empty (truncation, safety filter, refusal, etc).
+ * `{ text, stopReason, detail }`:
+ *  - `text` is the assembled assistant output ('' if none could be extracted).
+ *  - `stopReason` is the raw provider-specific finish reason (e.g. 'stop',
+ *    'length', 'max_tokens', 'MAX_TOKENS') or null if not surfaced.
+ *    Surfaced on every response so callers can detect truncation even when
+ *    text was returned (SMA-71).
+ *  - `detail` is a short diagnostic ("finish_reason=length", "no candidates", …)
+ *    used only when the response parsed but yielded no usable text.
  */
 function extractText(protocol, body) {
-  if (!body) return { text: '', detail: 'empty body' }
+  if (!body) return { text: '', stopReason: null, detail: 'empty body' }
 
   if (protocol === 'openai') {
     const choice = body.choices?.[0]
-    if (!choice) return { text: '', detail: 'no choices' }
+    if (!choice) return { text: '', stopReason: null, detail: 'no choices' }
+    const stopReason = choice.finish_reason ?? null
     const msg = choice.message || choice.delta || {}
     // OpenAI-compatible APIs may return `content` as either a string or an
     // array of structured parts (vision, tool, multimodal models).
@@ -200,10 +209,13 @@ function extractText(protocol, body) {
       text = raw.map((c) => (typeof c === 'string' ? c : c?.text || '')).join('')
     }
     text = text.trim()
-    if (text) return { text, detail: null }
-    if (msg.refusal) return { text: '', detail: 'model refused the request' }
-    const finish = choice.finish_reason
-    return { text: '', detail: finish ? `finish_reason=${finish}` : 'empty content' }
+    if (text) return { text, stopReason, detail: null }
+    if (msg.refusal) return { text: '', stopReason, detail: 'model refused the request' }
+    return {
+      text: '',
+      stopReason,
+      detail: stopReason ? `finish_reason=${stopReason}` : 'empty content',
+    }
   }
 
   if (protocol === 'gemini') {
@@ -212,28 +224,40 @@ function extractText(protocol, body) {
       // Top-level promptFeedback.blockReason fires when the *prompt* tripped
       // a safety filter and no candidate was generated at all.
       const blocked = body.promptFeedback?.blockReason
-      return { text: '', detail: blocked ? `promptFeedback=${blocked}` : 'no candidates' }
+      return {
+        text: '',
+        stopReason: null,
+        detail: blocked ? `promptFeedback=${blocked}` : 'no candidates',
+      }
     }
+    const stopReason = cand.finishReason ?? null
     const parts = cand.content?.parts || []
     const text = parts
       .map((p) => p?.text || '')
       .join('')
       .trim()
-    if (text) return { text, detail: null }
-    const finish = cand.finishReason
-    return { text: '', detail: finish ? `finishReason=${finish}` : 'empty parts' }
+    if (text) return { text, stopReason, detail: null }
+    return {
+      text: '',
+      stopReason,
+      detail: stopReason ? `finishReason=${stopReason}` : 'empty parts',
+    }
   }
 
   if (protocol === 'anthropic') {
+    const stopReason = body.stop_reason ?? null
     const blocks = body.content || []
     const text = blocks
       .map((b) => (b?.type === 'text' ? b?.text || '' : ''))
       .join('')
       .trim()
-    if (text) return { text, detail: null }
-    const stop = body.stop_reason
-    return { text: '', detail: stop ? `stop_reason=${stop}` : 'empty content' }
+    if (text) return { text, stopReason, detail: null }
+    return {
+      text: '',
+      stopReason,
+      detail: stopReason ? `stop_reason=${stopReason}` : 'empty content',
+    }
   }
 
-  return { text: '', detail: `unsupported protocol ${protocol}` }
+  return { text: '', stopReason: null, detail: `unsupported protocol ${protocol}` }
 }

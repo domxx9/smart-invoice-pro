@@ -50,7 +50,8 @@ describe('runInference — routing', () => {
     })
     expect(workerMocks.inferGemma).toHaveBeenCalledWith('hello')
     expect(byokMocks.generate).not.toHaveBeenCalled()
-    expect(result).toEqual({ text: 'on-device response', source: 'small' })
+    // On-device Gemma does not surface a finish reason — stopReason is null.
+    expect(result).toEqual({ text: 'on-device response', source: 'small', stopReason: null })
   })
 
   it("'small' mode throws when the worker reports unavailable (no WebGPU)", async () => {
@@ -66,7 +67,7 @@ describe('runInference — routing', () => {
 
   it("routes 'byok' through secure storage + byok.generate", async () => {
     storageMocks.getSecret.mockResolvedValue('sk-test-123')
-    byokMocks.generate.mockResolvedValue('cloud response')
+    byokMocks.generate.mockResolvedValue({ text: 'cloud response', stopReason: 'stop' })
     const runInference = await importPipeline()
     const result = await runInference({
       prompt: 'match this',
@@ -90,7 +91,18 @@ describe('runInference — routing', () => {
       }),
     )
     expect(workerMocks.inferGemma).not.toHaveBeenCalled()
-    expect(result).toEqual({ text: 'cloud response', source: 'byok' })
+    expect(result).toEqual({ text: 'cloud response', source: 'byok', stopReason: 'stop' })
+  })
+
+  it("'byok' mode passes the provider's length-cap stopReason through (SMA-71)", async () => {
+    storageMocks.getSecret.mockResolvedValue('sk-test-123')
+    byokMocks.generate.mockResolvedValue({ text: 'partial', stopReason: 'length' })
+    const runInference = await importPipeline()
+    const result = await runInference({
+      prompt: 'hi',
+      settings: { aiMode: 'byok', byokProvider: 'openai' },
+    })
+    expect(result).toEqual({ text: 'partial', source: 'byok', stopReason: 'length' })
   })
 
   it("'byok' mode throws when no provider is selected", async () => {

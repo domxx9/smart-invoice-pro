@@ -76,6 +76,82 @@ describe('safeParseJsonArray', () => {
     expect(r.ok).toBe(false)
     expect(r.error).toMatch(/x must be number/)
   })
+
+  describe('truncation salvage (SMA-71)', () => {
+    const extractSchema = (item) =>
+      item &&
+      typeof item.text === 'string' &&
+      typeof item.qty === 'number' &&
+      typeof item.description === 'string'
+        ? true
+        : 'bad shape'
+
+    it('salvages complete items when the array is cut off mid-element (dogfood-trace shape)', () => {
+      // The exact shape from the SMA-70 dogfood trace: two complete items, a
+      // third started with its description string unterminated, no closing `]`.
+      const truncated =
+        '[{"text":"blade holder","qty":1,"description":""},{"text":"anvil","qty":2,"description":"longs ones"},{"text":"unc probe","qty":1,"description":"'
+      const r = safeParseJsonArray(truncated, { schema: extractSchema })
+      expect(r.ok).toBe(true)
+      expect(r.salvaged).toBe(true)
+      expect(r.value).toEqual([
+        { text: 'blade holder', qty: 1, description: '' },
+        { text: 'anvil', qty: 2, description: 'longs ones' },
+      ])
+    })
+
+    it('trims back to the last complete `}` when truncated mid-string', () => {
+      // Three complete items; fourth started but never closed. Walk should
+      // keep the first three and slice off the dangling start.
+      const truncated =
+        '[{"text":"a","qty":1,"description":""},{"text":"b","qty":2,"description":""},{"text":"c","qty":3,"description":""},{"text":"dpartial'
+      const r = safeParseJsonArray(truncated, { schema: extractSchema })
+      expect(r.ok).toBe(true)
+      expect(r.salvaged).toBe(true)
+      expect(r.value).toHaveLength(3)
+      expect(r.value.map((i) => i.text)).toEqual(['a', 'b', 'c'])
+    })
+
+    it('does not get fooled by `}` characters inside a quoted string', () => {
+      // A literal `}` inside a description must not trigger a false object
+      // close. The salvage walk is string-aware.
+      const truncated =
+        '[{"text":"widget","qty":1,"description":"oh no } inside"},{"text":"gadget","qty":2,"description":"another } here"},{"text":"partial'
+      const r = safeParseJsonArray(truncated, { schema: extractSchema })
+      expect(r.ok).toBe(true)
+      expect(r.salvaged).toBe(true)
+      expect(r.value).toEqual([
+        { text: 'widget', qty: 1, description: 'oh no } inside' },
+        { text: 'gadget', qty: 2, description: 'another } here' },
+      ])
+    })
+
+    it('falls back to "no JSON array found" when no complete object has closed', () => {
+      // `[` present but not a single object has finished yet — nothing to
+      // salvage, so the helper returns the original failure.
+      const r = safeParseJsonArray('[{"text":"only started')
+      expect(r.ok).toBe(false)
+      expect(r.error).toMatch(/no JSON array found/)
+    })
+
+    it('does not mark well-formed responses as salvaged', () => {
+      // Happy path must not set `salvaged: true` — only truncation paths do.
+      const r = safeParseJsonArray('[{"text":"fine","qty":1,"description":""}]', {
+        schema: extractSchema,
+      })
+      expect(r.ok).toBe(true)
+      expect(r.salvaged).toBeUndefined()
+    })
+
+    it('handles escaped quotes inside strings during the salvage walk', () => {
+      const truncated =
+        '[{"text":"quote \\"inside\\" here","qty":1,"description":""},{"text":"partial'
+      const r = safeParseJsonArray(truncated, { schema: extractSchema })
+      expect(r.ok).toBe(true)
+      expect(r.salvaged).toBe(true)
+      expect(r.value).toEqual([{ text: 'quote "inside" here', qty: 1, description: '' }])
+    })
+  })
 })
 
 describe('extractLineItems', () => {
@@ -535,5 +611,82 @@ describe('smartPastePipeline logger instrumentation (SMA-68)', () => {
     expect(completion?.[1]).toMatchObject({ fallback: true })
     const emptyWarn = warnSpy.mock.calls.find(([tag]) => tag === 'smartPaste.stage1_empty')
     expect(emptyWarn).toBeTruthy()
+  })
+
+  it('logs stage1_truncated with stopReason + counts when salvaged and stopReason is length (SMA-71)', async () => {
+    // Dogfood shape: Gemini returns a truncated array with finishReason=MAX_TOKENS.
+    // The pipeline should salvage the complete items and warn so the trace is actionable.
+    const truncated =
+      '[{"text":"a","qty":1,"description":""},{"text":"b","qty":2,"description":""},{"text":"c'
+    const runInference = vi.fn().mockResolvedValue({
+      text: truncated,
+      source: 'byok',
+      stopReason: 'MAX_TOKENS',
+    })
+    const out = await extractLineItems({ text: 'paste', runInference })
+    expect(out.items).toEqual([
+      { text: 'a', qty: 1, description: '' },
+      { text: 'b', qty: 2, description: '' },
+    ])
+    const truncated1 = warnSpy.mock.calls.find(([tag]) => tag === 'smartPaste.stage1_truncated')
+    expect(truncated1).toBeTruthy()
+    expect(truncated1[1]).toMatchObject({
+      stopReason: 'MAX_TOKENS',
+      rawLength: truncated.length,
+      salvagedItems: 2,
+    })
+  })
+
+  it("also fires stage1_truncated for OpenAI's 'length' finish reason (SMA-71)", async () => {
+    const truncated = '[{"text":"x","qty":1,"description":""},{"text":"partial'
+    const runInference = vi.fn().mockResolvedValue({
+      text: truncated,
+      source: 'byok',
+      stopReason: 'length',
+    })
+    await extractLineItems({ text: 'paste', runInference })
+    const truncated1 = warnSpy.mock.calls.find(([tag]) => tag === 'smartPaste.stage1_truncated')
+    expect(truncated1).toBeTruthy()
+    expect(truncated1[1]).toMatchObject({ stopReason: 'length', salvagedItems: 1 })
+  })
+
+  it("also fires stage1_truncated for Anthropic's 'max_tokens' stop_reason (SMA-71)", async () => {
+    const truncated = '[{"text":"x","qty":1,"description":""},{"text":"partial'
+    const runInference = vi.fn().mockResolvedValue({
+      text: truncated,
+      source: 'byok',
+      stopReason: 'max_tokens',
+    })
+    await extractLineItems({ text: 'paste', runInference })
+    const truncated1 = warnSpy.mock.calls.find(([tag]) => tag === 'smartPaste.stage1_truncated')
+    expect(truncated1).toBeTruthy()
+    expect(truncated1[1]).toMatchObject({ stopReason: 'max_tokens' })
+  })
+
+  it('does not fire stage1_truncated on a normal well-formed response (SMA-71)', async () => {
+    // Well-formed response that happens to have stopReason=stop → not truncation.
+    const runInference = vi.fn().mockResolvedValue({
+      text: JSON.stringify([{ text: 'ok', qty: 1, description: '' }]),
+      source: 'byok',
+      stopReason: 'stop',
+    })
+    await extractLineItems({ text: 'paste', runInference })
+    const truncated1 = warnSpy.mock.calls.find(([tag]) => tag === 'smartPaste.stage1_truncated')
+    expect(truncated1).toBeFalsy()
+  })
+
+  it('does not fire stage1_truncated when salvaged but stopReason is not length-cap (SMA-71)', async () => {
+    // Edge: response was truncated mid-stream due to a stop sequence or other
+    // non-length reason. We salvage what we can but don't claim truncation.
+    const truncated = '[{"text":"a","qty":1,"description":""},{"text":"partial'
+    const runInference = vi.fn().mockResolvedValue({
+      text: truncated,
+      source: 'byok',
+      stopReason: 'stop',
+    })
+    const out = await extractLineItems({ text: 'paste', runInference })
+    expect(out.items).toEqual([{ text: 'a', qty: 1, description: '' }])
+    const truncated1 = warnSpy.mock.calls.find(([tag]) => tag === 'smartPaste.stage1_truncated')
+    expect(truncated1).toBeFalsy()
   })
 })

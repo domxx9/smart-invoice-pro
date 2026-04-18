@@ -28,7 +28,7 @@ export async function runInference({ prompt, maxTokens = 512, settings } = {}) {
       throw new Error('On-device AI unavailable on this device')
     }
     const text = typeof result === 'string' ? result : (result?.text ?? '')
-    return { text, source: 'small' }
+    return { text, source: 'small', stopReason: null }
   }
 
   if (mode === 'byok') {
@@ -37,7 +37,7 @@ export async function runInference({ prompt, maxTokens = 512, settings } = {}) {
     const apiKey = await getSecret(`sip_byok_${provider}`)
     if (!apiKey) throw new Error('BYOK: API key not configured')
     try {
-      const text = await byokGenerate({
+      const { text, stopReason } = await byokGenerate({
         provider,
         apiKey,
         baseUrl: settings?.byokBaseUrl,
@@ -45,7 +45,7 @@ export async function runInference({ prompt, maxTokens = 512, settings } = {}) {
         prompt,
         maxTokens,
       })
-      return { text, source: 'byok' }
+      return { text, source: 'byok', stopReason: stopReason ?? null }
     } catch (e) {
       throw new Error(sanitize(e, apiKey))
     }
