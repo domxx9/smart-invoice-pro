@@ -322,8 +322,27 @@ export async function buildModelOptions(modelId) {
   }
   const file = await fh.getFile()
   const buffer = await file.arrayBuffer()
-  logger.debug('ai', 'buildModelOptions buffer bytes:', buffer.byteLength, 'file:', filename)
-  return { baseOptions: { modelAssetBuffer: buffer } }
+  // MediaPipe types `modelAssetBuffer` as `Uint8Array | ReadableStreamDefaultReader`
+  // (genai.d.ts:46). A raw ArrayBuffer silently fails its instanceof check and
+  // surfaces as "No model asset provided" inside LlmInference.createFromOptions
+  // (SMA-46). Wrap before returning.
+  const modelAssetBuffer = new Uint8Array(buffer)
+  logger.debug(
+    'ai',
+    'buildModelOptions buffer bytes:',
+    modelAssetBuffer.byteLength,
+    'file:',
+    filename,
+  )
+  if (modelAssetBuffer.byteLength === 0) {
+    try {
+      await root.removeEntry(filename)
+    } catch {
+      /* ignore */
+    }
+    throw new Error('Model file is 0 bytes — please re-download')
+  }
+  return { baseOptions: { modelAssetBuffer } }
 }
 
 /**

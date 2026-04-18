@@ -15,11 +15,13 @@ class MockWorker {
     this.onmessage = null
     this.onerror = null
     this.posted = []
+    this.transfers = []
     this.terminated = false
     MockWorker.last = this
   }
-  postMessage(msg) {
+  postMessage(msg, transfer) {
     this.posted.push(msg)
+    this.transfers.push(transfer ?? null)
     MockWorker.lastInstance = this
     // Async-dispatch handler so facade code sees Promise scheduling
     queueMicrotask(() => this._handle(msg))
@@ -121,6 +123,29 @@ describe('LOAD protocol', () => {
       [0.5, 'model'],
       [1, 'ready'],
     ])
+    resetGemmaWorker()
+  })
+
+  it('transfers the underlying ArrayBuffer (not the Uint8Array view) to the worker (SMA-46)', async () => {
+    let capturedLoad = null
+    let capturedTransfer = null
+    MockWorker.script = (msg, worker) => {
+      if (msg.type === 'CAPCHECK') return { type: 'CAPCHECK_RESULT', webgpu: true }
+      if (msg.type === 'LOAD') {
+        capturedLoad = msg
+        capturedTransfer = worker.transfers[worker.transfers.length - 1]
+        return { type: 'LOAD_DONE' }
+      }
+      return null
+    }
+    const { initGemma, resetGemmaWorker } = await loadFacade()
+    const modelAssetBuffer = new Uint8Array(8)
+    await initGemma({ baseOptions: { modelAssetBuffer } })
+
+    expect(capturedLoad?.modelOptions?.baseOptions?.modelAssetBuffer).toBeInstanceOf(Uint8Array)
+    expect(capturedTransfer).toHaveLength(1)
+    expect(capturedTransfer[0]).toBeInstanceOf(ArrayBuffer)
+    expect(capturedTransfer[0]).toBe(modelAssetBuffer.buffer)
     resetGemmaWorker()
   })
 

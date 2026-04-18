@@ -126,9 +126,12 @@ export async function initGemma(modelOptions, onProgress) {
   const w = ensureWorker()
   return new Promise((resolve, reject) => {
     _loadState = { resolve, reject, onProgress }
-    const transfer = modelOptions?.baseOptions?.modelAssetBuffer
-      ? [modelOptions.baseOptions.modelAssetBuffer]
-      : undefined
+    // modelAssetBuffer is a Uint8Array (SMA-46). Only its underlying
+    // ArrayBuffer is transferable — Uint8Array itself is not. Structured clone
+    // preserves the Uint8Array view on the worker side after transfer.
+    const buf = modelOptions?.baseOptions?.modelAssetBuffer
+    const underlying = buf?.buffer ?? (buf instanceof ArrayBuffer ? buf : null)
+    const transfer = underlying ? [underlying] : undefined
     w.postMessage({ type: 'LOAD', modelOptions }, transfer)
   })
 }
