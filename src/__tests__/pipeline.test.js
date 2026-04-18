@@ -50,7 +50,7 @@ describe('runInference — routing', () => {
     })
     expect(workerMocks.inferGemma).toHaveBeenCalledWith('hello')
     expect(byokMocks.generate).not.toHaveBeenCalled()
-    expect(result).toEqual({ text: 'on-device response', source: 'small' })
+    expect(result).toEqual({ text: 'on-device response', source: 'small', stopReason: null })
   })
 
   it("'small' mode throws when the worker reports unavailable (no WebGPU)", async () => {
@@ -66,7 +66,7 @@ describe('runInference — routing', () => {
 
   it("routes 'byok' through secure storage + byok.generate", async () => {
     storageMocks.getSecret.mockResolvedValue('sk-test-123')
-    byokMocks.generate.mockResolvedValue('cloud response')
+    byokMocks.generate.mockResolvedValue({ text: 'cloud response', stopReason: 'stop' })
     const runInference = await importPipeline()
     const result = await runInference({
       prompt: 'match this',
@@ -90,7 +90,22 @@ describe('runInference — routing', () => {
       }),
     )
     expect(workerMocks.inferGemma).not.toHaveBeenCalled()
-    expect(result).toEqual({ text: 'cloud response', source: 'byok' })
+    expect(result).toEqual({ text: 'cloud response', source: 'byok', stopReason: 'stop' })
+  })
+
+  it('forwards stopReason=length from byok.generate to the caller (SMA-71)', async () => {
+    storageMocks.getSecret.mockResolvedValue('sk-test')
+    byokMocks.generate.mockResolvedValue({ text: '[{"text":"blade', stopReason: 'length' })
+    const runInference = await importPipeline()
+    const result = await runInference({
+      prompt: 'extract',
+      settings: { aiMode: 'byok', byokProvider: 'openai' },
+    })
+    expect(result).toEqual({
+      text: '[{"text":"blade',
+      source: 'byok',
+      stopReason: 'length',
+    })
   })
 
   it("'byok' mode throws when no provider is selected", async () => {
