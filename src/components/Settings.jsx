@@ -14,6 +14,7 @@ import { useToast } from '../contexts/ToastContext.jsx'
 import { SettingsSection } from './SettingsSection.jsx'
 import { PdfTemplateEditor } from './PdfTemplateEditor.jsx'
 import { Icon } from './Icon.jsx'
+import { RestoreBackupModal } from './RestoreBackupModal.jsx'
 import { TOUR_SECTIONS } from './TourOverlay.jsx'
 import { logger } from '../utils/logger.js'
 
@@ -47,6 +48,7 @@ export function Settings({ ai, onStartTour }) {
   const [byokKey, setByokKey] = useState('')
   const [showLogs, setShowLogs] = useState(false)
   const [logTick, setLogTick] = useState(0)
+  const [showRestore, setShowRestore] = useState(false)
   const set = (k, v) => setS((p) => ({ ...p, [k]: v }))
   const setDebug = (k, v) => setS((p) => ({ ...p, debug: { ...(p.debug || {}), [k]: v } }))
   const setSmartPasteContext = (k, v) =>
@@ -1132,6 +1134,19 @@ export function Settings({ ai, onStartTour }) {
           </p>
         </div>
       </SettingsSection>
+
+      <SettingsSection title="Backup & restore">
+        <p style={{ fontSize: '.78rem', color: 'var(--muted)', marginBottom: 12, lineHeight: 1.5 }}>
+          Restore invoices, products, orders, and settings from a previously exported backup file.
+        </p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn btn-ghost btn-sm" onClick={() => setShowRestore(true)}>
+            Restore from backup…
+          </button>
+        </div>
+      </SettingsSection>
+
+      {showRestore && <RestoreBackupModal onClose={() => setShowRestore(false)} />}
 
       <SettingsSection title="Help & Tour">
         <p style={{ fontSize: '.8rem', color: 'var(--muted)', marginBottom: 14, lineHeight: 1.5 }}>
