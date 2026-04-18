@@ -6,8 +6,12 @@
  *   - 'byok'  → user's cloud provider via byok.generate() (SMA-34)
  *   - 'off'   → returns null so callers can no-op silently
  *
- * Resolves to { text, source } or null. Throws with a sanitized message on
- * failure — the API key is never surfaced in error text or console logs.
+ * Resolves to { text, source, stopReason } or null. `stopReason` is the
+ * provider's raw finish/stop reason (e.g. 'stop', 'length', 'max_tokens',
+ * 'MAX_TOKENS') when available, and `null` otherwise — callers read it to
+ * detect mid-generation truncation (SMA-71). Throws with a sanitized
+ * message on failure — the API key is never surfaced in error text or
+ * console logs.
  */
 
 import { inferGemma } from '../gemmaWorker.js'
@@ -28,7 +32,9 @@ export async function runInference({ prompt, maxTokens = 512, settings } = {}) {
       throw new Error('On-device AI unavailable on this device')
     }
     const text = typeof result === 'string' ? result : (result?.text ?? '')
-    return { text, source: 'small' }
+    const stopReason =
+      result && typeof result === 'object' && 'stopReason' in result ? result.stopReason : null
+    return { text, source: 'small', stopReason }
   }
 
   if (mode === 'byok') {
@@ -37,7 +43,10 @@ export async function runInference({ prompt, maxTokens = 512, settings } = {}) {
     const apiKey = await getSecret(`sip_byok_${provider}`)
     if (!apiKey) throw new Error('BYOK: API key not configured')
     try {
-      const text = await byokGenerate({
+      // `byokGenerate` returns `{ text, stopReason }` since SMA-71. Fall back
+      // for test stubs that still return a bare string so we don't regress
+      // existing pipeline tests.
+      const result = await byokGenerate({
         provider,
         apiKey,
         baseUrl: settings?.byokBaseUrl,
@@ -45,7 +54,10 @@ export async function runInference({ prompt, maxTokens = 512, settings } = {}) {
         prompt,
         maxTokens,
       })
-      return { text, source: 'byok' }
+      const text = typeof result === 'string' ? result : (result?.text ?? '')
+      const stopReason =
+        result && typeof result === 'object' && 'stopReason' in result ? result.stopReason : null
+      return { text, source: 'byok', stopReason }
     } catch (e) {
       throw new Error(sanitize(e, apiKey))
     }
