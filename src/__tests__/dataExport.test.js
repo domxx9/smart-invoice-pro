@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 import {
   SCHEMA_VERSION,
   EXPORT_KIND,
   KNOWN_STORAGE_KEYS,
+  TRANSIENT_STORAGE_KEYS,
   buildExportSnapshot,
   snapshotToJson,
   invoicesToCsv,
@@ -50,6 +51,39 @@ describe('module surface', () => {
       'sip_onboarded',
       'sip_ai_model',
     ])
+  })
+
+  it('KNOWN_STORAGE_KEYS stays in sync with what buildExportSnapshot actually reads', async () => {
+    const readKeys = new Set()
+    const realGetItem = Storage.prototype.getItem
+    const spy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (key) {
+      readKeys.add(key)
+      return realGetItem.call(this, key)
+    })
+    try {
+      await buildExportSnapshot()
+    } finally {
+      spy.mockRestore()
+    }
+    for (const key of KNOWN_STORAGE_KEYS) {
+      expect(readKeys, `buildExportSnapshot did not read ${key}`).toContain(key)
+    }
+  })
+
+  it('exports TRANSIENT_STORAGE_KEYS listing intentionally-excluded editor keys', () => {
+    expect(Array.isArray(TRANSIENT_STORAGE_KEYS)).toBe(true)
+    expect(TRANSIENT_STORAGE_KEYS.length).toBeGreaterThan(0)
+    for (const key of TRANSIENT_STORAGE_KEYS) {
+      expect(key).toMatch(/^sip_/)
+    }
+    expect(TRANSIENT_STORAGE_KEYS).toEqual(['sip_draft_edit', 'sip_draft_original'])
+  })
+
+  it('KNOWN_STORAGE_KEYS and TRANSIENT_STORAGE_KEYS are disjoint', () => {
+    const known = new Set(KNOWN_STORAGE_KEYS)
+    for (const key of TRANSIENT_STORAGE_KEYS) {
+      expect(known, `${key} must not be both persisted and transient`).not.toContain(key)
+    }
   })
 })
 
