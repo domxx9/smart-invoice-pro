@@ -1185,13 +1185,41 @@ export function Settings({ ai, onStartTour }) {
 
       <SettingsSection title="Backup & restore">
         <p style={{ fontSize: '.78rem', color: 'var(--muted)', marginBottom: 12, lineHeight: 1.5 }}>
-          Restore invoices, products, orders, and settings from a previously exported backup file.
+          Export your invoices, products, and settings to a file you control, or restore from a
+          previously exported backup. Stored locally — nothing is uploaded.
         </p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={exportJson}
+            disabled={backupBusy !== null}
+          >
+            {backupBusy === 'json' ? 'Exporting…' : 'Export all data (JSON)'}
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={exportCsv}
+            disabled={backupBusy !== null}
+          >
+            {backupBusy === 'csv' ? 'Exporting…' : 'Export invoices (CSV)'}
+          </button>
           <button className="btn btn-ghost btn-sm" onClick={() => setShowRestore(true)}>
             Restore from backup…
           </button>
         </div>
+        {backupError ? (
+          <p
+            role="alert"
+            style={{
+              fontSize: '.75rem',
+              color: '#f87171',
+              marginTop: 10,
+              wordBreak: 'break-all',
+            }}
+          >
+            {backupError}
+          </p>
+        ) : null}
       </SettingsSection>
 
       {showRestore && <RestoreBackupModal onClose={() => setShowRestore(false)} />}
@@ -1238,42 +1266,6 @@ export function Settings({ ai, onStartTour }) {
             <Icon name="refresh" /> Replay full tour
           </button>
         </div>
-      </SettingsSection>
-
-      <SettingsSection title="Backup & restore">
-        <p style={{ fontSize: '.78rem', color: 'var(--muted)', marginBottom: 12, lineHeight: 1.5 }}>
-          Export your invoices, products, and settings to a file you control. Stored locally — nothing
-          is uploaded.
-        </p>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={exportJson}
-            disabled={backupBusy !== null}
-          >
-            {backupBusy === 'json' ? 'Exporting…' : 'Export all data (JSON)'}
-          </button>
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={exportCsv}
-            disabled={backupBusy !== null}
-          >
-            {backupBusy === 'csv' ? 'Exporting…' : 'Export invoices (CSV)'}
-          </button>
-        </div>
-        {backupError ? (
-          <p
-            role="alert"
-            style={{
-              fontSize: '.75rem',
-              color: '#f87171',
-              marginTop: 10,
-              wordBreak: 'break-all',
-            }}
-          >
-            {backupError}
-          </p>
-        ) : null}
       </SettingsSection>
 
       <SettingsSection title="Debugging">
