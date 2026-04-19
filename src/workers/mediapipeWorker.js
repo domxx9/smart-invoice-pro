@@ -34,6 +34,13 @@ import { createCappedStreamer } from './streamingGuard.js'
 
 const WASM_CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai/wasm'
 
+// Session-wide KV-cache budget passed to LlmInference.createFromOptions.
+// Per-call limits are enforced first by streamingGuard (SMA-78: Stage 1 = 2048,
+// Stage 3 = 512), so this only needs headroom for the largest call plus future
+// growth. Keep this >= the max per-call cap; raise it (and document why) if a
+// new call site needs more than ~4k tokens. SMA-84.
+export const SESSION_MAX_TOKENS = 4096
+
 let _llm = null
 
 function post(msg, transfer) {
@@ -53,7 +60,7 @@ async function handleLoad({ modelOptions }) {
   post({ type: 'LOAD_PROGRESS', progress: 0.5, stage: 'model' })
   _llm = await LlmInference.createFromOptions(genai, {
     ...modelOptions,
-    maxTokens: modelOptions?.maxTokens ?? 10000,
+    maxTokens: modelOptions?.maxTokens ?? SESSION_MAX_TOKENS,
     temperature: modelOptions?.temperature ?? 0.1,
     topK: modelOptions?.topK ?? 1,
   })
