@@ -425,6 +425,15 @@ export async function runSmartPastePipeline({
 
   const filtered = filterCandidates({ extracted, products })
   const batches = chunk(filtered, MATCH_BATCH_SIZE)
+  // SMA-99: emit Stage 1 completion with totalBatches so the widget can size
+  // its progress bar before the first match batch kicks off. Back-compat: old
+  // consumers only keyed off `stage` and ignore unknown fields.
+  emit({
+    stage: 'extract',
+    status: 'complete',
+    extractedCount: extracted.length,
+    totalBatches: batches.length,
+  })
 
   const rows = filtered.map((entry) => ({
     extracted: entry.extracted,
@@ -539,6 +548,16 @@ export async function runSmartPastePipeline({
         }
       }
     }
+    // SMA-99: emit batch completion so the widget can reveal these rows
+    // incrementally instead of waiting for the whole pipeline to resolve.
+    emit({
+      stage: 'match',
+      batchIndex,
+      totalBatches,
+      status: 'complete',
+      offset,
+      batchRows: rows.slice(offset, offset + batch.length),
+    })
   }
 
   logger.info('smartPaste.pipeline_complete', { fallback: false, callCount })

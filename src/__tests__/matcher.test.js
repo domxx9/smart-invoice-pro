@@ -100,14 +100,18 @@ describe('getTopCandidates', () => {
 })
 
 describe('performance: 500-item catalogue', () => {
-  // Threshold is deliberately generous to absorb CI runner variance.
-  // Intent is a smoke check that matching stays well under UI-perceptible
-  // latency, not a micro-benchmark.
+  // Threshold is deliberately generous to absorb CI runner variance, which is
+  // especially harsh on the vitest parallel pool (20+ files competing for a
+  // single CPU core). Intent is a smoke check that matching stays well under
+  // UI-perceptible latency, not a micro-benchmark — isolated runs land in the
+  // single-digit-ms range. Raised from 50ms → 200ms when SMA-98 added the
+  // `keywords` + `desc` Fuse keys (roughly doubles per-query bitap work).
   it('matches well under UI-perceptible latency', () => {
     invalidateProductIndex()
     const big = Array.from({ length: 500 }, (_, i) => ({
       id: `id-${i}`,
       name: `Product ${i} ${['Widget', 'Bolt', 'Nut', 'Cable', 'Screw'][i % 5]}`,
+      desc: `Heavy duty ${i} hardware for industrial use`,
       price: i,
     }))
     for (let i = 0; i < 10; i++) matchProduct('Widget', big) // warm index + JIT
@@ -115,6 +119,76 @@ describe('performance: 500-item catalogue', () => {
     const t0 = performance.now()
     for (let i = 0; i < iterations; i++) matchProduct('widget 42', big)
     const avg = (performance.now() - t0) / iterations
-    expect(avg).toBeLessThan(50)
+    expect(avg).toBeLessThan(200)
+  })
+})
+
+describe('desc + keyword indexing', () => {
+  const CATALOG = [
+    { id: 'p1', name: 'Front Shock', desc: 'Bilstein 5100 lifted Tacoma', price: 120 },
+    { id: 'p2', name: 'Rear Shock', desc: 'OEM replacement sedan', price: 85 },
+    { id: 'p3', name: 'Brake Pad', desc: 'Ceramic low-dust daily driver', price: 45 },
+    { id: 'p4', name: 'Oil Filter', desc: 'Compatible with Tacoma 2016+', price: 12 },
+  ]
+
+  beforeEach(() => invalidateProductIndex())
+
+  it('matches a word that only appears in desc', () => {
+    const m = matchProduct('bilstein', CATALOG)
+    expect(m).not.toBeNull()
+    expect(m.id).toBe('p1')
+  })
+
+  it('matches a multi-word description phrase', () => {
+    const m = matchProduct('lifted tacoma', CATALOG)
+    expect(m).not.toBeNull()
+    expect(m.id).toBe('p1')
+  })
+
+  it('still prefers exact name matches over desc-only hits', () => {
+    // "Tacoma" appears in both p1 desc and p4 desc; a name-word like "Shock"
+    // should beat desc-only noise.
+    const m = matchProduct('Shock', CATALOG)
+    expect(m).not.toBeNull()
+    expect(['p1', 'p2']).toContain(m.id)
+    expect(m.score).toBeGreaterThanOrEqual(80)
+  })
+
+  it('does not expose the internal keywords field on matchProduct output', () => {
+    const m = matchProduct('Front Shock', CATALOG)
+    expect(m).not.toBeNull()
+    expect(m).not.toHaveProperty('keywords')
+    expect(m).not.toHaveProperty('desc')
+  })
+
+  it('does not mutate caller-supplied product objects', () => {
+    const fresh = [{ id: 'x1', name: 'Gizmo', desc: 'Tiny shiny thing' }]
+    matchProduct('gizmo', fresh)
+    expect(fresh[0]).not.toHaveProperty('keywords')
+    expect(Object.keys(fresh[0]).sort()).toEqual(['desc', 'id', 'name'])
+  })
+
+  it('returns the original product object from getTopCandidates (no keywords leak)', () => {
+    const [top] = getTopCandidates('bilstein', CATALOG, 1)
+    expect(top).toBeDefined()
+    expect(top.id).toBe('p1')
+    expect(top).not.toHaveProperty('keywords')
+  })
+
+  it('returns the original product object from matchItems (no keywords leak)', () => {
+    const [r] = matchItems([{ raw: 'bilstein', name: 'bilstein', qty: 1 }], CATALOG)
+    const hit = r.product ?? r.bestGuess
+    expect(hit?.id).toBe('p1')
+    expect(hit).not.toHaveProperty('keywords')
+  })
+
+  it('tolerates products with missing/null desc', () => {
+    const mixed = [
+      { id: 'a', name: 'Red Widget' },
+      { id: 'b', name: 'Blue Widget', desc: null },
+      { id: 'c', name: 'Green Widget', desc: undefined },
+    ]
+    const m = matchProduct('widget', mixed)
+    expect(m).not.toBeNull()
   })
 })
