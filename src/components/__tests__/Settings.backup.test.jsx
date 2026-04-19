@@ -177,4 +177,70 @@ describe('Settings — Backup & restore section', () => {
     )
     expect(dialog).not.toBeInTheDocument()
   })
+
+  describe('Include API keys toggle (SMA-90)', () => {
+    it('renders the toggle unchecked by default with no warning copy', () => {
+      renderSettings()
+      const toggle = screen.getByRole('checkbox', { name: /Include API keys in export/i })
+      expect(toggle).toBeInTheDocument()
+      expect(toggle).not.toBeChecked()
+      expect(screen.queryByTestId('include-secrets-warning')).toBeNull()
+    })
+
+    it('JSON export passes includeSecrets:false when the toggle is off', async () => {
+      renderSettings()
+      fireEvent.click(screen.getByRole('button', { name: /Export all data \(JSON\)/i }))
+
+      await waitFor(() => expect(buildExportSnapshot).toHaveBeenCalledTimes(1))
+      expect(buildExportSnapshot).toHaveBeenCalledWith({ includeSecrets: false })
+    })
+
+    it('shows the red warning copy and passes includeSecrets:true after the user opts in', async () => {
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+      try {
+        renderSettings()
+        fireEvent.click(screen.getByRole('checkbox', { name: /Include API keys in export/i }))
+
+        expect(screen.getByTestId('include-secrets-warning')).toHaveTextContent(
+          /anyone with this file can act as you/i,
+        )
+
+        fireEvent.click(screen.getByRole('button', { name: /Export all data \(JSON\)/i }))
+
+        expect(confirmSpy).toHaveBeenCalledTimes(1)
+        await waitFor(() => expect(buildExportSnapshot).toHaveBeenCalledTimes(1))
+        expect(buildExportSnapshot).toHaveBeenCalledWith({ includeSecrets: true })
+      } finally {
+        confirmSpy.mockRestore()
+      }
+    })
+
+    it('aborts the JSON export when the user cancels the confirm prompt', async () => {
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+      try {
+        renderSettings()
+        fireEvent.click(screen.getByRole('checkbox', { name: /Include API keys in export/i }))
+        fireEvent.click(screen.getByRole('button', { name: /Export all data \(JSON\)/i }))
+
+        expect(confirmSpy).toHaveBeenCalledTimes(1)
+        expect(buildExportSnapshot).not.toHaveBeenCalled()
+        expect(shareOrDownload).not.toHaveBeenCalled()
+      } finally {
+        confirmSpy.mockRestore()
+      }
+    })
+
+    it('CSV export path is unaffected by the toggle', async () => {
+      renderSettings()
+      fireEvent.click(screen.getByRole('checkbox', { name: /Include API keys in export/i }))
+      fireEvent.click(screen.getByRole('button', { name: /Export invoices \(CSV\)/i }))
+
+      await waitFor(() => expect(invoicesToCsv).toHaveBeenCalledTimes(1))
+      // CSV path calls buildExportSnapshot without options — secrets never touched.
+      expect(buildExportSnapshot).toHaveBeenCalledTimes(1)
+      expect(buildExportSnapshot.mock.calls[0]).toEqual([])
+      const args = shareOrDownload.mock.calls[0][0]
+      expect(args.mimeType).toBe('text/csv')
+    })
+  })
 })
