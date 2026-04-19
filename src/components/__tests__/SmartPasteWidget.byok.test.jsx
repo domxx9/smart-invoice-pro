@@ -161,63 +161,113 @@ describe('SmartPasteWidget pipeline wiring', () => {
     expect(screen.queryByTestId('smart-paste-context-banner')).not.toBeInTheDocument()
   })
 
-  it('drives per-batch spinners via onStage and resolves them in batch order', async () => {
-    const paste = [
-      '1 x Alpha widget that definitely does not exist',
-      '1 x Beta widget that definitely does not exist',
-      '1 x Gamma widget that definitely does not exist',
-      '1 x Delta widget that definitely does not exist',
-      '1 x Epsilon widget that definitely does not exist',
-    ].join('\n')
+  it('reveals rows incrementally as each batch-complete event arrives (SMA-99)', async () => {
+    const pipelineRow = (name, qty, product, confidence) => ({
+      extracted: { text: name, qty, description: name },
+      product,
+      confidence,
+      source: 'ai',
+    })
 
+    let emit
     let resolvePipeline
     runSmartPastePipeline.mockImplementation(async ({ onStage }) => {
+      emit = onStage
       onStage({ stage: 'extract' })
-      onStage({ stage: 'match', batchIndex: 0, totalBatches: 3 })
-      onStage({ stage: 'match', batchIndex: 1, totalBatches: 3 })
-      onStage({ stage: 'match', batchIndex: 2, totalBatches: 3 })
+      onStage({
+        stage: 'extract',
+        status: 'complete',
+        extractedCount: 3,
+        totalBatches: 2,
+      })
       return new Promise((res) => {
         resolvePipeline = res
       })
     })
 
     setup()
-    typeAndParse(paste)
+    typeAndParse(
+      [
+        '1 x Alpha widget that definitely does not exist',
+        '1 x Beta widget that definitely does not exist',
+        '1 x Gamma widget that definitely does not exist',
+      ].join('\n'),
+    )
 
-    await waitFor(() => expect(runSmartPastePipeline).toHaveBeenCalledTimes(1))
-    // Only the most recent batch's rows remain pending.
-    await waitFor(() => {
-      expect(screen.getByTestId('ai-pending-4')).toBeInTheDocument()
-    })
-    expect(screen.queryByTestId('ai-pending-0')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('ai-pending-1')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('ai-pending-2')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('ai-pending-3')).not.toBeInTheDocument()
+    // Textarea is hidden; spinner + progress are visible.
+    await waitFor(() =>
+      expect(screen.getByTestId('smart-paste-processing')).toBeInTheDocument(),
+    )
+    expect(screen.queryByPlaceholderText(/Paste an order/)).not.toBeInTheDocument()
+    // No rows revealed yet.
+    expect(screen.queryByText(/Blue Molar Extractor/)).not.toBeInTheDocument()
 
-    resolvePipeline({
-      extracted: [{ text: 'Alpha', qty: 1, description: 'Alpha' }],
-      rows: [
-        {
-          extracted: { text: 'Alpha', qty: 1, description: 'Alpha' },
-          product: products[0],
-          confidence: 90,
-          source: 'ai',
-        },
+    // First batch completes — rows 0 and 1 appear; row 2 stays hidden.
+    emit({
+      stage: 'match',
+      batchIndex: 0,
+      totalBatches: 2,
+      status: 'complete',
+      offset: 0,
+      batchRows: [
+        pipelineRow('Alpha', 1, products[0], 90),
+        pipelineRow('Beta', 1, products[1], 88),
       ],
-      callCount: 4,
+    })
+    await waitFor(() => {
+      expect(screen.getByText(/1 × Blue Molar Extractor/)).toBeInTheDocument()
+    })
+    expect(screen.getByText(/1 × Sterilisation Cassette/)).toBeInTheDocument()
+    expect(screen.queryByText(/1 × Curing Light/)).not.toBeInTheDocument()
+    // Processing card still visible while batch 2 is pending.
+    expect(screen.getByTestId('smart-paste-processing')).toBeInTheDocument()
+
+    // Second batch completes — row 2 appears.
+    emit({
+      stage: 'match',
+      batchIndex: 1,
+      totalBatches: 2,
+      status: 'complete',
+      offset: 2,
+      batchRows: [pipelineRow('Gamma', 1, products[2], 92)],
+    })
+    await waitFor(() => {
+      expect(screen.getByText(/1 × Curing Light/)).toBeInTheDocument()
+    })
+
+    // Pipeline fully resolves — spinner clears, "Paste more" bar appears.
+    resolvePipeline({
+      extracted: [
+        { text: 'Alpha', qty: 1, description: 'Alpha' },
+        { text: 'Beta', qty: 1, description: 'Beta' },
+        { text: 'Gamma', qty: 1, description: 'Gamma' },
+      ],
+      rows: [
+        pipelineRow('Alpha', 1, products[0], 90),
+        pipelineRow('Beta', 1, products[1], 88),
+        pipelineRow('Gamma', 1, products[2], 92),
+      ],
+      callCount: 3,
       fallback: false,
     })
 
     await waitFor(() => {
-      expect(screen.queryByTestId('ai-pending-4')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('smart-paste-processing')).not.toBeInTheDocument()
     })
+    expect(screen.getByTestId('smart-paste-more-bar')).toBeInTheDocument()
   })
 
-  it('marks rows with batch-failed when onStage emits an error for that batch', async () => {
+  it('marks rows with batch-failed and reveals them when onStage emits an error (SMA-99)', async () => {
     const paste = ['1 x Nope alpha xyz', '1 x Nope beta xyz'].join('\n')
     let resolvePipeline
     runSmartPastePipeline.mockImplementation(async ({ onStage }) => {
       onStage({ stage: 'extract' })
+      onStage({
+        stage: 'extract',
+        status: 'complete',
+        extractedCount: 2,
+        totalBatches: 1,
+      })
       onStage({ stage: 'match', batchIndex: 0, totalBatches: 1 })
       onStage({
         stage: 'match',
@@ -233,11 +283,14 @@ describe('SmartPasteWidget pipeline wiring', () => {
     setup()
     typeAndParse(paste)
 
+    // Error on batch 0 reveals rows 0 and 1 (fuzzy fallbacks) with
+    // `batch-failed` markers. Processing card remains while the pipeline
+    // promise is still pending.
     await waitFor(() => {
       expect(screen.getByTestId('batch-failed-0')).toBeInTheDocument()
     })
     expect(screen.getByTestId('batch-failed-1')).toBeInTheDocument()
-    expect(screen.queryByTestId('ai-pending-0')).not.toBeInTheDocument()
+    expect(screen.getByTestId('smart-paste-processing')).toBeInTheDocument()
 
     resolvePipeline({
       extracted: [{ text: 'Nope alpha', qty: 1, description: 'x' }],
@@ -253,11 +306,62 @@ describe('SmartPasteWidget pipeline wiring', () => {
       fallback: false,
     })
 
-    // Pipeline resolution replaces regex rows with pipeline rows — the new
-    // single no-match row should render.
     await waitFor(() => {
       expect(screen.getByText(/No match/)).toBeInTheDocument()
     })
+    expect(screen.queryByTestId('smart-paste-processing')).not.toBeInTheDocument()
+  })
+
+  it('progress label advances from "Reading your paste…" to a counted match label (SMA-99)', async () => {
+    let emit
+    runSmartPastePipeline.mockImplementation(async ({ onStage }) => {
+      emit = onStage
+      onStage({ stage: 'extract' })
+      return new Promise(() => {})
+    })
+    setup()
+    typeAndParse('1 x Unknown widget A\n1 x Unknown widget B')
+
+    await waitFor(() =>
+      expect(screen.getByTestId('smart-paste-processing-label')).toHaveTextContent(
+        /Reading your paste/i,
+      ),
+    )
+    emit({ stage: 'extract', status: 'complete', extractedCount: 2, totalBatches: 1 })
+    await waitFor(() =>
+      expect(screen.getByTestId('smart-paste-processing-label')).toHaveTextContent(
+        /Matching items — 1 of 2/,
+      ),
+    )
+  })
+
+  it('"Paste more" bar clears results and restores the textarea (SMA-99)', async () => {
+    runSmartPastePipeline.mockResolvedValue({
+      extracted: [{ text: 'Mystery', qty: 1, description: 'Mystery' }],
+      rows: [
+        {
+          extracted: { text: 'Mystery', qty: 1, description: 'Mystery' },
+          product: products[0],
+          confidence: 82,
+          source: 'ai',
+        },
+      ],
+      callCount: 2,
+      fallback: false,
+    })
+    setup()
+    typeAndParse('Mystery widget item')
+
+    await waitFor(() => expect(screen.getByTestId('smart-paste-more-bar')).toBeInTheDocument())
+    // Textarea is hidden while results are on screen.
+    expect(screen.queryByPlaceholderText(/Paste an order/)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('smart-paste-more-bar'))
+
+    // Bar clears, textarea is back and empty.
+    expect(screen.queryByTestId('smart-paste-more-bar')).not.toBeInTheDocument()
+    const textarea = screen.getByPlaceholderText(/Paste an order/)
+    expect(textarea).toHaveValue('')
   })
 
   it("does not call the pipeline when aiMode is 'off'", () => {
