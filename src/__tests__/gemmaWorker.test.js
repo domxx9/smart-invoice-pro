@@ -236,4 +236,68 @@ describe('INFER protocol', () => {
     await expect(inferGemma('hi')).rejects.toThrow('generate failed')
     resetGemmaWorker()
   })
+
+  // --- SMA-83: cancel cleans up _infers even if MediaPipe skips DONE ------
+
+  it('cancelGemma drains _infers when the worker never emits DONE (SMA-83)', async () => {
+    const { inferGemma, cancelGemma, resetGemmaWorker, _pendingInferCountForTest } =
+      await primeLoadedFacade()
+
+    // Worker accepts INFER and CANCEL but never emits INFER_DONE — this mimics
+    // the MediaPipe-on-some-devices case where cancelProcessing() swallows the
+    // final streaming callback instead of firing it with done=true.
+    MockWorker.script = (msg) => {
+      if (msg.type === 'INFER') return null
+      if (msg.type === 'CANCEL') return null
+      return null
+    }
+
+    const pending = inferGemma('stuck', { maxTokens: 64 })
+    // Let postMessage's queueMicrotask flush so the INFER entry is registered.
+    await Promise.resolve()
+    expect(_pendingInferCountForTest()).toBe(1)
+
+    cancelGemma()
+
+    // Same tick: the map must be empty immediately after cancelGemma returns.
+    expect(_pendingInferCountForTest()).toBe(0)
+
+    await expect(pending).resolves.toEqual({ text: '', stopReason: 'cancelled' })
+    resetGemmaWorker()
+  })
+
+  it('a late INFER_DONE after cancelGemma is a no-op (SMA-83)', async () => {
+    const { inferGemma, cancelGemma, resetGemmaWorker, _pendingInferCountForTest } =
+      await primeLoadedFacade()
+
+    MockWorker.script = (msg) => {
+      // Capture the id but don't respond — we'll fire INFER_DONE manually after
+      // cancelGemma to simulate a belated MediaPipe callback.
+      if (msg.type === 'INFER') {
+        MockWorker.lastInferId = msg.id
+      }
+      return null
+    }
+
+    const pending = inferGemma('stuck')
+    await Promise.resolve()
+
+    cancelGemma()
+    const final = await pending
+    expect(final).toEqual({ text: '', stopReason: 'cancelled' })
+    expect(_pendingInferCountForTest()).toBe(0)
+
+    // Belated INFER_DONE arrives after cancel — it must not throw, must not
+    // double-resolve, and must leave the map empty.
+    expect(() => {
+      MockWorker.last._emit({
+        type: 'INFER_DONE',
+        id: MockWorker.lastInferId,
+        text: 'salvage',
+        stopReason: null,
+      })
+    }).not.toThrow()
+    expect(_pendingInferCountForTest()).toBe(0)
+    resetGemmaWorker()
+  })
 })
