@@ -68,6 +68,7 @@ export function Settings({ ai, onStartTour }) {
     byokStatus,
     byokError,
     handleByokTest,
+    handleByokListModels,
     handleByokClear,
   } = ai
   const { settings, saveSettings } = useSettings()
@@ -78,6 +79,9 @@ export function Settings({ ai, onStartTour }) {
   const [shopifyTestStatus, setShopifyTestStatus] = useState('idle')
   const [shopifyTestError, setShopifyTestError] = useState('')
   const [byokKey, setByokKey] = useState('')
+  // SMA-96: cached model list per provider+baseUrl. Shape per key:
+  // { status: 'idle' | 'loading' | 'ok' | 'error', models: string[], error: string }
+  const [byokModelList, setByokModelList] = useState({})
   const [showLogs, setShowLogs] = useState(false)
   const [logTick, setLogTick] = useState(0)
   const [showRestore, setShowRestore] = useState(false)
@@ -137,6 +141,39 @@ export function Settings({ ai, onStartTour }) {
       cancelled = true
     }
   }, [byokProvider])
+
+  // SMA-96: derive the current list entry for the active provider+baseUrl
+  // combo and provide a refresher. Manual entry must always stay available,
+  // so this never throws and never blocks the input fallback.
+  const byokListCacheKey = `${byokProvider}|${s.byokBaseUrl || ''}`
+  const byokListEntry = byokModelList[byokListCacheKey] || {
+    status: 'idle',
+    models: [],
+    error: '',
+  }
+  const refreshByokModels = async () => {
+    if (!byokProvider || !byokKey || !handleByokListModels) return
+    setByokModelList((p) => ({
+      ...p,
+      [byokListCacheKey]: { status: 'loading', models: [], error: '' },
+    }))
+    const result = await handleByokListModels({
+      provider: byokProvider,
+      baseUrl: s.byokBaseUrl,
+    })
+    setByokModelList((p) => ({
+      ...p,
+      [byokListCacheKey]: result.ok
+        ? { status: 'ok', models: result.models || [], error: '' }
+        : { status: 'error', models: [], error: result.error || 'Failed to list models' },
+    }))
+  }
+  const onByokAdvancedToggle = (e) => {
+    if (!e.currentTarget.open) return
+    if (!byokProvider || !byokKey) return
+    if (byokListEntry.status !== 'idle') return
+    refreshByokModels()
+  }
 
   const exportJson = async () => {
     if (includeSecrets) {
@@ -1038,7 +1075,10 @@ export function Settings({ ai, onStartTour }) {
                             </label>
                           </div>
 
-                          <details style={{ marginBottom: 12 }}>
+                          <details
+                            style={{ marginBottom: 12 }}
+                            onToggle={onByokAdvancedToggle}
+                          >
                             <summary
                               style={{
                                 fontSize: '.75rem',
@@ -1059,16 +1099,86 @@ export function Settings({ ai, onStartTour }) {
                                 />
                               </label>
                             </div>
-                            <div className="field">
-                              <label>
-                                Model
-                                <input
-                                  value={s.byokModel || ''}
-                                  onChange={(e) => set('byokModel', e.target.value.trim())}
-                                  placeholder={BYOK_PRESETS[byokProvider]?.defaultModel || ''}
-                                />
-                              </label>
-                            </div>
+                            {(() => {
+                              const { status, models, error } = byokListEntry
+                              const hasList = status === 'ok' && models.length > 0
+                              const currentModel = s.byokModel || ''
+                              const modelInList =
+                                hasList && currentModel && models.includes(currentModel)
+                              const selectValue = modelInList ? currentModel : '__custom'
+                              const showCustom = !hasList || selectValue === '__custom'
+                              return (
+                                <div className="field">
+                                  <label htmlFor="byok-model-select">Model</label>
+                                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                    <select
+                                      id="byok-model-select"
+                                      aria-label="Model"
+                                      style={{ flex: 1 }}
+                                      disabled={status === 'loading'}
+                                      value={selectValue}
+                                      onChange={(e) => {
+                                        const v = e.target.value
+                                        if (v === '__custom') {
+                                          if (modelInList) set('byokModel', '')
+                                        } else {
+                                          set('byokModel', v)
+                                        }
+                                      }}
+                                    >
+                                      {hasList
+                                        ? models.map((m) => (
+                                            <option key={m} value={m}>
+                                              {m}
+                                            </option>
+                                          ))
+                                        : null}
+                                      <option value="__custom">Custom…</option>
+                                    </select>
+                                    <button
+                                      type="button"
+                                      className="btn btn-ghost btn-sm"
+                                      disabled={!byokKey || status === 'loading'}
+                                      onClick={refreshByokModels}
+                                      title="Refresh model list from the provider"
+                                    >
+                                      {status === 'loading' ? '…' : '↻'}
+                                    </button>
+                                  </div>
+                                  {showCustom && (
+                                    <input
+                                      aria-label="Custom model"
+                                      style={{ marginTop: 6 }}
+                                      value={s.byokModel || ''}
+                                      onChange={(e) => set('byokModel', e.target.value.trim())}
+                                      placeholder={
+                                        BYOK_PRESETS[byokProvider]?.defaultModel || ''
+                                      }
+                                    />
+                                  )}
+                                  <p
+                                    data-testid="byok-model-list-status"
+                                    aria-live="polite"
+                                    style={{
+                                      fontSize: '.72rem',
+                                      color:
+                                        status === 'error' ? '#f87171' : 'var(--muted)',
+                                      marginTop: 4,
+                                      marginBottom: 0,
+                                    }}
+                                  >
+                                    {status === 'loading' && 'Loading models…'}
+                                    {status === 'ok' &&
+                                      `${models.length} model${models.length === 1 ? '' : 's'} from provider`}
+                                    {status === 'error' &&
+                                      `Couldn't fetch models: ${error} — enter one manually`}
+                                    {status === 'idle' &&
+                                      !byokKey &&
+                                      'Enter an API key to load the list'}
+                                  </p>
+                                </div>
+                              )
+                            })()}
                           </details>
 
                           <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>

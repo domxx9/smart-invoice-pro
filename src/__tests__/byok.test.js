@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { BYOK_PROVIDERS, resolveConfig, testConnection, generate } from '../byok.js'
+import { BYOK_PROVIDERS, resolveConfig, testConnection, generate, listModels } from '../byok.js'
 
 function makeFetch(responses) {
   const calls = []
@@ -111,6 +111,138 @@ describe('testConnection', () => {
     expect(r.ok).toBe(false)
     expect(r.error).not.toContain(key)
     expect(r.error).toContain('[redacted]')
+  })
+})
+
+describe('listModels (SMA-96)', () => {
+  it('rejects when the key is missing', async () => {
+    const r = await listModels({ provider: 'openai', apiKey: '' })
+    expect(r).toEqual({ ok: false, error: expect.stringMatching(/API key/i) })
+  })
+
+  it('hits the OpenAI /models endpoint with a Bearer header and parses data[].id', async () => {
+    const { fetchImpl, calls } = makeFetch([
+      {
+        status: 200,
+        body: { data: [{ id: 'gpt-4o' }, { id: 'gpt-4o-mini' }, { id: 'gpt-3.5-turbo' }] },
+      },
+    ])
+    const r = await listModels({ provider: 'openai', apiKey: 'sk-test-123', fetchImpl })
+    expect(r.ok).toBe(true)
+    expect(calls[0].url).toBe('https://api.openai.com/v1/models')
+    expect(calls[0].init.method).toBe('GET')
+    expect(calls[0].init.headers.Authorization).toBe('Bearer sk-test-123')
+    expect(r.models).toEqual(['gpt-3.5-turbo', 'gpt-4o', 'gpt-4o-mini'])
+  })
+
+  it('uses the OpenRouter base URL when provider is openrouter', async () => {
+    const { fetchImpl, calls } = makeFetch([
+      { status: 200, body: { data: [{ id: 'openai/gpt-4o-mini' }] } },
+    ])
+    await listModels({ provider: 'openrouter', apiKey: 'sk-or', fetchImpl })
+    expect(calls[0].url).toBe('https://openrouter.ai/api/v1/models')
+    expect(calls[0].init.headers.Authorization).toBe('Bearer sk-or')
+  })
+
+  it('filters Gemini models by supportedGenerationMethods and strips the models/ prefix', async () => {
+    const { fetchImpl, calls } = makeFetch([
+      {
+        status: 200,
+        body: {
+          models: [
+            {
+              name: 'models/gemini-1.5-flash',
+              supportedGenerationMethods: ['generateContent', 'countTokens'],
+            },
+            {
+              name: 'models/embedding-001',
+              supportedGenerationMethods: ['embedContent'],
+            },
+            {
+              name: 'models/gemini-1.5-pro',
+              supportedGenerationMethods: ['generateContent'],
+            },
+          ],
+        },
+      },
+    ])
+    const r = await listModels({ provider: 'gemini', apiKey: 'AIza-abc', fetchImpl })
+    expect(r.ok).toBe(true)
+    expect(calls[0].url).toBe(
+      'https://generativelanguage.googleapis.com/v1beta/models?key=AIza-abc',
+    )
+    expect(calls[0].init.headers?.Authorization).toBeUndefined()
+    expect(r.models).toEqual(['gemini-1.5-flash', 'gemini-1.5-pro'])
+  })
+
+  it('uses x-api-key and anthropic-version headers for Anthropic, parses data[].id', async () => {
+    const { fetchImpl, calls } = makeFetch([
+      {
+        status: 200,
+        body: {
+          data: [
+            { id: 'claude-3-5-sonnet-latest' },
+            { id: 'claude-3-5-haiku-latest' },
+          ],
+        },
+      },
+    ])
+    const r = await listModels({ provider: 'anthropic', apiKey: 'sk-ant-xyz', fetchImpl })
+    expect(r.ok).toBe(true)
+    expect(calls[0].url).toBe('https://api.anthropic.com/v1/models')
+    expect(calls[0].init.method).toBe('GET')
+    expect(calls[0].init.headers['x-api-key']).toBe('sk-ant-xyz')
+    expect(calls[0].init.headers['anthropic-version']).toBe('2023-06-01')
+    expect(calls[0].init.headers['anthropic-dangerous-direct-browser-access']).toBe('true')
+    expect(r.models).toEqual(['claude-3-5-haiku-latest', 'claude-3-5-sonnet-latest'])
+  })
+
+  it('returns the provider error message on non-2xx', async () => {
+    const { fetchImpl } = makeFetch([
+      { status: 401, body: { error: { message: 'Invalid API key' } } },
+    ])
+    const r = await listModels({ provider: 'openai', apiKey: 'bad', fetchImpl })
+    expect(r).toEqual({ ok: false, error: 'Invalid API key' })
+  })
+
+  it('returns an HTTP fallback message when the error body is unparseable', async () => {
+    const { fetchImpl } = makeFetch([{ status: 500, body: null }])
+    const r = await listModels({ provider: 'openai', apiKey: 'sk', fetchImpl })
+    expect(r.ok).toBe(false)
+    expect(r.error).toBe('HTTP 500')
+  })
+
+  it('redacts the API key when the network throws and the key leaks into the error', async () => {
+    const key = 'sk-super-secret'
+    const { fetchImpl } = makeFetch([
+      { throw: new Error(`request to ${key} failed: ECONNREFUSED`) },
+    ])
+    const r = await listModels({ provider: 'openai', apiKey: key, fetchImpl })
+    expect(r.ok).toBe(false)
+    expect(r.error).not.toContain(key)
+    expect(r.error).toContain('[redacted]')
+  })
+
+  it('honors a custom baseUrl and strips the trailing slash', async () => {
+    const { fetchImpl, calls } = makeFetch([{ status: 200, body: { data: [] } }])
+    await listModels({
+      provider: 'openai',
+      apiKey: 'sk',
+      baseUrl: 'https://proxy.example.com/v1/',
+      fetchImpl,
+    })
+    expect(calls[0].url).toBe('https://proxy.example.com/v1/models')
+  })
+
+  it('de-duplicates models returned by the provider', async () => {
+    const { fetchImpl } = makeFetch([
+      {
+        status: 200,
+        body: { data: [{ id: 'gpt-4o' }, { id: 'gpt-4o' }, { id: 'gpt-4o-mini' }] },
+      },
+    ])
+    const r = await listModels({ provider: 'openai', apiKey: 'sk', fetchImpl })
+    expect(r.models).toEqual(['gpt-4o', 'gpt-4o-mini'])
   })
 })
 
