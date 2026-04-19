@@ -59,6 +59,7 @@ export function Settings({ ai, onStartTour }) {
   const [showRestore, setShowRestore] = useState(false)
   const [backupBusy, setBackupBusy] = useState(null)
   const [backupError, setBackupError] = useState('')
+  const [includeSecrets, setIncludeSecrets] = useState(false)
   const set = (k, v) => setS((p) => ({ ...p, [k]: v }))
   const setDebug = (k, v) => setS((p) => ({ ...p, debug: { ...(p.debug || {}), [k]: v } }))
   const setSmartPasteContext = (k, v) =>
@@ -114,10 +115,17 @@ export function Settings({ ai, onStartTour }) {
   }, [byokProvider])
 
   const exportJson = async () => {
+    if (includeSecrets) {
+      const ok = window.confirm(
+        'This export will include your Squarespace / Shopify / BYOK API keys in plain text.\n\n' +
+          'Anyone with this file can act as you against those providers. Continue?',
+      )
+      if (!ok) return
+    }
     setBackupBusy('json')
     setBackupError('')
     try {
-      const snapshot = await buildExportSnapshot()
+      const snapshot = await buildExportSnapshot({ includeSecrets })
       await shareOrDownload({
         filename: backupFilename(EXPORT_KIND),
         content: snapshotToJson(snapshot),
@@ -1188,6 +1196,39 @@ export function Settings({ ai, onStartTour }) {
           Export your invoices, products, and settings to a file you control, or restore from a
           previously exported backup. Stored locally — nothing is uploaded.
         </p>
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 8,
+            fontSize: '.8rem',
+            marginBottom: includeSecrets ? 6 : 12,
+            lineHeight: 1.4,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={includeSecrets}
+            onChange={(e) => setIncludeSecrets(e.target.checked)}
+            style={{ marginTop: 3 }}
+          />
+          <span>Include API keys in export</span>
+        </label>
+        {includeSecrets && (
+          <p
+            data-testid="include-secrets-warning"
+            style={{
+              fontSize: '.72rem',
+              color: '#f87171',
+              marginTop: 0,
+              marginBottom: 12,
+              lineHeight: 1.4,
+            }}
+          >
+            Warning: anyone with this file can act as you against Squarespace, Shopify, and BYOK
+            providers. Only enable for offline transfers to a device you control.
+          </p>
+        )}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button
             className="btn btn-ghost btn-sm"
