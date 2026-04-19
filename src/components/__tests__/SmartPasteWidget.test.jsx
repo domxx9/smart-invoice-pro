@@ -32,7 +32,10 @@ describe('SmartPasteWidget', () => {
     expect(screen.getByText(/2 × Widget/)).toBeInTheDocument()
   })
 
-  it('forwards matched items through onAddItems', () => {
+  // SMA-100: auto_match rows flow into the invoice on Parse (via onAddItems)
+  // without requiring an "Add N matched" click — prevents data loss if the
+  // user navigates away mid-session.
+  it('auto-saves fuzzy auto_matches to the invoice on Parse (SMA-100)', () => {
     const products = [{ id: 'p1', name: 'Widget', price: 10 }]
     const onAddItems = vi.fn()
     renderWithToast(
@@ -42,9 +45,13 @@ describe('SmartPasteWidget', () => {
       target: { value: '2 x Widget' },
     })
     fireEvent.click(screen.getByRole('button', { name: /Parse/i }))
-    fireEvent.click(screen.getByRole('button', { name: /Add 1 matched/ }))
+    expect(onAddItems).toHaveBeenCalledTimes(1)
     expect(onAddItems).toHaveBeenCalledWith([
       expect.objectContaining({ desc: 'Widget', qty: 2, price: 10 }),
     ])
+    // Row still visible with a "Saved to invoice" badge, but the "Add N
+    // matched" CTA is gone (nothing left to add explicitly).
+    expect(screen.getByTestId('saved-badge-0')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Add \d+ matched/ })).not.toBeInTheDocument()
   })
 })

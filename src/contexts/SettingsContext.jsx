@@ -13,6 +13,11 @@ const EMPTY_SMART_PASTE_CONTEXT = {
   locale: '',
 }
 
+// Vocabulary is optional (SMA-97): the slang dropdown lets users leave it
+// blank when no trade shorthand applies. The other four fields still need
+// a value for Smart Paste AI to have enough context to run.
+const REQUIRED_SMART_PASTE_CONTEXT_KEYS = ['productType', 'shopType', 'customerType', 'locale']
+
 const DEFAULT_DEBUG = { logLevel: 'error' }
 
 const DEFAULTS = {
@@ -45,7 +50,7 @@ const DEFAULTS = {
 export function isSmartPasteContextSet(settings) {
   const ctx = settings?.smartPasteContext
   if (!ctx) return false
-  return Object.keys(EMPTY_SMART_PASTE_CONTEXT).every(
+  return REQUIRED_SMART_PASTE_CONTEXT_KEYS.every(
     (k) => typeof ctx[k] === 'string' && ctx[k].trim().length > 0,
   )
 }
