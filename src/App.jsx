@@ -79,7 +79,7 @@ function AppShell() {
       justPaid ? null : '✓',
     )
   }
-  const handleOnboardConnect = (credentials, fetchedProducts, bizDetails) => {
+  const handleOnboardConnect = (credentials, fetchedProducts, bizDetails, startTour = true) => {
     // credentials shape for back-compat: if a string is passed, treat it as a Squarespace
     // API key — that was the pre-Shopify signature. New callers pass an object.
     const creds =
@@ -105,7 +105,7 @@ function AppShell() {
     if (fetchedProducts?.length) catalog.saveProducts(fetchedProducts)
     localStorage.setItem('sip_onboarded', 'real')
     setOnboarded(true)
-    setTourStep(0)
+    if (startTour) setTourStep(0)
   }
   const handleOnboardDemo = () => {
     inv.saveInvoices(SAMPLE_INVOICES)
