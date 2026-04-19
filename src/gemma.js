@@ -18,6 +18,11 @@
 
 import { logger } from './utils/logger.js'
 
+// Session-wide KV-cache budget for LlmInference.createFromOptions. Mirrors the
+// constant used by the worker entry (`src/workers/mediapipeWorker.js`). See
+// that file for the rationale; SMA-84 tracks the tightening rollout.
+export const SESSION_MAX_TOKENS = 4096
+
 // ─── Model registry ───────────────────────────────────────────────────────────
 
 export const MODELS = {
@@ -381,7 +386,11 @@ export async function initModel(modelId) {
   try {
     _llm = await LlmInference.createFromOptions(genai, {
       ...modelOptions,
-      maxTokens: 10000,
+      // Session KV-cache cap. Per-call enforcement lives in streamingGuard
+      // (SMA-78: Stage 1 = 2048, Stage 3 = 512); keep this >= the largest
+      // per-call cap and raise it (with rationale) only when a new caller
+      // actually needs more headroom. SMA-84.
+      maxTokens: SESSION_MAX_TOKENS,
       temperature: 0.1,
       topK: 1,
     })
