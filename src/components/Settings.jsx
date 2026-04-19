@@ -25,8 +25,32 @@ import {
   backupFilename,
   EXPORT_KIND,
 } from '../utils/dataExport.js'
+import {
+  SHOP_TYPE_OPTIONS,
+  CUSTOMER_TYPE_OPTIONS,
+  VOCABULARY_OPTIONS,
+  LOCALE_OPTIONS,
+} from '../constants/smartPasteContextPresets.js'
 
 const LOG_LEVELS = ['debug', 'info', 'warn', 'error']
+
+function renderPresetOptions(value, options) {
+  const known = options.includes(value)
+  return (
+    <>
+      {!known && value ? (
+        <option key="__legacy" value={value}>
+          {value}
+        </option>
+      ) : null}
+      {options.map((opt) => (
+        <option key={opt} value={opt}>
+          {opt}
+        </option>
+      ))}
+    </>
+  )
+}
 
 export function Settings({ ai, onStartTour }) {
   const {
@@ -1134,12 +1158,15 @@ export function Settings({ ai, onStartTour }) {
         <div className="field">
           <label>
             Shop type
-            <textarea
-              rows={2}
+            <select
               value={s.smartPasteContext?.shopType || ''}
               onChange={(e) => setSmartPasteContext('shopType', e.target.value)}
-              placeholder="brick-and-mortar, online only, trade counter, pop-up market stall"
-            />
+            >
+              <option value="" disabled>
+                Select how you trade…
+              </option>
+              {renderPresetOptions(s.smartPasteContext?.shopType || '', SHOP_TYPE_OPTIONS)}
+            </select>
           </label>
           <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
             How you trade — helps the AI weight wholesale vs retail phrasing.
@@ -1148,12 +1175,15 @@ export function Settings({ ai, onStartTour }) {
         <div className="field">
           <label>
             Customer type
-            <textarea
-              rows={2}
+            <select
               value={s.smartPasteContext?.customerType || ''}
               onChange={(e) => setSmartPasteContext('customerType', e.target.value)}
-              placeholder="restaurants, trade contractors, walk-in retail, boutique resellers"
-            />
+            >
+              <option value="" disabled>
+                Select who you sell to…
+              </option>
+              {renderPresetOptions(s.smartPasteContext?.customerType || '', CUSTOMER_TYPE_OPTIONS)}
+            </select>
           </label>
           <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
             Who you sell to — sets expectations for quantities and vocabulary.
@@ -1162,28 +1192,30 @@ export function Settings({ ai, onStartTour }) {
         <div className="field">
           <label>
             Customer vocabulary / jargon
-            <textarea
-              rows={3}
+            <select
               value={s.smartPasteContext?.vocabulary || ''}
               onChange={(e) => setSmartPasteContext('vocabulary', e.target.value)}
-              placeholder={
-                'abbreviations, brand nicknames, short codes — e.g.\n"pdr" = powder, "M8x20" = M8 20mm bolt, "chedd" = cheddar'
-              }
-            />
+            >
+              <option value="">None / skip</option>
+              {renderPresetOptions(s.smartPasteContext?.vocabulary || '', VOCABULARY_OPTIONS)}
+            </select>
           </label>
           <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
-            Shorthand the AI would otherwise fail on. One per line is fine.
+            Shorthand the AI would otherwise fail on. Optional — leave blank if none applies.
           </p>
         </div>
         <div className="field">
           <label>
             Language / locale
-            <textarea
-              rows={2}
+            <select
               value={s.smartPasteContext?.locale || ''}
               onChange={(e) => setSmartPasteContext('locale', e.target.value)}
-              placeholder='e.g. "UK English + Spanish, sometimes mixed"'
-            />
+            >
+              <option value="" disabled>
+                Select a language…
+              </option>
+              {renderPresetOptions(s.smartPasteContext?.locale || '', LOCALE_OPTIONS)}
+            </select>
           </label>
           <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
             Languages customers write in — covers codeswitching and regional spellings.
