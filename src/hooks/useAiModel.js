@@ -9,7 +9,10 @@ import {
   isNativePlatform,
 } from '../gemma.js'
 import { initGemma } from '../gemmaWorker.js'
-import { testConnection as byokTestConnection } from '../byok.js'
+import {
+  testConnection as byokTestConnection,
+  listModels as byokListModels,
+} from '../byok.js'
 import { getSecret, deleteSecret } from '../secure-storage.js'
 import { runInference as pipelineRunInference } from '../ai/pipeline.js'
 import { logger } from '../utils/logger.js'
@@ -164,6 +167,15 @@ export function useAiModel(toast, settings) {
     [toast],
   )
 
+  const handleByokListModels = useCallback(async ({ provider, baseUrl } = {}) => {
+    if (!provider) return { ok: false, models: [], error: 'Pick a provider first' }
+    const apiKey = await getSecret(`sip_byok_${provider}`)
+    if (!apiKey) return { ok: false, models: [], error: 'Enter an API key first' }
+    const result = await byokListModels({ provider, apiKey, baseUrl })
+    if (result.ok) return { ok: true, models: result.models || [] }
+    return { ok: false, models: [], error: result.error || 'Failed to list models' }
+  }, [])
+
   const handleByokClear = useCallback(async (provider) => {
     if (!provider) return
     await deleteSecret(`sip_byok_${provider}`)
@@ -192,6 +204,7 @@ export function useAiModel(toast, settings) {
     handleAiDelete,
     handleAiLoad,
     handleByokTest,
+    handleByokListModels,
     handleByokClear,
     runInference,
   }

@@ -71,6 +71,86 @@ function extractErrorMessage(body, fallback) {
 }
 
 /**
+ * List the models available to the caller for the given provider + key +
+ * base URL. Resolves to `{ ok: true, models: string[] }` or
+ * `{ ok: false, error: string }`. Never throws; the key is redacted from
+ * any error message (SMA-96).
+ */
+export async function listModels({ provider, apiKey, baseUrl, fetchImpl = fetch }) {
+  if (!apiKey) return { ok: false, error: 'API key is required' }
+  try {
+    const cfg = resolveConfig({ provider, baseUrl })
+    const req = buildListRequest(cfg, apiKey)
+    const res = await fetchImpl(req.url, req.init)
+    const body = await readJsonSafe(res)
+    if (!res.ok) {
+      return { ok: false, error: extractErrorMessage(body, `HTTP ${res.status}`) }
+    }
+    const models = extractModelList(cfg.protocol, body)
+    return { ok: true, models: dedupeAndSort(models) }
+  } catch (e) {
+    return { ok: false, error: sanitizeError(e, apiKey) }
+  }
+}
+
+function buildListRequest(cfg, apiKey) {
+  if (cfg.protocol === 'openai') {
+    return {
+      url: `${cfg.baseUrl}/models`,
+      init: {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${apiKey}` },
+      },
+    }
+  }
+  if (cfg.protocol === 'gemini') {
+    return {
+      url: `${cfg.baseUrl}/models?key=${encodeURIComponent(apiKey)}`,
+      init: { method: 'GET' },
+    }
+  }
+  if (cfg.protocol === 'anthropic') {
+    return {
+      url: `${cfg.baseUrl}/models`,
+      init: {
+        method: 'GET',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+      },
+    }
+  }
+  throw new Error(`Unsupported protocol: ${cfg.protocol}`)
+}
+
+function extractModelList(protocol, body) {
+  if (!body) return []
+  if (protocol === 'openai') {
+    return (body.data || [])
+      .map((m) => (typeof m === 'string' ? m : m?.id))
+      .filter(Boolean)
+  }
+  if (protocol === 'gemini') {
+    return (body.models || [])
+      .filter((m) => (m?.supportedGenerationMethods || []).includes('generateContent'))
+      .map((m) => (typeof m?.name === 'string' ? m.name.replace(/^models\//, '') : null))
+      .filter(Boolean)
+  }
+  if (protocol === 'anthropic') {
+    return (body.data || [])
+      .map((m) => (typeof m === 'string' ? m : m?.id))
+      .filter(Boolean)
+  }
+  return []
+}
+
+function dedupeAndSort(models) {
+  return Array.from(new Set(models)).sort((a, b) => a.localeCompare(b))
+}
+
+/**
  * Send a lightweight request to verify the provider + key + model triple
  * works. Resolves to { ok: true } or { ok: false, error: string }.
  */
