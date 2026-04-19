@@ -7,7 +7,8 @@ import { Icon } from './Icon.jsx'
 
 const AI_CONFIDENCE_FLOOR = 65
 // Mirrors MATCH_BATCH_SIZE in src/ai/smartPastePipeline.js — kept in sync so
-// the widget can map `batchIndex` back to row indices for spinners.
+// the widget can compute row ranges from a batchIndex when the pipeline only
+// emits a start event (error path).
 const MATCH_BATCH_SIZE = 2
 
 function getPasteStatus(r, i, decisions) {
@@ -60,9 +61,13 @@ export function SmartPasteWidget({
   const [pasteText, setPasteText] = useState('')
   const [pasteResults, setPasteResults] = useState(null)
   const [pasteDecisions, setPasteDecisions] = useState({})
-  const [aiPending, setAiPending] = useState({})
+  const [visibleRowCount, setVisibleRowCount] = useState(0)
   const [batchFailed, setBatchFailed] = useState({})
-  const [pipelineStage, setPipelineStage] = useState(null)
+  // SMA-99: processing state drives the spinner/progress card that replaces
+  // the textarea during AI work. Shape: { phase, completedSteps, totalSteps }.
+  // `totalSteps === 0` while the extract phase is running (indeterminate);
+  // once Stage 1 completes we know `1 + totalBatches` and render a bar.
+  const [processing, setProcessing] = useState(null)
   const [bannerDismissed, setBannerDismissed] = useState(false)
   const [skipHint, setSkipHint] = useState(null)
 
@@ -90,20 +95,28 @@ export function SmartPasteWidget({
     }
   }
 
+  const resetForNextPaste = () => {
+    setPasteText('')
+    setPasteResults(null)
+    setPasteDecisions({})
+    setVisibleRowCount(0)
+    setBatchFailed({})
+    setProcessing(null)
+    setSkipHint(null)
+  }
+
   const runParse = async () => {
     if (!pasteText.trim()) return
     setPasteDecisions({})
-    setAiPending({})
     setBatchFailed({})
-    setPipelineStage(null)
     setSkipHint(null)
 
     const cleaned = cleanWhatsApp(pasteText)
     const extracted = extractItems(cleaned)
-    const results = matchItems(extracted, products)
-    setPasteResults(results)
+    const fuzzyRows = matchItems(extracted, products)
+    setPasteResults(fuzzyRows)
 
-    const lowConfidenceCount = results.filter(
+    const lowConfidenceCount = fuzzyRows.filter(
       (r) => !r.product && (r.confidence ?? 0) < AI_CONFIDENCE_FLOOR,
     ).length
 
@@ -124,43 +137,64 @@ export function SmartPasteWidget({
       ) {
         setSkipHint(skipReason)
       }
+      // No AI work to do — reveal fuzzy rows immediately, stay idle.
+      setProcessing(null)
+      setVisibleRowCount(fuzzyRows.length)
       return
     }
 
-    logger.info('smartPaste.pipeline_started', { rowCount: results.length, lowConfidenceCount })
+    logger.info('smartPaste.pipeline_started', {
+      rowCount: fuzzyRows.length,
+      lowConfidenceCount,
+    })
 
-    const onStage = ({ stage, batchIndex, error }) => {
+    // Kick off the processing UX: hide rows + textarea, show the spinner card.
+    setVisibleRowCount(0)
+    setProcessing({ phase: 'extract', completedSteps: 0, totalSteps: 0 })
+
+    const onStage = (event) => {
+      if (!event || typeof event !== 'object') return
+      const { stage, status, batchIndex, totalBatches, error } = event
       if (stage === 'extract') {
-        setPipelineStage('extract')
+        if (status === 'complete') {
+          const total = 1 + (Number(totalBatches) || 0)
+          setProcessing({ phase: 'matching', completedSteps: 1, totalSteps: total })
+        }
         return
       }
       if (stage !== 'match') return
-      setPipelineStage('match')
-      const start = batchIndex * MATCH_BATCH_SIZE
-      const indices = []
-      for (let k = 0; k < MATCH_BATCH_SIZE; k++) indices.push(start + k)
+
       if (error) {
-        setAiPending((prev) => {
-          const next = { ...prev }
-          indices.forEach((i) => delete next[i])
-          return next
-        })
+        // SMA-99: a failed batch still "finished" — advance progress, reveal
+        // those rows (they stay as fuzzy fallbacks), and flag them so the user
+        // sees a `· batch failed` marker on each.
+        const start = (Number(batchIndex) || 0) * MATCH_BATCH_SIZE
         setBatchFailed((prev) => {
           const next = { ...prev }
-          indices.forEach((i) => {
-            next[i] = true
-          })
+          for (let k = 0; k < MATCH_BATCH_SIZE; k++) next[start + k] = true
           return next
         })
-      } else {
-        setAiPending(() => {
-          const next = {}
-          indices.forEach((i) => {
-            next[i] = true
-          })
-          return next
-        })
+        setVisibleRowCount((prev) => Math.max(prev, start + MATCH_BATCH_SIZE))
+        setProcessing((prev) =>
+          prev ? { ...prev, completedSteps: prev.completedSteps + 1 } : prev,
+        )
+        return
       }
+
+      if (status !== 'complete') return
+      const offset = Number(event.offset) || 0
+      const batchRows = Array.isArray(event.batchRows) ? event.batchRows : []
+      setPasteResults((prev) => {
+        const next = prev ? [...prev] : []
+        batchRows.forEach((row, i) => {
+          next[offset + i] = convertPipelineRow(row)
+        })
+        return next
+      })
+      setVisibleRowCount((prev) => Math.max(prev, offset + batchRows.length))
+      setProcessing((prev) =>
+        prev ? { ...prev, completedSteps: prev.completedSteps + 1 } : prev,
+      )
     }
 
     const invokePipeline = () =>
@@ -189,27 +223,26 @@ export function SmartPasteWidget({
           logger.error('smartPaste.pipeline_threw', {
             message: String(err2?.message ?? err2),
           })
-          setPipelineStage(null)
-          setAiPending({})
+          setProcessing(null)
+          setVisibleRowCount(fuzzyRows.length)
           toast?.('AI extract failed — using fallback')
           return
         }
       } else {
         logger.error('smartPaste.pipeline_threw', { message })
-        setPipelineStage(null)
-        setAiPending({})
+        setProcessing(null)
+        setVisibleRowCount(fuzzyRows.length)
         toast?.('AI extract failed — using fallback')
         return
       }
     }
 
-    setPipelineStage(null)
-    setAiPending({})
-
     if (!pipelineResult || pipelineResult.fallback) {
       // SMA-78: the on-device small model can hang indefinitely on
       // pathological pastes. When the pipeline aborts via the wall-clock
       // guard, route the user toward BYOK instead of silently blaming "AI".
+      setProcessing(null)
+      setVisibleRowCount(fuzzyRows.length)
       if (pipelineResult?.fallbackReason === 'stage1_timeout') {
         toast?.('On-device model taking too long — try cloud (BYOK)')
       } else {
@@ -221,6 +254,9 @@ export function SmartPasteWidget({
     const converted = pipelineResult.rows.map(convertPipelineRow)
     setPasteResults(converted)
     setPasteDecisions({})
+    setBatchFailed({})
+    setVisibleRowCount(converted.length)
+    setProcessing(null)
   }
 
   const addMatched = () => {
@@ -228,6 +264,7 @@ export function SmartPasteWidget({
     const newDecisions = { ...pasteDecisions }
     const toAdd = []
     pasteResults.forEach((r, i) => {
+      if (!r) return
       const s = getPasteStatus(r, i, pasteDecisions)
       if (s === 'auto_match' || s === 'confirmed') {
         const prod = r.product ?? r.bestGuess
@@ -237,21 +274,24 @@ export function SmartPasteWidget({
     })
     if (!toAdd.length) return
     onAddItems(toAdd)
-    const allGone = pasteResults.every((_, i) => newDecisions[i] === 'dismissed')
-    if (allGone) {
-      setPasteResults(null)
-      setPasteDecisions({})
-      setPasteText('')
-    } else setPasteDecisions(newDecisions)
+    const allGone = pasteResults.every((r, i) => !r || newDecisions[i] === 'dismissed')
+    if (allGone) resetForNextPaste()
+    else setPasteDecisions(newDecisions)
   }
 
   const sorted = pasteResults
     ? pasteResults
-        .map((r, i) => ({ r, i, s: getPasteStatus(r, i, pasteDecisions) }))
+        .map((r, i) =>
+          r && i < visibleRowCount ? { r, i, s: getPasteStatus(r, i, pasteDecisions) } : null,
+        )
+        .filter(Boolean)
         .filter(({ s }) => s !== 'dismissed')
         .sort((a, b) => PASTE_SORT[a.s] - PASTE_SORT[b.s])
     : []
   const matchCount = sorted.filter(({ s }) => s === 'auto_match' || s === 'confirmed').length
+
+  const showIdleInput = !processing && !pasteResults
+  const showResults = !!pasteResults && visibleRowCount > 0 && sorted.length > 0
 
   return (
     <div className="ai-box">
@@ -311,38 +351,32 @@ export function SmartPasteWidget({
         </div>
       )}
 
-      <textarea
-        aria-label="Smart paste order text"
-        value={pasteText}
-        onChange={(e) => {
-          setPasteText(e.target.value)
-          setPasteResults(null)
-          setSkipHint(null)
-        }}
-        placeholder={
-          'Paste an order, email, or list here…\n\nExample:\n4 x Blue Molar Extractor\n2 x 10 Instruments Sterilisation Cassette'
-        }
-        style={{ minHeight: 90, marginBottom: 8, fontSize: '.82rem' }}
-      />
-      <button
-        className="btn btn-primary btn-full"
-        onClick={runParse}
-        disabled={!pasteText.trim() || pipelineStage !== null}
-        style={{ marginBottom: pasteResults ? 12 : 0 }}
-      >
-        <Icon name="send" /> Parse &amp; Match
-      </button>
-
-      {pipelineStage === 'extract' && (
-        <div
-          role="status"
-          aria-live="polite"
-          data-testid="smart-paste-parsing"
-          style={{ fontSize: '.75rem', color: 'var(--accent)', marginTop: 8 }}
-        >
-          Parsing…
-        </div>
+      {showIdleInput && (
+        <>
+          <textarea
+            aria-label="Smart paste order text"
+            value={pasteText}
+            onChange={(e) => {
+              setPasteText(e.target.value)
+              setPasteResults(null)
+              setSkipHint(null)
+            }}
+            placeholder={
+              'Paste an order, email, or list here…\n\nExample:\n4 x Blue Molar Extractor\n2 x 10 Instruments Sterilisation Cassette'
+            }
+            style={{ minHeight: 90, marginBottom: 8, fontSize: '.82rem' }}
+          />
+          <button
+            className="btn btn-primary btn-full"
+            onClick={runParse}
+            disabled={!pasteText.trim()}
+          >
+            <Icon name="send" /> Parse &amp; Match
+          </button>
+        </>
       )}
+
+      {processing && <SmartPasteProcessingCard processing={processing} />}
 
       {skipHint && (
         <div
@@ -388,7 +422,11 @@ export function SmartPasteWidget({
         </div>
       )}
 
-      {pasteResults && sorted.length > 0 && (
+      {!processing && pasteResults && (
+        <PasteMoreBar onClick={resetForNextPaste} />
+      )}
+
+      {showResults && (
         <div style={{ marginTop: 8 }}>
           {sorted.map(({ r, i, s }) => (
             <PasteResultRow
@@ -396,14 +434,13 @@ export function SmartPasteWidget({
               r={r}
               i={i}
               status={s}
-              pending={!!aiPending[i]}
               failed={!!batchFailed[i]}
               onDecide={decide}
               onUnmatch={unmatch}
             />
           ))}
 
-          {matchCount > 0 && (
+          {!processing && matchCount > 0 && (
             <button className="btn btn-primary btn-full mt-8" onClick={addMatched}>
               Add {matchCount} matched item{matchCount !== 1 ? 's' : ''} to invoice
             </button>
@@ -414,7 +451,118 @@ export function SmartPasteWidget({
   )
 }
 
-function PasteResultRow({ r, i, status, pending, failed, onDecide, onUnmatch }) {
+function SmartPasteProcessingCard({ processing }) {
+  const { phase, completedSteps, totalSteps } = processing
+  const indeterminate = !totalSteps || totalSteps <= 0
+  const pct = indeterminate
+    ? 0
+    : Math.min(100, Math.round((completedSteps / totalSteps) * 100))
+  const label =
+    phase === 'extract'
+      ? 'Reading your paste…'
+      : indeterminate
+        ? 'Matching items…'
+        : completedSteps >= totalSteps
+          ? 'Finalizing…'
+          : `Matching items — ${completedSteps} of ${totalSteps}`
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      data-testid="smart-paste-processing"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '14px 14px',
+        borderRadius: 10,
+        border: '1px solid var(--border)',
+        background: 'rgba(245,166,35,.04)',
+      }}
+    >
+      <span
+        className="ptr-spinner"
+        data-testid="smart-paste-spinner"
+        style={{ animation: 'spin 0.9s linear infinite' }}
+        aria-hidden="true"
+      />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          data-testid="smart-paste-processing-label"
+          style={{ fontSize: '.82rem', fontWeight: 600, color: 'var(--accent)' }}
+        >
+          {label}
+        </div>
+        <div
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={pct}
+          data-testid="smart-paste-progress"
+          style={{
+            marginTop: 8,
+            height: 4,
+            borderRadius: 2,
+            background: 'var(--border)',
+            overflow: 'hidden',
+            position: 'relative',
+          }}
+        >
+          {indeterminate ? (
+            <div
+              className="sip-progress-indeterminate"
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '40%',
+                background: 'var(--accent)',
+                borderRadius: 2,
+              }}
+            />
+          ) : (
+            <div
+              style={{
+                width: `${pct}%`,
+                height: '100%',
+                background: 'var(--accent)',
+                transition: 'width .25s ease',
+              }}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PasteMoreBar({ onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      data-testid="smart-paste-more-bar"
+      className="btn btn-full"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        padding: '8px 12px',
+        fontSize: '.78rem',
+        color: 'var(--muted)',
+        background: 'transparent',
+        border: '1px dashed var(--border)',
+        borderRadius: 8,
+        marginBottom: 10,
+      }}
+    >
+      + Paste more text
+    </button>
+  )
+}
+
+function PasteResultRow({ r, i, status, failed, onDecide, onUnmatch }) {
   const isGreen = status === 'auto_match' || status === 'confirmed'
   const isAmber = status === 'best_guess'
   const isRed = status === 'no_match' || status === 'discarded'
@@ -496,16 +644,6 @@ function PasteResultRow({ r, i, status, pending, failed, onDecide, onUnmatch }) 
         <div>
           <div style={{ fontSize: '.78rem', color: 'var(--muted)', marginBottom: 2 }}>
             &ldquo;{r.name}&rdquo; — {r.confidence}% match
-            {pending && (
-              <span
-                aria-label="AI matching"
-                role="status"
-                data-testid={`ai-pending-${i}`}
-                style={{ marginLeft: 6, color: 'var(--accent)' }}
-              >
-                · AI matching…
-              </span>
-            )}
             {failedMarker}
           </div>
           <div style={{ fontSize: '.84rem', fontWeight: 600, marginBottom: 8 }}>
@@ -557,16 +695,6 @@ function PasteResultRow({ r, i, status, pending, failed, onDecide, onUnmatch }) 
             {status === 'discarded' && (
               <span style={{ fontSize: '.72rem', color: 'var(--muted)', marginLeft: 6 }}>
                 Discarded
-              </span>
-            )}
-            {pending && (
-              <span
-                aria-label="AI matching"
-                role="status"
-                data-testid={`ai-pending-${i}`}
-                style={{ fontSize: '.72rem', color: 'var(--accent)', marginLeft: 6 }}
-              >
-                · AI matching…
               </span>
             )}
             {failedMarker}
