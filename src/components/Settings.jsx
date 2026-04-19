@@ -14,6 +14,7 @@ import { useToast } from '../contexts/ToastContext.jsx'
 import { SettingsSection } from './SettingsSection.jsx'
 import { PdfTemplateEditor } from './PdfTemplateEditor.jsx'
 import { Icon } from './Icon.jsx'
+import { RestoreBackupModal } from './RestoreBackupModal.jsx'
 import { TOUR_SECTIONS } from './TourOverlay.jsx'
 import { logger } from '../utils/logger.js'
 import { shareOrDownload } from '../utils/shareBackup.js'
@@ -55,6 +56,7 @@ export function Settings({ ai, onStartTour }) {
   const [byokKey, setByokKey] = useState('')
   const [showLogs, setShowLogs] = useState(false)
   const [logTick, setLogTick] = useState(0)
+  const [showRestore, setShowRestore] = useState(false)
   const [backupBusy, setBackupBusy] = useState(null)
   const [backupError, setBackupError] = useState('')
   const set = (k, v) => setS((p) => ({ ...p, [k]: v }))
@@ -1181,6 +1183,47 @@ export function Settings({ ai, onStartTour }) {
         </div>
       </SettingsSection>
 
+      <SettingsSection title="Backup & restore">
+        <p style={{ fontSize: '.78rem', color: 'var(--muted)', marginBottom: 12, lineHeight: 1.5 }}>
+          Export your invoices, products, and settings to a file you control, or restore from a
+          previously exported backup. Stored locally — nothing is uploaded.
+        </p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={exportJson}
+            disabled={backupBusy !== null}
+          >
+            {backupBusy === 'json' ? 'Exporting…' : 'Export all data (JSON)'}
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={exportCsv}
+            disabled={backupBusy !== null}
+          >
+            {backupBusy === 'csv' ? 'Exporting…' : 'Export invoices (CSV)'}
+          </button>
+          <button className="btn btn-ghost btn-sm" onClick={() => setShowRestore(true)}>
+            Restore from backup…
+          </button>
+        </div>
+        {backupError ? (
+          <p
+            role="alert"
+            style={{
+              fontSize: '.75rem',
+              color: '#f87171',
+              marginTop: 10,
+              wordBreak: 'break-all',
+            }}
+          >
+            {backupError}
+          </p>
+        ) : null}
+      </SettingsSection>
+
+      {showRestore && <RestoreBackupModal onClose={() => setShowRestore(false)} />}
+
       <SettingsSection title="Help & Tour">
         <p style={{ fontSize: '.8rem', color: 'var(--muted)', marginBottom: 14, lineHeight: 1.5 }}>
           Replay any section of the guided tour.
@@ -1223,42 +1266,6 @@ export function Settings({ ai, onStartTour }) {
             <Icon name="refresh" /> Replay full tour
           </button>
         </div>
-      </SettingsSection>
-
-      <SettingsSection title="Backup & restore">
-        <p style={{ fontSize: '.78rem', color: 'var(--muted)', marginBottom: 12, lineHeight: 1.5 }}>
-          Export your invoices, products, and settings to a file you control. Stored locally — nothing
-          is uploaded.
-        </p>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={exportJson}
-            disabled={backupBusy !== null}
-          >
-            {backupBusy === 'json' ? 'Exporting…' : 'Export all data (JSON)'}
-          </button>
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={exportCsv}
-            disabled={backupBusy !== null}
-          >
-            {backupBusy === 'csv' ? 'Exporting…' : 'Export invoices (CSV)'}
-          </button>
-        </div>
-        {backupError ? (
-          <p
-            role="alert"
-            style={{
-              fontSize: '.75rem',
-              color: '#f87171',
-              marginTop: 10,
-              wordBreak: 'break-all',
-            }}
-          >
-            {backupError}
-          </p>
-        ) : null}
       </SettingsSection>
 
       <SettingsSection title="Debugging">

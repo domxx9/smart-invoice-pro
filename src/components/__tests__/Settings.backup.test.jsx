@@ -150,4 +150,31 @@ describe('Settings — Backup & restore section', () => {
 
     await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
   })
+
+  it('renders the Restore from backup button under the Backup & restore section', () => {
+    renderSettings()
+    expect(screen.getByRole('button', { name: /Restore from backup/i })).toBeInTheDocument()
+  })
+
+  it('opens the RestoreBackupModal when the Restore button is clicked', () => {
+    renderSettings()
+    expect(screen.queryByRole('dialog', { name: /Restore from backup/i })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: /Restore from backup/i }))
+
+    expect(screen.getByRole('dialog', { name: /Restore from backup/i })).toBeInTheDocument()
+  })
+
+  it('closes the RestoreBackupModal when Cancel is clicked', async () => {
+    renderSettings()
+    fireEvent.click(screen.getByRole('button', { name: /Restore from backup/i }))
+    const dialog = screen.getByRole('dialog', { name: /Restore from backup/i })
+
+    fireEvent.click(screen.getByRole('button', { name: /^Cancel$/i }))
+
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: /Restore from backup/i })).toBeNull(),
+    )
+    expect(dialog).not.toBeInTheDocument()
+  })
 })
