@@ -170,6 +170,30 @@ export async function inferGemma(prompt, optionsOrOnToken, maybeOnToken) {
 
 export function cancelGemma() {
   _worker?.postMessage?.({ type: 'CANCEL' })
+  // MediaPipe's cancelProcessing() normally fires a final streaming callback
+  // with done=true, which the streamingGuard turns into INFER_DONE and clears
+  // the _infers entry. But on some devices/versions the callback never fires
+  // after cancel, leaking the map entry until resetGemmaWorker() (SMA-83).
+  // Synthesise a client-side cancellation resolution so pending inferences
+  // unblock and _infers returns to empty within the same tick. A late real
+  // INFER_DONE arriving after this is a no-op — the message handler guards
+  // with _infers.get(id) which is now undefined.
+  if (_infers.size === 0) return
+  const pending = Array.from(_infers.values())
+  _infers.clear()
+  for (const entry of pending) {
+    try {
+      entry?.resolve?.({ text: '', stopReason: 'cancelled' })
+    } catch {
+      /* best-effort — never let a single bad callback block cleanup */
+    }
+  }
+}
+
+// Test seam: exposes the size of the in-flight inference map so SMA-83's
+// unit test can assert cleanup without reaching into module internals.
+export function _pendingInferCountForTest() {
+  return _infers.size
 }
 
 export function resetGemmaWorker() {
