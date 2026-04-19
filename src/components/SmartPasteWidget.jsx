@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { cleanWhatsApp, extractItems, matchItems, fmt } from '../helpers.js'
 import { runSmartPastePipeline } from '../ai/smartPastePipeline.js'
 import { isSmartPasteContextSet } from '../contexts/SettingsContext.jsx'
@@ -14,6 +14,10 @@ const MATCH_BATCH_SIZE = 2
 function getPasteStatus(r, i, decisions) {
   const d = decisions[i]
   if (d === 'dismissed') return 'dismissed'
+  // SMA-100: `saved` marks rows already committed to the invoice by
+  // autoAddMatches. Shown like auto_match but with a "Saved" badge and
+  // excluded from the "Add N matched" button count.
+  if (d === 'saved') return 'saved'
   if (d === 'confirmed') return 'confirmed'
   if (d === 'discarded') return 'discarded'
   if (r.product) return 'auto_match'
@@ -27,6 +31,7 @@ const PASTE_SORT = {
   best_guess: 1,
   auto_match: 2,
   confirmed: 2,
+  saved: 2,
   dismissed: 3,
 }
 
@@ -70,6 +75,10 @@ export function SmartPasteWidget({
   const [processing, setProcessing] = useState(null)
   const [bannerDismissed, setBannerDismissed] = useState(false)
   const [skipHint, setSkipHint] = useState(null)
+  // SMA-100: row indices already auto-added to the invoice this parse session.
+  // Used to dedupe when a batch's data flows into `setPasteResults` more than
+  // once (progressive stream + final replace), or if onStage double-fires.
+  const autoAddedRef = useRef(new Set())
 
   const contextReady = isSmartPasteContextSet({ smartPasteContext })
   const showContextBanner = aiMode === 'byok' && !contextReady && !bannerDismissed
@@ -103,6 +112,36 @@ export function SmartPasteWidget({
     setBatchFailed({})
     setProcessing(null)
     setSkipHint(null)
+    autoAddedRef.current = new Set()
+  }
+
+  // SMA-100: commit any auto_match rows in `rows` to the invoice via
+  // `onAddItems` and mark them `saved` so the "Add N matched" button excludes
+  // them and they no longer offer an ✕ unmatch action.
+  // `offset` maps local indices in `rows` to the corresponding pasteResults
+  // indices (batches arrive at an offset; full sweeps start at 0).
+  const autoAddMatches = (rows, offset = 0) => {
+    if (!Array.isArray(rows) || rows.length === 0) return
+    const toAdd = []
+    const savedIdx = []
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i]
+      if (!r || !r.product) continue
+      const idx = offset + i
+      if (autoAddedRef.current.has(idx)) continue
+      autoAddedRef.current.add(idx)
+      toAdd.push({ desc: r.product.name, qty: r.qty, price: r.product.price })
+      savedIdx.push(idx)
+    }
+    if (!toAdd.length) return
+    onAddItems?.(toAdd)
+    setPasteDecisions((prev) => {
+      const next = { ...prev }
+      savedIdx.forEach((i) => {
+        next[i] = 'saved'
+      })
+      return next
+    })
   }
 
   const runParse = async () => {
@@ -110,6 +149,9 @@ export function SmartPasteWidget({
     setPasteDecisions({})
     setBatchFailed({})
     setSkipHint(null)
+    // SMA-100: fresh parse session → drop prior auto-add bookkeeping before
+    // any row flows into the invoice below.
+    autoAddedRef.current = new Set()
 
     const cleaned = cleanWhatsApp(pasteText)
     const extracted = extractItems(cleaned)
@@ -140,6 +182,8 @@ export function SmartPasteWidget({
       // No AI work to do — reveal fuzzy rows immediately, stay idle.
       setProcessing(null)
       setVisibleRowCount(fuzzyRows.length)
+      // SMA-100: no pipeline will run, so commit fuzzy auto_matches now.
+      autoAddMatches(fuzzyRows, 0)
       return
     }
 
@@ -184,17 +228,21 @@ export function SmartPasteWidget({
       if (status !== 'complete') return
       const offset = Number(event.offset) || 0
       const batchRows = Array.isArray(event.batchRows) ? event.batchRows : []
+      const convertedBatch = batchRows.map(convertPipelineRow)
       setPasteResults((prev) => {
         const next = prev ? [...prev] : []
-        batchRows.forEach((row, i) => {
-          next[offset + i] = convertPipelineRow(row)
+        convertedBatch.forEach((row, i) => {
+          next[offset + i] = row
         })
         return next
       })
-      setVisibleRowCount((prev) => Math.max(prev, offset + batchRows.length))
+      setVisibleRowCount((prev) => Math.max(prev, offset + convertedBatch.length))
       setProcessing((prev) =>
         prev ? { ...prev, completedSteps: prev.completedSteps + 1 } : prev,
       )
+      // SMA-100: commit this batch's auto_matches to the invoice so a
+      // mid-pipeline navigation does not drop them.
+      autoAddMatches(convertedBatch, offset)
     }
 
     const invokePipeline = () =>
@@ -253,10 +301,15 @@ export function SmartPasteWidget({
 
     const converted = pipelineResult.rows.map(convertPipelineRow)
     setPasteResults(converted)
-    setPasteDecisions({})
+    // SMA-100: pasteDecisions is NOT reset here — per-batch auto-add already
+    // wrote `saved` markers for committed rows, and resetting would let them
+    // reappear as auto_match (and double-add on the final sweep below).
     setBatchFailed({})
     setVisibleRowCount(converted.length)
     setProcessing(null)
+    // SMA-100: defensive final sweep — picks up any auto_match rows whose
+    // batch-complete event was dropped (test mocks, partial stream paths).
+    autoAddMatches(converted, 0)
   }
 
   const addMatched = () => {
@@ -563,7 +616,11 @@ function PasteMoreBar({ onClick }) {
 }
 
 function PasteResultRow({ r, i, status, failed, onDecide, onUnmatch }) {
-  const isGreen = status === 'auto_match' || status === 'confirmed'
+  // SMA-100: `saved` rows render in the same green band as auto_match but
+  // display a "Saved to invoice" badge and hide the ✕ unmatch action — the
+  // line item is already in the invoice below and the user edits it there.
+  const isSaved = status === 'saved'
+  const isGreen = isSaved || status === 'auto_match' || status === 'confirmed'
   const isAmber = status === 'best_guess'
   const isRed = status === 'no_match' || status === 'discarded'
   const bg = isGreen
@@ -615,6 +672,14 @@ function PasteResultRow({ r, i, status, failed, onDecide, onUnmatch }) {
               {status === 'confirmed' && (
                 <span style={{ color: 'var(--success)', marginLeft: 6 }}>· Confirmed</span>
               )}
+              {isSaved && (
+                <span
+                  data-testid={`saved-badge-${i}`}
+                  style={{ color: 'var(--success)', marginLeft: 6 }}
+                >
+                  · Saved to invoice
+                </span>
+              )}
               {failedMarker}
             </div>
           </div>
@@ -622,20 +687,22 @@ function PasteResultRow({ r, i, status, failed, onDecide, onUnmatch }) {
             <span style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '.85rem' }}>
               {fmt(r.qty * prod.price)}
             </span>
-            <button
-              className="btn btn-sm"
-              title="Wrong match — remove"
-              style={{
-                padding: '3px 7px',
-                fontSize: '.75rem',
-                color: 'var(--muted)',
-                border: '1px solid var(--border)',
-                background: 'transparent',
-              }}
-              onClick={() => onUnmatch(i)}
-            >
-              ✕
-            </button>
+            {!isSaved && (
+              <button
+                className="btn btn-sm"
+                title="Wrong match — remove"
+                style={{
+                  padding: '3px 7px',
+                  fontSize: '.75rem',
+                  color: 'var(--muted)',
+                  border: '1px solid var(--border)',
+                  background: 'transparent',
+                }}
+                onClick={() => onUnmatch(i)}
+              >
+                ✕
+              </button>
+            )}
           </div>
         </div>
       )}

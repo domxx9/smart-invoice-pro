@@ -364,6 +364,160 @@ describe('SmartPasteWidget pipeline wiring', () => {
     expect(textarea).toHaveValue('')
   })
 
+  // SMA-100: auto-save invoice state as matches are added. Each auto_match
+  // row flows into the invoice via onAddItems the moment the pipeline confirms
+  // it — so a user who navigates away before hitting "Add N matched" does not
+  // lose the matching work.
+  it('auto-saves auto_match rows to the invoice per batch-complete event (SMA-100)', async () => {
+    const pipelineRow = (name, qty, product, confidence) => ({
+      extracted: { text: name, qty, description: name },
+      product,
+      confidence,
+      source: 'ai',
+    })
+
+    let emit
+    let resolvePipeline
+    runSmartPastePipeline.mockImplementation(async ({ onStage }) => {
+      emit = onStage
+      onStage({ stage: 'extract' })
+      onStage({
+        stage: 'extract',
+        status: 'complete',
+        extractedCount: 2,
+        totalBatches: 2,
+      })
+      return new Promise((res) => {
+        resolvePipeline = res
+      })
+    })
+
+    const { onAddItems } = setup()
+    typeAndParse(['1 x Alpha widget xyz', '1 x Beta widget xyz'].join('\n'))
+
+    // Batch 0 completes with a high-confidence auto_match at offset 0.
+    emit({
+      stage: 'match',
+      batchIndex: 0,
+      totalBatches: 2,
+      status: 'complete',
+      offset: 0,
+      batchRows: [pipelineRow('Alpha', 2, products[0], 90)],
+    })
+    await waitFor(() => expect(onAddItems).toHaveBeenCalledTimes(1))
+    expect(onAddItems).toHaveBeenLastCalledWith([
+      expect.objectContaining({ desc: 'Blue Molar Extractor', qty: 2, price: 25 }),
+    ])
+    expect(screen.getByTestId('saved-badge-0')).toBeInTheDocument()
+
+    // Batch 1 completes with another auto_match at offset 1.
+    emit({
+      stage: 'match',
+      batchIndex: 1,
+      totalBatches: 2,
+      status: 'complete',
+      offset: 1,
+      batchRows: [pipelineRow('Beta', 3, products[1], 91)],
+    })
+    await waitFor(() => expect(onAddItems).toHaveBeenCalledTimes(2))
+    expect(onAddItems).toHaveBeenLastCalledWith([
+      expect.objectContaining({ desc: 'Sterilisation Cassette', qty: 3, price: 40 }),
+    ])
+
+    // Pipeline resolves — the final sweep must NOT re-add already-committed rows.
+    resolvePipeline({
+      extracted: [
+        { text: 'Alpha', qty: 2, description: 'Alpha' },
+        { text: 'Beta', qty: 3, description: 'Beta' },
+      ],
+      rows: [
+        pipelineRow('Alpha', 2, products[0], 90),
+        pipelineRow('Beta', 3, products[1], 91),
+      ],
+      callCount: 3,
+      fallback: false,
+    })
+    await waitFor(() =>
+      expect(screen.queryByTestId('smart-paste-processing')).not.toBeInTheDocument(),
+    )
+    expect(onAddItems).toHaveBeenCalledTimes(2)
+    // Rows stay visible marked as saved; the explicit Add CTA is gone.
+    expect(screen.getByTestId('saved-badge-0')).toBeInTheDocument()
+    expect(screen.getByTestId('saved-badge-1')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Add \d+ matched/ })).not.toBeInTheDocument()
+  })
+
+  it('does not auto-save best_guess rows — user still confirms (SMA-100)', async () => {
+    const pipelineRow = (name, qty, product, confidence, source = 'ai') => ({
+      extracted: { text: name, qty, description: name },
+      product,
+      confidence,
+      source,
+    })
+
+    runSmartPastePipeline.mockResolvedValue({
+      extracted: [{ text: 'Unsure item', qty: 1, description: 'Unsure item' }],
+      // Low-confidence AI pick → convertPipelineRow routes it to bestGuess,
+      // not product, so autoAddMatches must skip it.
+      rows: [pipelineRow('Unsure', 1, products[0], 40)],
+      callCount: 2,
+      fallback: false,
+    })
+
+    const { onAddItems } = setup()
+    typeAndParse('1 x Unsure item')
+
+    // Wait for a render that reflects pipeline resolution.
+    await waitFor(() =>
+      expect(screen.queryByTestId('smart-paste-processing')).not.toBeInTheDocument(),
+    )
+    expect(onAddItems).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('saved-badge-0')).not.toBeInTheDocument()
+    // Confirm / Discard buttons render for best_guess rows.
+    expect(screen.getByRole('button', { name: /Confirm/i })).toBeInTheDocument()
+  })
+
+  it('does not double-add when the final pipeline result repeats batch rows (SMA-100)', async () => {
+    const pipelineRow = (name, qty, product, confidence) => ({
+      extracted: { text: name, qty, description: name },
+      product,
+      confidence,
+      source: 'ai',
+    })
+
+    runSmartPastePipeline.mockImplementation(async ({ onStage }) => {
+      onStage({ stage: 'extract' })
+      onStage({
+        stage: 'extract',
+        status: 'complete',
+        extractedCount: 1,
+        totalBatches: 1,
+      })
+      onStage({
+        stage: 'match',
+        batchIndex: 0,
+        totalBatches: 1,
+        status: 'complete',
+        offset: 0,
+        batchRows: [pipelineRow('Alpha', 1, products[0], 92)],
+      })
+      return {
+        extracted: [{ text: 'Alpha', qty: 1, description: 'Alpha' }],
+        rows: [pipelineRow('Alpha', 1, products[0], 92)],
+        callCount: 2,
+        fallback: false,
+      }
+    })
+
+    const { onAddItems } = setup()
+    typeAndParse('1 x Alpha')
+
+    await waitFor(() => expect(onAddItems).toHaveBeenCalledTimes(1))
+    // Final sweep runs after pipeline resolves — must be a no-op because the
+    // row index is already tracked in autoAddedRef.
+    expect(onAddItems).toHaveBeenCalledTimes(1)
+  })
+
   it("does not call the pipeline when aiMode is 'off'", () => {
     setup({ aiMode: 'off' })
     typeAndParse('2 x Blue Molar Extractor')
