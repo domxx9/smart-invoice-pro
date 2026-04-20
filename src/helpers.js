@@ -42,15 +42,38 @@ export function blankInvoice(invoices, defaultTax = 20) {
     due: '',
     status: 'new',
     items: [{ desc: '', qty: 1, price: '' }],
+    discounts: [],
     tax: defaultTax,
     notes: '',
   }
 }
 
-export function calcTotals(items, taxRate) {
+export function calcTotals(items, taxRate, discounts = []) {
   const sub = items.reduce((s, i) => s + (parseFloat(i.qty) || 0) * (parseFloat(i.price) || 0), 0)
-  const tax = sub * ((parseFloat(taxRate) || 0) / 100)
-  return { sub, tax, total: sub + tax }
+  const list = Array.isArray(discounts) ? discounts : []
+  const safe = (v) => {
+    const n = parseFloat(v)
+    return !isFinite(n) || n < 0 ? 0 : n
+  }
+  let percentAmount = 0
+  let fixedAmount = 0
+  const lines = []
+  for (const d of list) {
+    if (!d) continue
+    const value = safe(d.value)
+    if (d.type === 'percent') {
+      const amount = sub * (value / 100)
+      percentAmount += amount
+      lines.push({ type: 'percent', value, name: d.name || '', amount })
+    } else if (d.type === 'fixed') {
+      fixedAmount += value
+      lines.push({ type: 'fixed', value, name: d.name || '', amount: value })
+    }
+  }
+  const discountTotal = Math.min(sub, percentAmount + fixedAmount)
+  const discounted = sub - discountTotal
+  const tax = discounted * ((parseFloat(taxRate) || 0) / 100)
+  return { sub, discountLines: lines, discountTotal, discounted, tax, total: discounted + tax }
 }
 
 export function timeAgo(ts) {
