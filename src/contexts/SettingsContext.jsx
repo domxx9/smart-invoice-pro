@@ -29,6 +29,16 @@ const DEFAULTS = {
   city: '',
   postcode: '',
   country: '',
+  bankName: '',
+  bankAccountName: '',
+  bankAccountNumber: '',
+  bankSortCode: '',
+  bankIban: '',
+  bankSwift: '',
+  paymentInstructions: '',
+  taxIdLabel: 'VAT',
+  taxIdNumber: '',
+  companyNumber: '',
   defaultTax: 20,
   currency: 'GBP',
   invoicePrefix: 'INV',
@@ -79,14 +89,20 @@ export function SettingsProvider({ children }) {
   useEffect(() => {
     ;(async () => {
       await migrateKeysFromLocalStorage()
-      const [sq, shop] = await Promise.all([
+      const [sq, shop, bankAccount, bankIban, bankSwift] = await Promise.all([
         getSecret('sip_sqApiKey'),
         getSecret('sip_shopifyAccessToken'),
+        getSecret('sip_bankAccountNumber'),
+        getSecret('sip_bankIban'),
+        getSecret('sip_bankSwift'),
       ])
       setSettings((prev) => ({
         ...prev,
         ...(sq ? { sqApiKey: sq } : {}),
         ...(shop ? { shopifyAccessToken: shop } : {}),
+        ...(bankAccount ? { bankAccountNumber: bankAccount } : {}),
+        ...(bankIban ? { bankIban } : {}),
+        ...(bankSwift ? { bankSwift } : {}),
       }))
     })()
   }, [])
@@ -95,9 +111,15 @@ export function SettingsProvider({ children }) {
     setSettings(s)
     if (s.sqApiKey) await setSecret('sip_sqApiKey', s.sqApiKey)
     if (s.shopifyAccessToken) await setSecret('sip_shopifyAccessToken', s.shopifyAccessToken)
+    if (s.bankAccountNumber) await setSecret('sip_bankAccountNumber', s.bankAccountNumber)
+    if (s.bankIban) await setSecret('sip_bankIban', s.bankIban)
+    if (s.bankSwift) await setSecret('sip_bankSwift', s.bankSwift)
     const toStore = { ...s }
     delete toStore.sqApiKey
     delete toStore.shopifyAccessToken
+    delete toStore.bankAccountNumber
+    delete toStore.bankIban
+    delete toStore.bankSwift
     localStorage.setItem('sip_settings', JSON.stringify(toStore))
     setCurrency(s.currency)
     setInvoicePrefix(s.invoicePrefix || 'INV')
