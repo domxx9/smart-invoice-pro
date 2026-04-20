@@ -4,6 +4,7 @@ import { InvoiceFields } from './InvoiceFields.jsx'
 import { InvoiceLineItems } from './InvoiceLineItems.jsx'
 import { InvoiceActions } from './InvoiceActions.jsx'
 import { PickerUI } from './PickerUI.jsx'
+import { FulfilmentChoiceModal } from './FulfilmentChoiceModal.jsx'
 import { usePicker } from '../hooks/usePicker.js'
 import { useSettings } from '../contexts/SettingsContext.jsx'
 
@@ -73,6 +74,7 @@ export function InvoiceEditor({
 }) {
   const [inv, setInv] = useState(invoice)
   const [picking, setPicking] = useState(false)
+  const [choosingFulfilment, setChoosingFulfilment] = useState(false)
 
   const setField = (k, v) => setInv((p) => ({ ...p, [k]: v }))
   const setItem = (idx, k, v) =>
@@ -118,11 +120,13 @@ export function InvoiceEditor({
 
   const handleSkipFulfil = () => {
     setPicking(false)
+    setChoosingFulfilment(false)
     onSave({ ...inv, status: 'fulfilled', fulfillmentMethod: 'instant' })
   }
 
   const handleFulfilWithPicks = ({ picks, unavailable }) => {
     setPicking(false)
+    setChoosingFulfilment(false)
     onSave({
       ...inv,
       status: 'fulfilled',
@@ -130,6 +134,11 @@ export function InvoiceEditor({
       picks,
       unavailable,
     })
+  }
+
+  const handleChoosePicker = () => {
+    setChoosingFulfilment(false)
+    setPicking(true)
   }
 
   return (
@@ -168,8 +177,12 @@ export function InvoiceEditor({
               Pick items off the shelf or mark as fulfilled instantly.
             </div>
           </div>
-          <button type="button" className="btn btn-primary btn-sm" onClick={() => setPicking(true)}>
-            Start Pick
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => setChoosingFulfilment(true)}
+          >
+            Mark as Fulfilled
           </button>
         </div>
       )}
@@ -200,6 +213,15 @@ export function InvoiceEditor({
       </div>
 
       <InvoiceActions inv={inv} onSave={onSave} onClose={onClose} onDelete={onDelete} />
+
+      {choosingFulfilment && (
+        <FulfilmentChoiceModal
+          invoiceId={inv.id}
+          onPicker={handleChoosePicker}
+          onSkip={handleSkipFulfil}
+          onClose={() => setChoosingFulfilment(false)}
+        />
+      )}
 
       {picking && (
         <InvoicePicker

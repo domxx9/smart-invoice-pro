@@ -222,7 +222,19 @@ export function buildInvoicePDF(inv, settings) {
     [settings.city, settings.postcode].filter(Boolean).join(', '),
     settings.country,
   ].filter(Boolean)
-  const bizH = 14 + bizAddr2.length * 5 + 4
+  const bankRowCount =
+    (settings.bankName ? 1 : 0) +
+    (settings.bankAccountName ? 1 : 0) +
+    (settings.bankAccountNumber || settings.bankSortCode ? 1 : 0) +
+    (settings.bankIban ? 1 : 0) +
+    (settings.bankSwift ? 1 : 0)
+  const hasPaymentBlock = bankRowCount > 0 || !!settings.paymentInstructions
+  const hasCompliance = !!(settings.taxIdNumber || settings.companyNumber)
+  const paymentH = hasPaymentBlock
+    ? 10 + bankRowCount * 5 + (settings.paymentInstructions ? 10 : 0)
+    : 0
+  const complianceH = hasCompliance ? 5 : 0
+  const bizH = 14 + bizAddr2.length * 5 + 4 + paymentH + complianceH
   const totalsH = 8 + 6 + discountsH + (tmpl.showTaxLine ? 7 : 0) + 14
   const endH = totalsH + notesH + bizH + 10
 
@@ -317,6 +329,65 @@ export function buildInvoicePDF(inv, settings) {
     doc.text(line, margin, y)
     y += 5
   })
+
+  // ── Payment details block ─────────────────────────────────────────
+  const bankLines = []
+  if (settings.bankName) bankLines.push(settings.bankName)
+  if (settings.bankAccountName) bankLines.push(settings.bankAccountName)
+  if (settings.bankAccountNumber && settings.bankSortCode) {
+    bankLines.push(`Acct ${settings.bankAccountNumber}  ·  Sort ${settings.bankSortCode}`)
+  } else if (settings.bankAccountNumber) {
+    bankLines.push(`Acct ${settings.bankAccountNumber}`)
+  } else if (settings.bankSortCode) {
+    bankLines.push(`Sort ${settings.bankSortCode}`)
+  }
+  if (settings.bankIban) bankLines.push(`IBAN ${settings.bankIban}`)
+  if (settings.bankSwift) bankLines.push(`SWIFT ${settings.bankSwift}`)
+
+  if (bankLines.length || settings.paymentInstructions) {
+    y += 3
+    doc.setDrawColor(235, 235, 235)
+    doc.line(margin, y, W - margin, y)
+    y += 5
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(7.5)
+    doc.setTextColor(120, 120, 120)
+    doc.text('PAYMENT DETAILS', margin, y)
+    y += 5
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    doc.setTextColor(60, 60, 60)
+    for (const line of bankLines) {
+      doc.text(line, margin, y, { maxWidth: W - margin * 2 })
+      y += 4.5
+    }
+    if (settings.paymentInstructions) {
+      y += 1
+      doc.setFont('helvetica', 'italic')
+      doc.setFontSize(7.5)
+      doc.setTextColor(90, 90, 90)
+      const instr = doc.splitTextToSize(settings.paymentInstructions, W - margin * 2)
+      doc.text(instr, margin, y)
+      y += instr.length * 4 + 2
+    }
+  }
+
+  // ── Compliance identifiers (VAT / Company Number) ─────────────────
+  const complianceBits = []
+  if (settings.taxIdNumber) {
+    complianceBits.push(`${settings.taxIdLabel || 'Tax ID'} ${settings.taxIdNumber}`)
+  }
+  if (settings.companyNumber) {
+    complianceBits.push(`Co. No. ${settings.companyNumber}`)
+  }
+  if (complianceBits.length) {
+    y += 1
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7)
+    doc.setTextColor(130, 130, 130)
+    doc.text(complianceBits.join('  ·  '), margin, y, { maxWidth: W - margin * 2 })
+    y += 4
+  }
 
   // ── Page footers on every page ────────────────────────────────────
   const totalPages = doc.getNumberOfPages()

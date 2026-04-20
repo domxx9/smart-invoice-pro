@@ -429,6 +429,135 @@ export function Settings({ ai, onStartTour, contactsApi }) {
         </div>
       </SettingsSection>
 
+      <SettingsSection title="Billing Information">
+        <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginBottom: 10 }}>
+          Shown on every invoice PDF so customers know how to pay you. Bank account, IBAN, and
+          SWIFT/BIC are stored in your device&apos;s secure keychain — not in cleartext.
+        </p>
+        <div className="field">
+          <label>
+            Bank Name
+            <input
+              value={s.bankName || ''}
+              onChange={(e) => set('bankName', e.target.value)}
+              placeholder="e.g. Barclays"
+            />
+          </label>
+        </div>
+        <div className="field">
+          <label>
+            Account Holder
+            <input
+              value={s.bankAccountName || ''}
+              onChange={(e) => set('bankAccountName', e.target.value)}
+              placeholder="Name on the account"
+            />
+          </label>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div className="field">
+            <label>
+              Account Number
+              <input
+                value={s.bankAccountNumber || ''}
+                onChange={(e) => set('bankAccountNumber', e.target.value)}
+                placeholder="12345678"
+                autoComplete="off"
+              />
+            </label>
+          </div>
+          <div className="field">
+            <label>
+              Sort Code
+              <input
+                value={s.bankSortCode || ''}
+                onChange={(e) => set('bankSortCode', e.target.value)}
+                placeholder="12-34-56"
+                autoComplete="off"
+              />
+            </label>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div className="field">
+            <label>
+              IBAN
+              <input
+                value={s.bankIban || ''}
+                onChange={(e) => set('bankIban', e.target.value)}
+                placeholder="GB29NWBK60161331926819"
+                autoComplete="off"
+              />
+            </label>
+          </div>
+          <div className="field">
+            <label>
+              SWIFT / BIC
+              <input
+                value={s.bankSwift || ''}
+                onChange={(e) => set('bankSwift', e.target.value)}
+                placeholder="NWBKGB2L"
+                autoComplete="off"
+              />
+            </label>
+          </div>
+        </div>
+        <div className="field">
+          <label>
+            Payment Instructions
+            <textarea
+              value={s.paymentInstructions || ''}
+              onChange={(e) => set('paymentInstructions', e.target.value)}
+              placeholder="e.g. Please reference the invoice number on the transfer. Net 14 terms."
+              rows={3}
+            />
+          </label>
+        </div>
+      </SettingsSection>
+
+      <SettingsSection title="Tax & Compliance">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 10 }}>
+          <div className="field">
+            <label>
+              Tax ID Label
+              <select
+                value={s.taxIdLabel || 'VAT'}
+                onChange={(e) => set('taxIdLabel', e.target.value)}
+              >
+                <option value="VAT">VAT</option>
+                <option value="GST">GST</option>
+                <option value="ABN">ABN</option>
+                <option value="EIN">EIN</option>
+                <option value="TAX ID">Tax ID</option>
+              </select>
+            </label>
+          </div>
+          <div className="field">
+            <label>
+              Number
+              <input
+                value={s.taxIdNumber || ''}
+                onChange={(e) => set('taxIdNumber', e.target.value)}
+                placeholder="GB123456789"
+              />
+            </label>
+          </div>
+        </div>
+        <div className="field">
+          <label>
+            Company Number
+            <input
+              value={s.companyNumber || ''}
+              onChange={(e) => set('companyNumber', e.target.value)}
+              placeholder="Companies House / State registration number"
+            />
+          </label>
+        </div>
+        <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
+          Printed in the PDF footer when set. Leave blank to hide.
+        </p>
+      </SettingsSection>
+
       <SettingsSection title="Invoicing">
         <div className="field">
           <label>
@@ -689,11 +818,7 @@ export function Settings({ ai, onStartTour, contactsApi }) {
       </SettingsSection>
 
       {contactsApi ? (
-        <ContactsImportSection
-          contactsApi={contactsApi}
-          sqApiKey={s.sqApiKey}
-          onToast={toast}
-        />
+        <ContactsImportSection contactsApi={contactsApi} sqApiKey={s.sqApiKey} onToast={toast} />
       ) : null}
 
       <SettingsSection title="AI" dataTour="settings-ai">
