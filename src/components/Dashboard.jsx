@@ -58,7 +58,7 @@ function Sparkline({ data }) {
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
-export function Dashboard({ invoices, onNewInvoice, onOpenInvoice }) {
+export function Dashboard({ invoices, onNewInvoice, onOpenInvoice, onQuickAddContact }) {
   const paid = invoices.filter((i) => i.status === 'paid')
   const pending = invoices.filter((i) => i.status === 'pending')
   const overdue = pending.filter((i) => i.due && new Date(i.due) < new Date())
@@ -76,9 +76,22 @@ export function Dashboard({ invoices, onNewInvoice, onOpenInvoice }) {
           <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Dashboard</h2>
           <p className="text-muted">{today()}</p>
         </div>
-        <button className="btn btn-primary" data-tour="new-invoice" onClick={onNewInvoice}>
-          <Icon name="plus" /> New Invoice
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {onQuickAddContact ? (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              data-tour="quick-add-contact"
+              aria-label="Quick add contact"
+              onClick={onQuickAddContact}
+            >
+              <Icon name="contacts" /> Contact
+            </button>
+          ) : null}
+          <button className="btn btn-primary" data-tour="new-invoice" onClick={onNewInvoice}>
+            <Icon name="plus" /> New Invoice
+          </button>
+        </div>
       </div>
 
       <div className="stat-grid" data-tour="stat-grid">

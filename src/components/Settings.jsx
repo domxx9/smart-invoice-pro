@@ -12,6 +12,7 @@ import {
 import { useSettings } from '../contexts/SettingsContext.jsx'
 import { useToast } from '../contexts/ToastContext.jsx'
 import { SettingsSection } from './SettingsSection.jsx'
+import { ContactsImportSection } from './ContactsImportSection.jsx'
 import { PdfTemplateEditor } from './PdfTemplateEditor.jsx'
 import { Icon } from './Icon.jsx'
 import { RestoreBackupModal } from './RestoreBackupModal.jsx'
@@ -52,7 +53,7 @@ function renderPresetOptions(value, options) {
   )
 }
 
-export function Settings({ ai, onStartTour }) {
+export function Settings({ ai, onStartTour, contactsApi }) {
   const {
     aiModelId,
     aiDownloaded,
@@ -686,6 +687,14 @@ export function Settings({ ai, onStartTour }) {
           </p>
         ) : null}
       </SettingsSection>
+
+      {contactsApi ? (
+        <ContactsImportSection
+          contactsApi={contactsApi}
+          sqApiKey={s.sqApiKey}
+          onToast={toast}
+        />
+      ) : null}
 
       <SettingsSection title="AI" dataTour="settings-ai">
         {/* ── Mode selector ── */}
