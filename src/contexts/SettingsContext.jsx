@@ -44,6 +44,7 @@ const DEFAULTS = {
   byokModel: '',
   smartPasteContext: { ...EMPTY_SMART_PASTE_CONTEXT },
   pdfTemplate: {},
+  pickerViewMode: 'list',
   debug: { ...DEFAULT_DEBUG },
 }
 
