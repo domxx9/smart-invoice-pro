@@ -67,56 +67,80 @@ beforeEach(() => {
   localStorage.clear()
 })
 
-describe('InvoiceEditor — fulfillment flow (SMA-106)', () => {
-  it('does not render the picker CTA when status !== "pending"', () => {
+describe('InvoiceEditor — fulfillment flow (SMA-106 / SMA-30)', () => {
+  const fulfilBtn = { name: /^Mark as Fulfilled$/ }
+
+  it('does not render the Mark as Fulfilled CTA when status !== "pending"', () => {
     renderEditor({ ...pendingInvoice(), status: 'new' })
-    expect(screen.queryByRole('button', { name: /start pick/i })).toBeNull()
+    expect(screen.queryByRole('button', fulfilBtn)).toBeNull()
   })
 
-  it('renders the picker CTA when status === "pending"', () => {
+  it('renders the Mark as Fulfilled CTA when status === "pending" and does not auto-open anything', () => {
     renderEditor(pendingInvoice())
-    expect(screen.getByRole('button', { name: /start pick/i })).toBeInTheDocument()
-    // Picker is not open until Start Pick is pressed.
+    expect(screen.getByRole('button', fulfilBtn)).toBeInTheDocument()
     expect(screen.queryByTestId('picker-ui')).toBeNull()
+    expect(screen.queryByRole('dialog', { name: /Fulfil invoice INV0042/ })).toBeNull()
   })
 
-  it('"Start Pick" opens PickerUI with the invoice items mapped to { name, qty }', () => {
+  it('"Mark as Fulfilled" opens the fulfilment choice modal (SMA-30)', () => {
     renderEditor(pendingInvoice())
-    fireEvent.click(screen.getByRole('button', { name: /start pick/i }))
+    fireEvent.click(screen.getByRole('button', fulfilBtn))
+    const dialog = screen.getByRole('dialog', { name: /Fulfil invoice INV0042/ })
+    expect(dialog).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: /Go to Picker/ })).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: /Skip picking/ })).toBeInTheDocument()
+  })
+
+  it('choosing "Go to Picker" closes the modal and opens PickerUI with mapped items', () => {
+    renderEditor(pendingInvoice())
+    fireEvent.click(screen.getByRole('button', fulfilBtn))
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: /Go to Picker/ }),
+    )
+    expect(screen.queryByRole('dialog', { name: /Fulfil invoice INV0042/ })).toBeNull()
     const picker = screen.getByTestId('picker-ui')
-    expect(picker).toBeInTheDocument()
     expect(within(picker).getByText('Widget')).toBeInTheDocument()
     expect(within(picker).getByText('Gadget')).toBeInTheDocument()
     expect(within(picker).getByText(/0 of 3 items picked/i)).toBeInTheDocument()
   })
 
-  it('"Skip" marks the invoice fulfilled with fulfillmentMethod: "instant"', () => {
+  it('choosing "Skip picking" marks the invoice fulfilled with fulfillmentMethod: "instant"', () => {
     const { onSave } = renderEditor(pendingInvoice())
-    fireEvent.click(screen.getByRole('button', { name: /start pick/i }))
-    fireEvent.click(screen.getByRole('button', { name: /^skip$/i }))
+    fireEvent.click(screen.getByRole('button', fulfilBtn))
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: /Skip picking/ }),
+    )
     expect(onSave).toHaveBeenCalledTimes(1)
     const saved = onSave.mock.calls[0][0]
     expect(saved.status).toBe('fulfilled')
     expect(saved.fulfillmentMethod).toBe('instant')
-    // Instant skip does NOT commit picks/unavailable.
     expect(saved.picks).toBeUndefined()
     expect(saved.unavailable).toBeUndefined()
   })
 
-  it('"Mark as Fulfilled" commits picks and unavailable onto the saved invoice', () => {
+  it('Cancel on the modal closes it without saving', () => {
     const { onSave } = renderEditor(pendingInvoice())
-    fireEvent.click(screen.getByRole('button', { name: /start pick/i }))
+    fireEvent.click(screen.getByRole('button', fulfilBtn))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /Cancel/ }))
+    expect(screen.queryByRole('dialog', { name: /Fulfil invoice INV0042/ })).toBeNull()
+    expect(onSave).not.toHaveBeenCalled()
+  })
 
-    // Pick the single-qty "Widget" (idx 0).
+  it('picker path still commits picks and unavailable onto the saved invoice', () => {
+    const { onSave } = renderEditor(pendingInvoice())
+    fireEvent.click(screen.getByRole('button', fulfilBtn))
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: /Go to Picker/ }),
+    )
+
     const picker = screen.getByTestId('picker-ui')
     const widgetRow = within(picker).getByTestId('picker-row-0')
     fireEvent.click(within(widgetRow).getByRole('button', { name: /mark widget as picked/i }))
 
-    // Mark "Gadget" (idx 1) as unavailable.
     const gadgetRow = within(picker).getByTestId('picker-row-1')
     fireEvent.click(within(gadgetRow).getByRole('button', { name: /mark gadget unavailable/i }))
 
-    fireEvent.click(screen.getByRole('button', { name: /mark as fulfilled/i }))
+    fireEvent.click(within(picker).getByRole('button', { name: /mark as fulfilled/i }))
 
     expect(onSave).toHaveBeenCalledTimes(1)
     const saved = onSave.mock.calls[0][0]
@@ -126,9 +150,25 @@ describe('InvoiceEditor — fulfillment flow (SMA-106)', () => {
     expect(saved.unavailable).toEqual({ 1: true })
   })
 
+  it('Skip button inside the picker also marks the invoice fulfilled with fulfillmentMethod: "instant"', () => {
+    const { onSave } = renderEditor(pendingInvoice())
+    fireEvent.click(screen.getByRole('button', fulfilBtn))
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: /Go to Picker/ }),
+    )
+    fireEvent.click(
+      within(screen.getByTestId('picker-ui')).getByRole('button', { name: /^skip$/i }),
+    )
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(onSave.mock.calls[0][0].fulfillmentMethod).toBe('instant')
+  })
+
   it('picker is in-memory only — no sip_picks_* persistence is written for the invoice flow', () => {
     renderEditor(pendingInvoice())
-    fireEvent.click(screen.getByRole('button', { name: /start pick/i }))
+    fireEvent.click(screen.getByRole('button', fulfilBtn))
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: /Go to Picker/ }),
+    )
     const picker = screen.getByTestId('picker-ui')
     const widgetRow = within(picker).getByTestId('picker-row-0')
     fireEvent.click(within(widgetRow).getByRole('button', { name: /mark widget as picked/i }))
