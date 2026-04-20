@@ -1,10 +1,25 @@
 import { useState } from 'react'
 import { calcTotals, fmt, searchGroups, groupProducts } from '../helpers.js'
 import { Icon } from './Icon.jsx'
+import { InvoiceDiscounts } from './InvoiceDiscounts.jsx'
 
-export function InvoiceLineItems({ inv, products, setItem, addItem, removeItem, addProduct }) {
+export function InvoiceLineItems({
+  inv,
+  products,
+  setItem,
+  addItem,
+  removeItem,
+  addProduct,
+  addDiscount = () => {},
+  setDiscount = () => {},
+  removeDiscount = () => {},
+}) {
   const [search, setSearch] = useState('')
-  const { sub, tax, total } = calcTotals(inv.items, inv.tax)
+  const { sub, discountLines, discountTotal, tax, total } = calcTotals(
+    inv.items,
+    inv.tax,
+    inv.discounts,
+  )
   const filteredGroups = search.trim() ? searchGroups(groupProducts(products), search) : []
 
   const handleAddProduct = (prod) => {
@@ -223,11 +238,30 @@ export function InvoiceLineItems({ inv, products, setItem, addItem, removeItem, 
         <Icon name="plus" /> Add Line Item
       </button>
 
+      <InvoiceDiscounts
+        discounts={inv.discounts}
+        addDiscount={addDiscount}
+        setDiscount={setDiscount}
+        removeDiscount={removeDiscount}
+      />
+
       <div className="totals">
         <div className="total-line">
           <span>Subtotal</span>
           <span>{fmt(sub)}</span>
         </div>
+        {discountLines.map((d, i) => (
+          <div key={i} className="total-line" data-testid="discount-line">
+            <span>{d.name || (d.type === 'percent' ? `Discount (${d.value}%)` : 'Discount')}</span>
+            <span>-{fmt(d.amount)}</span>
+          </div>
+        ))}
+        {discountTotal > 0 && discountLines.length > 1 && (
+          <div className="total-line" style={{ color: 'var(--muted)' }}>
+            <span>Total discounts</span>
+            <span>-{fmt(discountTotal)}</span>
+          </div>
+        )}
         <div className="total-line">
           <span>Tax ({inv.tax}%)</span>
           <span>{fmt(tax)}</span>

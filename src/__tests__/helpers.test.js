@@ -6,6 +6,7 @@ import {
   setInvoicePadding,
   nextId,
   calcTotals,
+  blankInvoice,
   timeAgo,
   cleanWhatsApp,
   extractItems,
@@ -16,7 +17,10 @@ import {
 
 describe('calcTotals', () => {
   it('returns zeros for empty items', () => {
-    expect(calcTotals([], 20)).toEqual({ sub: 0, tax: 0, total: 0 })
+    const r = calcTotals([], 20)
+    expect(r.sub).toBe(0)
+    expect(r.tax).toBe(0)
+    expect(r.total).toBe(0)
   })
 
   it('calculates subtotal, tax, and total correctly', () => {
@@ -43,7 +47,144 @@ describe('calcTotals', () => {
       { qty: 'abc', price: 10 },
       { qty: 2, price: '' },
     ]
-    expect(calcTotals(items, 0)).toEqual({ sub: 0, tax: 0, total: 0 })
+    const r = calcTotals(items, 0)
+    expect(r.sub).toBe(0)
+    expect(r.tax).toBe(0)
+    expect(r.total).toBe(0)
+  })
+
+  it('is unchanged when no discounts argument is provided (back-compat)', () => {
+    const items = [{ qty: 4, price: 25 }] // sub = 100
+    const r = calcTotals(items, 10)
+    expect(r.sub).toBe(100)
+    expect(r.discountTotal).toBe(0)
+    expect(r.discountLines).toEqual([])
+    expect(r.discounted).toBe(100)
+    expect(r.tax).toBeCloseTo(10)
+    expect(r.total).toBeCloseTo(110)
+  })
+})
+
+describe('calcTotals with discounts', () => {
+  const items = [{ qty: 4, price: 25 }] // sub = 100
+
+  it('applies a single percent discount before tax', () => {
+    const r = calcTotals(items, 10, [{ type: 'percent', value: 10 }])
+    expect(r.sub).toBe(100)
+    expect(r.discountTotal).toBeCloseTo(10)
+    expect(r.discounted).toBeCloseTo(90)
+    expect(r.tax).toBeCloseTo(9)
+    expect(r.total).toBeCloseTo(99)
+  })
+
+  it('applies a single fixed discount before tax', () => {
+    const r = calcTotals(items, 10, [{ type: 'fixed', value: 15 }])
+    expect(r.discountTotal).toBe(15)
+    expect(r.discounted).toBe(85)
+    expect(r.tax).toBeCloseTo(8.5)
+    expect(r.total).toBeCloseTo(93.5)
+  })
+
+  it('applies multiple percent discounts additively against subtotal', () => {
+    const r = calcTotals(items, 0, [
+      { type: 'percent', value: 10 },
+      { type: 'percent', value: 5 },
+    ])
+    expect(r.discountTotal).toBeCloseTo(15)
+    expect(r.discounted).toBeCloseTo(85)
+    expect(r.total).toBeCloseTo(85)
+  })
+
+  it('applies percents first then fixed, tax on the reduced amount', () => {
+    const r = calcTotals(items, 20, [
+      { type: 'percent', value: 10 }, // -10 → 90
+      { type: 'fixed', value: 20 }, // -20 → 70
+    ])
+    expect(r.discountTotal).toBeCloseTo(30)
+    expect(r.discounted).toBeCloseTo(70)
+    expect(r.tax).toBeCloseTo(14)
+    expect(r.total).toBeCloseTo(84)
+  })
+
+  it('zeros out totals at 100% discount', () => {
+    const r = calcTotals(items, 20, [{ type: 'percent', value: 100 }])
+    expect(r.discountTotal).toBe(100)
+    expect(r.discounted).toBe(0)
+    expect(r.tax).toBe(0)
+    expect(r.total).toBe(0)
+  })
+
+  it('clamps when discounts exceed the subtotal', () => {
+    const r = calcTotals(items, 10, [
+      { type: 'percent', value: 75 }, // -75
+      { type: 'fixed', value: 500 }, // would be -500
+    ])
+    expect(r.discountTotal).toBe(100)
+    expect(r.discounted).toBe(0)
+    expect(r.tax).toBe(0)
+    expect(r.total).toBe(0)
+  })
+
+  it('ignores negative discount values', () => {
+    const r = calcTotals(items, 10, [
+      { type: 'percent', value: -10 },
+      { type: 'fixed', value: -5 },
+    ])
+    expect(r.discountTotal).toBe(0)
+    expect(r.discounted).toBe(100)
+    expect(r.total).toBeCloseTo(110)
+  })
+
+  it('ignores zero and non-finite discount values', () => {
+    const r = calcTotals(items, 0, [
+      { type: 'percent', value: 0 },
+      { type: 'fixed', value: 'abc' },
+      { type: 'fixed', value: null },
+    ])
+    expect(r.discountTotal).toBe(0)
+    expect(r.discounted).toBe(100)
+  })
+
+  it('ignores unknown discount types', () => {
+    const r = calcTotals(items, 0, [
+      { type: 'mystery', value: 50 },
+      { type: 'percent', value: 10 },
+    ])
+    expect(r.discountTotal).toBeCloseTo(10)
+    expect(r.discountLines).toHaveLength(1)
+  })
+
+  it('accepts string discount values like form inputs', () => {
+    const r = calcTotals(items, 0, [
+      { type: 'percent', value: '15' },
+      { type: 'fixed', value: '2.50' },
+    ])
+    expect(r.discountTotal).toBeCloseTo(17.5)
+    expect(r.discounted).toBeCloseTo(82.5)
+  })
+
+  it('safely handles null / non-array discounts', () => {
+    expect(calcTotals(items, 0, null).discountTotal).toBe(0)
+    expect(calcTotals(items, 0, 'oops').discountTotal).toBe(0)
+    expect(calcTotals(items, 0, undefined).discountTotal).toBe(0)
+  })
+
+  it('returns a line entry per discount with computed amount', () => {
+    const r = calcTotals(items, 0, [
+      { type: 'percent', value: 25, name: 'Promo' },
+      { type: 'fixed', value: 5, name: 'Goodwill' },
+    ])
+    expect(r.discountLines).toEqual([
+      { type: 'percent', value: 25, name: 'Promo', amount: 25 },
+      { type: 'fixed', value: 5, name: 'Goodwill', amount: 5 },
+    ])
+  })
+})
+
+describe('blankInvoice', () => {
+  it('initialises discounts as an empty array', () => {
+    const inv = blankInvoice([], 20)
+    expect(inv.discounts).toEqual([])
   })
 })
 

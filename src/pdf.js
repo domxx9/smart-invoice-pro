@@ -26,7 +26,11 @@ export function buildInvoicePDF(inv, settings) {
   const primary = hexToRgb(tmpl.primaryColor || '#f5a623')
   const secondary = hexToRgb(tmpl.secondaryColor || '#1e1e1e')
   const tertiary = hexToRgb(tmpl.tertiaryColor || '#f5f5f5')
-  const { sub, tax, total } = calcTotals(inv.items, inv.tax)
+  const { sub, discountLines, discountTotal, tax, total } = calcTotals(
+    inv.items,
+    inv.tax,
+    inv.discounts,
+  )
   const cFmt = (n) =>
     new Intl.NumberFormat(undefined, {
       style: 'currency',
@@ -211,6 +215,7 @@ export function buildInvoicePDF(inv, settings) {
   // ── Totals + notes + business block ──────────────────────────────
   // Estimate height needed
   const notesH = tmpl.showNotes && inv.notes ? 20 : 0
+  const discountsH = (discountLines?.length || 0) * 5 + (discountTotal > 0 ? 2 : 0)
   const bizAddr2 = [
     settings.address1,
     settings.address2,
@@ -230,7 +235,7 @@ export function buildInvoicePDF(inv, settings) {
     : 0
   const complianceH = hasCompliance ? 5 : 0
   const bizH = 14 + bizAddr2.length * 5 + 4 + paymentH + complianceH
-  const totalsH = 8 + 6 + (tmpl.showTaxLine ? 7 : 0) + 14
+  const totalsH = 8 + 6 + discountsH + (tmpl.showTaxLine ? 7 : 0) + 14
   const endH = totalsH + notesH + bizH + 10
 
   if (y + endH > H - 14) {
@@ -246,13 +251,22 @@ export function buildInvoicePDF(inv, settings) {
   doc.line(margin, y, W - margin, y)
   y += 6
 
-  // Subtotal / Tax / Total
+  // Subtotal / Discounts / Tax / Total
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8.5)
   doc.setTextColor(100, 100, 100)
   doc.text('Subtotal', margin, y)
   doc.text(cFmt(sub), W - margin, y, { align: 'right' })
   y += 6
+  if (discountLines && discountLines.length) {
+    for (const d of discountLines) {
+      const label = d.name || (d.type === 'percent' ? `Discount (${d.value}%)` : 'Discount')
+      doc.text(label, margin, y)
+      doc.text(`-${cFmt(d.amount)}`, W - margin, y, { align: 'right' })
+      y += 5
+    }
+    y += 1
+  }
   if (tmpl.showTaxLine) {
     doc.text(`Tax (${inv.tax || 0}%)`, margin, y)
     doc.text(cFmt(tax), W - margin, y, { align: 'right' })

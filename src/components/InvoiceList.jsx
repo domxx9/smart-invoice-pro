@@ -122,18 +122,20 @@ export function Invoices({ invoices, onNewInvoice, onEdit, onDuplicate, editingD
         aria-label="Filter invoices"
         style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}
       >
-        {['all', 'new', 'pending', 'fulfilled', 'paid', 'overdue', 'refunded', 'cancelled'].map((f) => (
-          <button
-            key={f}
-            type="button"
-            className="chip"
-            aria-pressed={filter === f}
-            style={filter === f ? { background: 'rgba(245,166,35,.3)' } : {}}
-            onClick={() => setFilter(f)}
-          >
-            {f.charAt(0).toUpperCase() + f.slice(1)}
-          </button>
-        ))}
+        {['all', 'new', 'pending', 'fulfilled', 'paid', 'overdue', 'refunded', 'cancelled'].map(
+          (f) => (
+            <button
+              key={f}
+              type="button"
+              className="chip"
+              aria-pressed={filter === f}
+              style={filter === f ? { background: 'rgba(245,166,35,.3)' } : {}}
+              onClick={() => setFilter(f)}
+            >
+              {f.charAt(0).toUpperCase() + f.slice(1)}
+            </button>
+          ),
+        )}
       </div>
 
       <ul className="inv-list" aria-label="Invoices">

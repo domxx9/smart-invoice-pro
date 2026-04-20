@@ -90,6 +90,29 @@ export function InvoiceEditor({
     setInv((p) => ({ ...p, items: [...p.items, { desc: prod.name, qty: 1, price: prod.price }] }))
   const addItems = (items) => setInv((p) => ({ ...p, items: [...p.items, ...items] }))
 
+  const addDiscount = () =>
+    setInv((p) => ({
+      ...p,
+      discounts: [
+        ...(p.discounts || []),
+        {
+          id: `d_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          name: '',
+          type: 'percent',
+          value: '',
+        },
+      ],
+    }))
+  const setDiscount = (idx, k, v) =>
+    setInv((p) => {
+      const discounts = [...(p.discounts || [])]
+      if (!discounts[idx]) return p
+      discounts[idx] = { ...discounts[idx], [k]: v }
+      return { ...p, discounts }
+    })
+  const removeDiscount = (idx) =>
+    setInv((p) => ({ ...p, discounts: (p.discounts || []).filter((_, i) => i !== idx) }))
+
   useEffect(() => {
     localStorage.setItem('sip_draft_edit', JSON.stringify(inv))
     onDraftChange?.(inv)
@@ -173,6 +196,9 @@ export function InvoiceEditor({
           addItem={addItem}
           removeItem={removeItem}
           addProduct={addProduct}
+          addDiscount={addDiscount}
+          setDiscount={setDiscount}
+          removeDiscount={removeDiscount}
         />
         <div className="field mt-8">
           <label>
