@@ -507,6 +507,45 @@ export function Settings({ ai, onStartTour }) {
         />
       </SettingsSection>
 
+      <SettingsSection title="Picker">
+        <p className="text-muted" style={{ fontSize: '.78rem', marginBottom: 10, lineHeight: 1.5 }}>
+          How picking items appears when fulfilling orders and invoices.
+        </p>
+        <div role="radiogroup" aria-label="Picker view mode" style={{ display: 'flex', gap: 8 }}>
+          {[
+            { id: 'list', label: 'List', sub: 'Compact, one row per item' },
+            { id: 'card', label: 'Card', sub: 'Swipe through one at a time' },
+          ].map(({ id, label, sub }) => {
+            const active = (s.pickerViewMode || 'list') === id
+            return (
+              <button
+                key={id}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => set('pickerViewMode', id)}
+                style={{
+                  flex: 1,
+                  padding: '10px 8px',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  background: active ? 'var(--accent)' : 'var(--card-bg)',
+                  border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
+                  color: active ? '#fff' : 'var(--text)',
+                  transition: 'background .15s, border-color .15s',
+                }}
+              >
+                <div style={{ fontWeight: 700, fontSize: '.82rem' }}>{label}</div>
+                <div style={{ fontSize: '.68rem', opacity: active ? 0.85 : 0.6, marginTop: 2 }}>
+                  {sub}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </SettingsSection>
+
       <SettingsSection title="Integrations">
         <fieldset
           style={{
@@ -1075,10 +1114,7 @@ export function Settings({ ai, onStartTour }) {
                             </label>
                           </div>
 
-                          <details
-                            style={{ marginBottom: 12 }}
-                            onToggle={onByokAdvancedToggle}
-                          >
+                          <details style={{ marginBottom: 12 }} onToggle={onByokAdvancedToggle}>
                             <summary
                               style={{
                                 fontSize: '.75rem',
@@ -1151,9 +1187,7 @@ export function Settings({ ai, onStartTour }) {
                                       style={{ marginTop: 6 }}
                                       value={s.byokModel || ''}
                                       onChange={(e) => set('byokModel', e.target.value.trim())}
-                                      placeholder={
-                                        BYOK_PRESETS[byokProvider]?.defaultModel || ''
-                                      }
+                                      placeholder={BYOK_PRESETS[byokProvider]?.defaultModel || ''}
                                     />
                                   )}
                                   <p
@@ -1161,8 +1195,7 @@ export function Settings({ ai, onStartTour }) {
                                     aria-live="polite"
                                     style={{
                                       fontSize: '.72rem',
-                                      color:
-                                        status === 'error' ? '#f87171' : 'var(--muted)',
+                                      color: status === 'error' ? '#f87171' : 'var(--muted)',
                                       marginTop: 4,
                                       marginBottom: 0,
                                     }}

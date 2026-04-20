@@ -1,8 +1,61 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { SmartPasteWidget } from './SmartPasteWidget.jsx'
 import { InvoiceFields } from './InvoiceFields.jsx'
 import { InvoiceLineItems } from './InvoiceLineItems.jsx'
 import { InvoiceActions } from './InvoiceActions.jsx'
+import { PickerUI } from './PickerUI.jsx'
+import { usePicker } from '../hooks/usePicker.js'
+import { useSettings } from '../contexts/SettingsContext.jsx'
+
+function InvoicePicker({ inv, onSkip, onFulfil, onClose }) {
+  const { settings } = useSettings()
+  const viewMode = settings?.pickerViewMode === 'card' ? 'card' : 'list'
+
+  const items = useMemo(
+    () =>
+      (Array.isArray(inv.items) ? inv.items : []).map((it) => ({
+        name: it?.desc || '',
+        qty: Math.max(0, Math.floor(Number(it?.qty) || 0)),
+      })),
+    [inv.items],
+  )
+
+  const { picks, unavailable, handlePick, handleUnavailable } = usePicker(items)
+
+  return (
+    <PickerUI
+      items={items}
+      picks={picks}
+      unavailable={unavailable}
+      onPick={handlePick}
+      onUnavailable={handleUnavailable}
+      viewMode={viewMode}
+      onClose={onClose}
+      header={
+        <div>
+          <h2 style={{ fontSize: '1rem', fontWeight: 700 }}>Fulfil {inv.id}</h2>
+          <p style={{ fontSize: '.75rem', color: 'var(--muted)', marginTop: 2 }}>
+            {inv.customer || 'Invoice fulfillment'}
+          </p>
+        </div>
+      }
+      footer={
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button type="button" className="btn btn-ghost btn-full" onClick={onSkip}>
+            Skip
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary btn-full"
+            onClick={() => onFulfil({ picks, unavailable })}
+          >
+            Mark as Fulfilled
+          </button>
+        </div>
+      }
+    />
+  )
+}
 
 export function InvoiceEditor({
   invoice,
@@ -19,6 +72,7 @@ export function InvoiceEditor({
   onOpenSettings,
 }) {
   const [inv, setInv] = useState(invoice)
+  const [picking, setPicking] = useState(false)
 
   const setField = (k, v) => setInv((p) => ({ ...p, [k]: v }))
   const setItem = (idx, k, v) =>
@@ -39,6 +93,22 @@ export function InvoiceEditor({
     onDraftChange?.(inv)
   }, [inv]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const handleSkipFulfil = () => {
+    setPicking(false)
+    onSave({ ...inv, status: 'fulfilled', fulfillmentMethod: 'instant' })
+  }
+
+  const handleFulfilWithPicks = ({ picks, unavailable }) => {
+    setPicking(false)
+    onSave({
+      ...inv,
+      status: 'fulfilled',
+      fulfillmentMethod: 'picked',
+      picks,
+      unavailable,
+    })
+  }
+
   return (
     <div style={{ paddingBottom: 140 }}>
       <div className="flex-between mb-16">
@@ -58,6 +128,28 @@ export function InvoiceEditor({
         smartPasteContext={smartPasteContext}
         onOpenSettings={onOpenSettings}
       />
+
+      {inv.status === 'pending' && (
+        <div
+          className="card"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: '.92rem' }}>Ready to fulfil?</div>
+            <div style={{ fontSize: '.74rem', color: 'var(--muted)', marginTop: 2 }}>
+              Pick items off the shelf or mark as fulfilled instantly.
+            </div>
+          </div>
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => setPicking(true)}>
+            Start Pick
+          </button>
+        </div>
+      )}
 
       <div className="card">
         <InvoiceFields inv={inv} setField={setField} />
@@ -82,6 +174,15 @@ export function InvoiceEditor({
       </div>
 
       <InvoiceActions inv={inv} onSave={onSave} onClose={onClose} onDelete={onDelete} />
+
+      {picking && (
+        <InvoicePicker
+          inv={inv}
+          onSkip={handleSkipFulfil}
+          onFulfil={handleFulfilWithPicks}
+          onClose={() => setPicking(false)}
+        />
+      )}
     </div>
   )
 }
