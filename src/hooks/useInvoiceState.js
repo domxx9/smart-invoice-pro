@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { blankInvoice, nextId, today } from '../helpers.js'
+import { assertTransition } from '../invoiceLifecycle'
 
 export function useInvoiceState({ defaultTax, onPaid, onOpenEditor }) {
   const [invoices, setInvoices] = useState([])
@@ -45,6 +46,9 @@ export function useInvoiceState({ defaultTax, onPaid, onOpenEditor }) {
 
   const handleSave = (inv) => {
     const old = invoices.find((i) => i.id === inv.id)
+    if (old && old.status !== inv.status) {
+      assertTransition(old.status, inv.status)
+    }
     const justPaid = inv.status === 'paid' && (!old || old.status !== 'paid')
     const idx = invoices.findIndex((i) => i.id === inv.id)
     const updated = idx >= 0 ? invoices.map((i, n) => (n === idx ? inv : i)) : [...invoices, inv]
