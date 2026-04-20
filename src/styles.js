@@ -182,4 +182,22 @@ export const CSS = `
     70%  { opacity: 1; }
     100% { opacity: 0; }
   }
+
+  .sheet-root { position: fixed; inset: 0; z-index: 1100; pointer-events: none; }
+  .sheet-root.open { pointer-events: auto; }
+  .sheet-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.55); opacity: 0; transition: opacity .2s ease; border: none; padding: 0; margin: 0; cursor: pointer; }
+  .sheet-root.open .sheet-backdrop { opacity: 1; }
+  .sheet-panel { position: absolute; left: 0; right: 0; bottom: 0; background: var(--surface); border-top-left-radius: 16px; border-top-right-radius: 16px; border-top: 1px solid var(--border); box-shadow: var(--shadow); padding: 14px 16px calc(16px + env(safe-area-inset-bottom, 0)); transform: translateY(100%); transition: transform .24s ease; max-height: 90vh; overflow-y: auto; }
+  .sheet-root.open .sheet-panel { transform: translateY(0); }
+  .sheet-handle { width: 40px; height: 4px; border-radius: 2px; background: var(--border); margin: 0 auto 10px; }
+
+  .contacts-list { display: flex; flex-direction: column; gap: 6px; }
+  .contact-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: border-color .15s; }
+  .contact-row:hover { border-color: var(--accent); }
+  .contact-row .name { font-weight: 600; font-size: .9rem; }
+  .contact-row .meta { font-size: .75rem; color: var(--muted); }
+  .contact-source { font-size: .66rem; padding: 2px 6px; border-radius: 999px; background: rgba(245,166,35,.12); color: var(--accent); text-transform: capitalize; }
+  .contact-source.manual { background: rgba(255,255,255,.06); color: var(--muted); }
+  .contacts-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .contacts-search { flex: 1; }
 `

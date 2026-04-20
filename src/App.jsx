@@ -17,6 +17,9 @@ import { InvoiceEditor } from './components/InvoiceEditor.jsx'
 import { Inventory } from './components/Inventory.jsx'
 import { Orders } from './components/Orders.jsx'
 import { Settings } from './components/Settings.jsx'
+import { Contacts } from './components/Contacts.jsx'
+import { QuickAddContactModal } from './components/QuickAddContactModal.jsx'
+import { useContacts } from './hooks/useContacts.js'
 import { Onboarding } from './components/Onboarding.jsx'
 import { TourOverlay, TOUR_STEPS } from './components/TourOverlay.jsx'
 import { PullToRefresh } from './components/PullToRefresh.jsx'
@@ -45,6 +48,7 @@ const NAV_ITEMS = [
 
 const MENU_ITEMS = [
   { id: 'inventory', label: 'Catalog', icon: 'inventory' },
+  { id: 'contacts', label: 'Contacts', icon: 'contacts' },
   { id: 'settings', label: 'Settings', icon: 'settings' },
 ]
 
@@ -72,6 +76,8 @@ function AppShell() {
   }
   const catalog = useCatalogSync(syncArgs)
   const orderSync = useOrderSync(syncArgs)
+  const contactsApi = useContacts()
+  const [quickAddContactOpen, setQuickAddContactOpen] = useState(false)
   const hasConnectedProvider =
     settings.activeIntegration === 'shopify'
       ? !!(settings.shopifyShopDomain && settings.shopifyAccessToken)
@@ -185,6 +191,17 @@ function AppShell() {
                   invoices={inv.invoices}
                   onNewInvoice={inv.handleNewInvoice}
                   onOpenInvoice={inv.handleEdit}
+                  onQuickAddContact={() => setQuickAddContactOpen(true)}
+                />
+              </section>
+            )}
+            {tab === 'contacts' && (
+              <section aria-label="Contacts">
+                <Contacts
+                  contacts={contactsApi.contacts}
+                  addContact={contactsApi.addContact}
+                  updateContact={contactsApi.updateContact}
+                  deleteContact={contactsApi.deleteContact}
                 />
               </section>
             )}
@@ -247,11 +264,19 @@ function AppShell() {
             )}
             {tab === 'settings' && (
               <section aria-label="Settings">
-                <Settings ai={ai} onStartTour={setTourStep} />
+                <Settings ai={ai} onStartTour={setTourStep} contactsApi={contactsApi} />
               </section>
             )}
           </PullToRefresh>
         </main>
+        <QuickAddContactModal
+          open={quickAddContactOpen}
+          onClose={() => setQuickAddContactOpen(false)}
+          onAdd={(c) => {
+            contactsApi.addContact(c)
+            toast(`Contact "${c.name}" added`, 'success', '✓')
+          }}
+        />
         <nav className="nav" aria-label="Primary">
           {NAV_ITEMS.map((item) => {
             const isActive = tab === item.id
