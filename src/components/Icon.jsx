@@ -64,6 +64,25 @@ export function Icon({ name, label }) {
         <path d="M16 10a4 4 0 0 1-8 0" />
       </>
     ),
+    menu: (
+      <>
+        <line x1="3" y1="6" x2="21" y2="6" />
+        <line x1="3" y1="12" x2="21" y2="12" />
+        <line x1="3" y1="18" x2="21" y2="18" />
+      </>
+    ),
+    contacts: (
+      <>
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+        <circle cx="12" cy="7" r="4" />
+      </>
+    ),
+    close: (
+      <>
+        <line x1="18" y1="6" x2="6" y2="18" />
+        <line x1="6" y1="6" x2="18" y2="18" />
+      </>
+    ),
   }
   const a11yProps = label
     ? { role: 'img', 'aria-label': label }
