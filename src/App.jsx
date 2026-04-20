@@ -21,6 +21,8 @@ import { Onboarding } from './components/Onboarding.jsx'
 import { TourOverlay, TOUR_STEPS } from './components/TourOverlay.jsx'
 import { PullToRefresh } from './components/PullToRefresh.jsx'
 import { Icon } from './components/Icon.jsx'
+import { BurgerMenu } from './components/BurgerMenu.jsx'
+import { useMenu } from './hooks/useMenu.js'
 
 export default function App() {
   return (
@@ -39,6 +41,9 @@ const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
   { id: 'invoices', label: 'Invoices', icon: 'invoice' },
   { id: 'orders', label: 'Orders', icon: 'orders' },
+]
+
+const MENU_ITEMS = [
   { id: 'inventory', label: 'Catalog', icon: 'inventory' },
   { id: 'settings', label: 'Settings', icon: 'settings' },
 ]
@@ -47,6 +52,7 @@ function AppShell() {
   const { toasts, toast, dismissToast } = useToast()
   const { settings, saveSettings } = useSettings()
   const { showEgg, handleVersionTap } = useEasterEgg()
+  const { menuOpen, openMenu, closeMenu } = useMenu()
   const [onboarded, setOnboarded] = useState(() => !!localStorage.getItem('sip_onboarded'))
   const [tourStep, setTourStep] = useState(null)
   const [tab, setTab] = useState(() =>
@@ -135,7 +141,19 @@ function AppShell() {
         </a>
         <header className="header">
           <div className="header-inner">
-            <h1>Smart Invoice Pro</h1>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <button
+                type="button"
+                className="header-burger-btn"
+                aria-label="Open menu"
+                aria-expanded={menuOpen}
+                aria-controls="burger-menu"
+                onClick={openMenu}
+              >
+                <Icon name="menu" />
+              </button>
+              <h1>Smart Invoice Pro</h1>
+            </div>
             <button
               type="button"
               className="text-muted version-tap"
@@ -146,6 +164,16 @@ function AppShell() {
             </button>
           </div>
         </header>
+        <BurgerMenu
+          open={menuOpen}
+          onClose={closeMenu}
+          items={MENU_ITEMS}
+          activeId={tab}
+          onSelect={(id) => {
+            inv.setEditorOpen(false)
+            setTab(id)
+          }}
+        />
         <main id="main-content" tabIndex={-1} className="content">
           <PullToRefresh
             onRefresh={tab === 'orders' ? orderSync.handleSyncOrders : catalog.handleSyncCatalog}
