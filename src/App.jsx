@@ -72,12 +72,16 @@ function AppShell() {
       : !!settings.sqApiKey
   const ai = useAiModel(toast, settings)
   const handleSave = (invoice) => {
-    const justPaid = inv.handleSave(invoice)
-    toast(
-      justPaid ? 'Payment received — invoice paid! 🎉' : 'Invoice saved',
-      'success',
-      justPaid ? null : '✓',
-    )
+    try {
+      const justPaid = inv.handleSave(invoice)
+      toast(
+        justPaid ? 'Payment received — invoice paid! 🎉' : 'Invoice saved',
+        'success',
+        justPaid ? null : '✓',
+      )
+    } catch (err) {
+      toast(err?.message || 'Could not save invoice', 'error')
+    }
   }
   const handleOnboardConnect = (credentials, fetchedProducts, bizDetails, startTour = true) => {
     // credentials shape for back-compat: if a string is passed, treat it as a Squarespace
