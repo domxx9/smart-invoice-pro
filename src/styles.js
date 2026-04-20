@@ -34,7 +34,27 @@ export const CSS = `
   .header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 16px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
   .header-inner { display: flex; align-items: center; justify-content: space-between; width: 100%; }
   .header h1 { font-size: 1rem; font-weight: 700; color: var(--accent); letter-spacing: .5px; }
+  .header-burger-btn { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; margin-right: 8px; padding: 0; background: none; border: none; color: var(--text); cursor: pointer; border-radius: var(--radius-sm); transition: background .15s; }
+  .header-burger-btn:hover { background: rgba(255,255,255,.06); }
+  .header-burger-btn svg { width: 22px; height: 22px; }
   .content { flex: 1; padding: 16px; max-width: 900px; width: 100%; margin: 0 auto; }
+
+  .burger-root { position: fixed; inset: 0; z-index: 1000; pointer-events: none; }
+  .burger-root.open { pointer-events: auto; }
+  .burger-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.55); opacity: 0; transition: opacity .2s ease; border: none; padding: 0; margin: 0; cursor: pointer; }
+  .burger-root.open .burger-backdrop { opacity: 1; }
+  .burger-panel { position: absolute; top: 0; left: 0; bottom: 0; width: min(82vw, 320px); background: var(--surface); border-right: 1px solid var(--border); box-shadow: var(--shadow); display: flex; flex-direction: column; transform: translateX(-100%); transition: transform .22s ease; padding-top: env(safe-area-inset-top, 0); padding-bottom: env(safe-area-inset-bottom, 0); padding-left: env(safe-area-inset-left, 0); }
+  .burger-root.open .burger-panel { transform: translateX(0); }
+  .burger-panel-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border); height: 56px; }
+  .burger-panel-title { font-weight: 700; font-size: .95rem; color: var(--accent); letter-spacing: .5px; }
+  .burger-close-btn { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; background: none; border: none; color: var(--text); cursor: pointer; border-radius: var(--radius-sm); }
+  .burger-close-btn:hover { background: rgba(255,255,255,.06); }
+  .burger-close-btn svg { width: 20px; height: 20px; }
+  .burger-list { list-style: none; margin: 0; padding: 8px; display: flex; flex-direction: column; gap: 2px; flex: 1; overflow-y: auto; }
+  .burger-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; background: none; border: none; color: var(--text); font: inherit; font-size: .95rem; text-align: left; cursor: pointer; border-radius: var(--radius-sm); transition: background .15s, color .15s; }
+  .burger-item:hover { background: rgba(255,255,255,.04); }
+  .burger-item.active { background: rgba(245,166,35,.12); color: var(--accent); }
+  .burger-item svg { width: 20px; height: 20px; flex-shrink: 0; }
   .nav { display: flex; gap: 4px; background: var(--surface); border-top: 1px solid var(--border); padding: 8px 8px env(safe-area-inset-bottom, 0); position: sticky; bottom: 0; z-index: 10; }
   .nav-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px; border: none; background: none; color: var(--muted); font-size: 0.65rem; cursor: pointer; border-radius: var(--radius-sm); transition: color .15s, background .15s; }
   .nav-btn.active { color: var(--accent); background: rgba(245,166,35,.08); }
@@ -162,4 +182,22 @@ export const CSS = `
     70%  { opacity: 1; }
     100% { opacity: 0; }
   }
+
+  .sheet-root { position: fixed; inset: 0; z-index: 1100; pointer-events: none; }
+  .sheet-root.open { pointer-events: auto; }
+  .sheet-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.55); opacity: 0; transition: opacity .2s ease; border: none; padding: 0; margin: 0; cursor: pointer; }
+  .sheet-root.open .sheet-backdrop { opacity: 1; }
+  .sheet-panel { position: absolute; left: 0; right: 0; bottom: 0; background: var(--surface); border-top-left-radius: 16px; border-top-right-radius: 16px; border-top: 1px solid var(--border); box-shadow: var(--shadow); padding: 14px 16px calc(16px + env(safe-area-inset-bottom, 0)); transform: translateY(100%); transition: transform .24s ease; max-height: 90vh; overflow-y: auto; }
+  .sheet-root.open .sheet-panel { transform: translateY(0); }
+  .sheet-handle { width: 40px; height: 4px; border-radius: 2px; background: var(--border); margin: 0 auto 10px; }
+
+  .contacts-list { display: flex; flex-direction: column; gap: 6px; }
+  .contact-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: border-color .15s; }
+  .contact-row:hover { border-color: var(--accent); }
+  .contact-row .name { font-weight: 600; font-size: .9rem; }
+  .contact-row .meta { font-size: .75rem; color: var(--muted); }
+  .contact-source { font-size: .66rem; padding: 2px 6px; border-radius: 999px; background: rgba(245,166,35,.12); color: var(--accent); text-transform: capitalize; }
+  .contact-source.manual { background: rgba(255,255,255,.06); color: var(--muted); }
+  .contacts-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .contacts-search { flex: 1; }
 `
