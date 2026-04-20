@@ -1,6 +1,6 @@
 import { logger } from '../utils/logger.js'
 
-export async function fetchSquarespaceProducts(apiKey, onProgress) {
+export async function fetchSquarespaceProducts(apiKey, onProgress, onStats) {
   const winCap = window.Capacitor
   const isNative = winCap?.isNativePlatform?.()
   const allProducts = []
@@ -45,7 +45,7 @@ export async function fetchSquarespaceProducts(apiKey, onProgress) {
       .slice(0, 80)
   }
   logger.info('squarespace', `synced ${allProducts.length} products`)
-  return allProducts.flatMap((p) => {
+  const flattened = allProducts.flatMap((p) => {
     const variants = p.variants ?? []
     const desc = stripDesc(p.description || p.body || '')
     if (!variants.length)
@@ -68,6 +68,8 @@ export async function fetchSquarespaceProducts(apiKey, onProgress) {
       }
     })
   })
+  onStats?.({ parentCount: allProducts.length, variantCount: flattened.length })
+  return flattened
 }
 
 export async function fetchSquarespaceOrders(apiKey, onProgress) {
