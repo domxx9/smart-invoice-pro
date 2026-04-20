@@ -122,7 +122,7 @@ export function Invoices({ invoices, onNewInvoice, onEdit, onDuplicate, editingD
         aria-label="Filter invoices"
         style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}
       >
-        {['all', 'new', 'pending', 'fulfilled', 'paid', 'overdue', 'refunded'].map((f) => (
+        {['all', 'new', 'pending', 'fulfilled', 'paid', 'overdue', 'refunded', 'cancelled'].map((f) => (
           <button
             key={f}
             type="button"
