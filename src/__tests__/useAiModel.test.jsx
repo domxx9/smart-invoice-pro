@@ -26,11 +26,17 @@ const workerMocks = {
 
 vi.mock('../gemma.js', () => gemmaMocks)
 vi.mock('../gemmaWorker.js', () => workerMocks)
-vi.mock('../byok.js', () => ({ testConnection: vi.fn() }))
-vi.mock('../secure-storage.js', () => ({
+const byokMocks = {
+  testConnection: vi.fn(),
+  listModels: vi.fn(),
+}
+const secureStorageMocks = {
   getSecret: vi.fn().mockResolvedValue(null),
   deleteSecret: vi.fn(),
-}))
+}
+
+vi.mock('../byok.js', () => byokMocks)
+vi.mock('../secure-storage.js', () => secureStorageMocks)
 
 async function importHook() {
   const mod = await import('../hooks/useAiModel.js')
@@ -47,6 +53,10 @@ beforeEach(() => {
     .mockResolvedValue({ baseOptions: { modelAssetBuffer: new ArrayBuffer(4) } })
   gemmaMocks.isNativePlatform.mockReset().mockReturnValue(false)
   workerMocks.initGemma.mockReset()
+  byokMocks.testConnection.mockReset()
+  byokMocks.listModels.mockReset()
+  secureStorageMocks.getSecret.mockReset().mockResolvedValue(null)
+  secureStorageMocks.deleteSecret.mockReset()
 })
 
 afterEach(() => {
@@ -137,5 +147,72 @@ describe('useAiModel.handleAiLoad — worker facade', () => {
     })
     expect(workerMocks.initGemma).toHaveBeenCalled()
     expect(result.current.loadedModelId).toBe('small')
+  })
+})
+
+describe('useAiModel.handleByokListModels (SMA-96)', () => {
+  it('returns a "pick a provider" error when provider is missing', async () => {
+    const useAiModel = await importHook()
+    const { result } = renderHook(() => useAiModel(vi.fn()))
+
+    let out
+    await act(async () => {
+      out = await result.current.handleByokListModels({})
+    })
+
+    expect(out).toEqual({ ok: false, models: [], error: expect.stringMatching(/provider/i) })
+    expect(secureStorageMocks.getSecret).not.toHaveBeenCalled()
+    expect(byokMocks.listModels).not.toHaveBeenCalled()
+  })
+
+  it('returns an "enter a key" error when no key is stored for the provider', async () => {
+    secureStorageMocks.getSecret.mockResolvedValue(null)
+    const useAiModel = await importHook()
+    const { result } = renderHook(() => useAiModel(vi.fn()))
+
+    let out
+    await act(async () => {
+      out = await result.current.handleByokListModels({ provider: 'openai' })
+    })
+
+    expect(out).toEqual({ ok: false, models: [], error: expect.stringMatching(/API key/i) })
+    expect(secureStorageMocks.getSecret).toHaveBeenCalledWith('sip_byok_openai')
+    expect(byokMocks.listModels).not.toHaveBeenCalled()
+  })
+
+  it('threads the stored key and baseUrl through to byok.listModels and returns its models', async () => {
+    secureStorageMocks.getSecret.mockResolvedValue('sk-abc')
+    byokMocks.listModels.mockResolvedValue({ ok: true, models: ['gpt-4o', 'gpt-4o-mini'] })
+    const useAiModel = await importHook()
+    const { result } = renderHook(() => useAiModel(vi.fn()))
+
+    let out
+    await act(async () => {
+      out = await result.current.handleByokListModels({
+        provider: 'openai',
+        baseUrl: 'https://proxy.example.com/v1',
+      })
+    })
+
+    expect(byokMocks.listModels).toHaveBeenCalledWith({
+      provider: 'openai',
+      apiKey: 'sk-abc',
+      baseUrl: 'https://proxy.example.com/v1',
+    })
+    expect(out).toEqual({ ok: true, models: ['gpt-4o', 'gpt-4o-mini'] })
+  })
+
+  it('surfaces byok.listModels errors to the caller', async () => {
+    secureStorageMocks.getSecret.mockResolvedValue('sk-abc')
+    byokMocks.listModels.mockResolvedValue({ ok: false, error: 'Invalid API key' })
+    const useAiModel = await importHook()
+    const { result } = renderHook(() => useAiModel(vi.fn()))
+
+    let out
+    await act(async () => {
+      out = await result.current.handleByokListModels({ provider: 'openai' })
+    })
+
+    expect(out).toEqual({ ok: false, models: [], error: 'Invalid API key' })
   })
 })

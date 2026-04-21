@@ -376,9 +376,71 @@ describe('runSmartPastePipeline', () => {
     expect(result.rows[0].product?.id).toBe('p1')
     expect(result.rows[3].product?.id).toBe('p5')
     expect(result.rows[4].product?.id).toBe('p7')
-    const matchEvents = onStage.mock.calls.filter(([e]) => e.stage === 'match' && !e.error)
-    expect(matchEvents).toHaveLength(3)
-    expect(matchEvents[0][0]).toMatchObject({ batchIndex: 0, totalBatches: 3 })
+    const batchStartEvents = onStage.mock.calls.filter(
+      ([e]) => e.stage === 'match' && !e.error && e.status !== 'complete',
+    )
+    expect(batchStartEvents).toHaveLength(3)
+    expect(batchStartEvents[0][0]).toMatchObject({ batchIndex: 0, totalBatches: 3 })
+  })
+
+  it('emits extract completion with totalBatches + per-batch completion with batchRows (SMA-99)', async () => {
+    const extract = [
+      { text: '5100 front', qty: 1, description: '' },
+      { text: '5100 rear', qty: 1, description: '' },
+      { text: 'oil filter', qty: 5, description: '' },
+    ]
+    const matchBatches = [
+      [
+        { lineIndex: 0, productId: 'p1', confidence: 95 },
+        { lineIndex: 1, productId: 'p2', confidence: 95 },
+      ],
+      [{ lineIndex: 0, productId: 'p5', confidence: 80 }],
+    ]
+    const onStage = vi.fn()
+    const runInference = buildRunInference({ extract, matchBatches })
+
+    await runSmartPastePipeline({
+      text: 'order',
+      products: PRODUCTS,
+      context: CONTEXT,
+      runInference,
+      onStage,
+    })
+
+    // Stage 1 completion carries the sized totalBatches + extractedCount so
+    // the widget can size its progress bar before the first match call.
+    const extractComplete = onStage.mock.calls.find(
+      ([e]) => e.stage === 'extract' && e.status === 'complete',
+    )
+    expect(extractComplete).toBeTruthy()
+    expect(extractComplete[0]).toMatchObject({
+      stage: 'extract',
+      status: 'complete',
+      extractedCount: 3,
+      totalBatches: 2,
+    })
+
+    // Each successful match batch emits a completion with the batch's rows
+    // (to let the widget reveal those rows progressively) and an offset.
+    const batchCompletions = onStage.mock.calls
+      .map(([e]) => e)
+      .filter((e) => e.stage === 'match' && e.status === 'complete')
+    expect(batchCompletions).toHaveLength(2)
+    expect(batchCompletions[0]).toMatchObject({
+      stage: 'match',
+      batchIndex: 0,
+      status: 'complete',
+      offset: 0,
+    })
+    expect(batchCompletions[0].batchRows).toHaveLength(2)
+    expect(batchCompletions[0].batchRows[0].product?.id).toBe('p1')
+    expect(batchCompletions[0].batchRows[1].product?.id).toBe('p2')
+    expect(batchCompletions[1]).toMatchObject({
+      batchIndex: 1,
+      offset: 2,
+    })
+    expect(batchCompletions[1].batchRows).toHaveLength(1)
+    expect(batchCompletions[1].batchRows[0].product?.id).toBe('p5')
   })
 
   it('falls back when extract returns non-JSON on both the first try and the retry', async () => {

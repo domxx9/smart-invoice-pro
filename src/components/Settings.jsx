@@ -12,6 +12,7 @@ import {
 import { useSettings } from '../contexts/SettingsContext.jsx'
 import { useToast } from '../contexts/ToastContext.jsx'
 import { SettingsSection } from './SettingsSection.jsx'
+import { ContactsImportSection } from './ContactsImportSection.jsx'
 import { PdfTemplateEditor } from './PdfTemplateEditor.jsx'
 import { Icon } from './Icon.jsx'
 import { RestoreBackupModal } from './RestoreBackupModal.jsx'
@@ -25,10 +26,34 @@ import {
   backupFilename,
   EXPORT_KIND,
 } from '../utils/dataExport.js'
+import {
+  SHOP_TYPE_OPTIONS,
+  CUSTOMER_TYPE_OPTIONS,
+  VOCABULARY_OPTIONS,
+  LOCALE_OPTIONS,
+} from '../constants/smartPasteContextPresets.js'
 
 const LOG_LEVELS = ['debug', 'info', 'warn', 'error']
 
-export function Settings({ ai, onStartTour }) {
+function renderPresetOptions(value, options) {
+  const known = options.includes(value)
+  return (
+    <>
+      {!known && value ? (
+        <option key="__legacy" value={value}>
+          {value}
+        </option>
+      ) : null}
+      {options.map((opt) => (
+        <option key={opt} value={opt}>
+          {opt}
+        </option>
+      ))}
+    </>
+  )
+}
+
+export function Settings({ ai, onStartTour, contactsApi }) {
   const {
     aiModelId,
     aiDownloaded,
@@ -44,6 +69,7 @@ export function Settings({ ai, onStartTour }) {
     byokStatus,
     byokError,
     handleByokTest,
+    handleByokListModels,
     handleByokClear,
   } = ai
   const { settings, saveSettings } = useSettings()
@@ -54,6 +80,9 @@ export function Settings({ ai, onStartTour }) {
   const [shopifyTestStatus, setShopifyTestStatus] = useState('idle')
   const [shopifyTestError, setShopifyTestError] = useState('')
   const [byokKey, setByokKey] = useState('')
+  // SMA-96: cached model list per provider+baseUrl. Shape per key:
+  // { status: 'idle' | 'loading' | 'ok' | 'error', models: string[], error: string }
+  const [byokModelList, setByokModelList] = useState({})
   const [showLogs, setShowLogs] = useState(false)
   const [logTick, setLogTick] = useState(0)
   const [showRestore, setShowRestore] = useState(false)
@@ -113,6 +142,39 @@ export function Settings({ ai, onStartTour }) {
       cancelled = true
     }
   }, [byokProvider])
+
+  // SMA-96: derive the current list entry for the active provider+baseUrl
+  // combo and provide a refresher. Manual entry must always stay available,
+  // so this never throws and never blocks the input fallback.
+  const byokListCacheKey = `${byokProvider}|${s.byokBaseUrl || ''}`
+  const byokListEntry = byokModelList[byokListCacheKey] || {
+    status: 'idle',
+    models: [],
+    error: '',
+  }
+  const refreshByokModels = async () => {
+    if (!byokProvider || !byokKey || !handleByokListModels) return
+    setByokModelList((p) => ({
+      ...p,
+      [byokListCacheKey]: { status: 'loading', models: [], error: '' },
+    }))
+    const result = await handleByokListModels({
+      provider: byokProvider,
+      baseUrl: s.byokBaseUrl,
+    })
+    setByokModelList((p) => ({
+      ...p,
+      [byokListCacheKey]: result.ok
+        ? { status: 'ok', models: result.models || [], error: '' }
+        : { status: 'error', models: [], error: result.error || 'Failed to list models' },
+    }))
+  }
+  const onByokAdvancedToggle = (e) => {
+    if (!e.currentTarget.open) return
+    if (!byokProvider || !byokKey) return
+    if (byokListEntry.status !== 'idle') return
+    refreshByokModels()
+  }
 
   const exportJson = async () => {
     if (includeSecrets) {
@@ -367,6 +429,135 @@ export function Settings({ ai, onStartTour }) {
         </div>
       </SettingsSection>
 
+      <SettingsSection title="Billing Information">
+        <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginBottom: 10 }}>
+          Shown on every invoice PDF so customers know how to pay you. Bank account, IBAN, and
+          SWIFT/BIC are stored in your device&apos;s secure keychain — not in cleartext.
+        </p>
+        <div className="field">
+          <label>
+            Bank Name
+            <input
+              value={s.bankName || ''}
+              onChange={(e) => set('bankName', e.target.value)}
+              placeholder="e.g. Barclays"
+            />
+          </label>
+        </div>
+        <div className="field">
+          <label>
+            Account Holder
+            <input
+              value={s.bankAccountName || ''}
+              onChange={(e) => set('bankAccountName', e.target.value)}
+              placeholder="Name on the account"
+            />
+          </label>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div className="field">
+            <label>
+              Account Number
+              <input
+                value={s.bankAccountNumber || ''}
+                onChange={(e) => set('bankAccountNumber', e.target.value)}
+                placeholder="12345678"
+                autoComplete="off"
+              />
+            </label>
+          </div>
+          <div className="field">
+            <label>
+              Sort Code
+              <input
+                value={s.bankSortCode || ''}
+                onChange={(e) => set('bankSortCode', e.target.value)}
+                placeholder="12-34-56"
+                autoComplete="off"
+              />
+            </label>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div className="field">
+            <label>
+              IBAN
+              <input
+                value={s.bankIban || ''}
+                onChange={(e) => set('bankIban', e.target.value)}
+                placeholder="GB29NWBK60161331926819"
+                autoComplete="off"
+              />
+            </label>
+          </div>
+          <div className="field">
+            <label>
+              SWIFT / BIC
+              <input
+                value={s.bankSwift || ''}
+                onChange={(e) => set('bankSwift', e.target.value)}
+                placeholder="NWBKGB2L"
+                autoComplete="off"
+              />
+            </label>
+          </div>
+        </div>
+        <div className="field">
+          <label>
+            Payment Instructions
+            <textarea
+              value={s.paymentInstructions || ''}
+              onChange={(e) => set('paymentInstructions', e.target.value)}
+              placeholder="e.g. Please reference the invoice number on the transfer. Net 14 terms."
+              rows={3}
+            />
+          </label>
+        </div>
+      </SettingsSection>
+
+      <SettingsSection title="Tax & Compliance">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 10 }}>
+          <div className="field">
+            <label>
+              Tax ID Label
+              <select
+                value={s.taxIdLabel || 'VAT'}
+                onChange={(e) => set('taxIdLabel', e.target.value)}
+              >
+                <option value="VAT">VAT</option>
+                <option value="GST">GST</option>
+                <option value="ABN">ABN</option>
+                <option value="EIN">EIN</option>
+                <option value="TAX ID">Tax ID</option>
+              </select>
+            </label>
+          </div>
+          <div className="field">
+            <label>
+              Number
+              <input
+                value={s.taxIdNumber || ''}
+                onChange={(e) => set('taxIdNumber', e.target.value)}
+                placeholder="GB123456789"
+              />
+            </label>
+          </div>
+        </div>
+        <div className="field">
+          <label>
+            Company Number
+            <input
+              value={s.companyNumber || ''}
+              onChange={(e) => set('companyNumber', e.target.value)}
+              placeholder="Companies House / State registration number"
+            />
+          </label>
+        </div>
+        <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
+          Printed in the PDF footer when set. Leave blank to hide.
+        </p>
+      </SettingsSection>
+
       <SettingsSection title="Invoicing">
         <div className="field">
           <label>
@@ -444,6 +635,45 @@ export function Settings({ ai, onStartTour }) {
           onChange={(v) => set('pdfTemplate', v)}
           businessName={s.businessName}
         />
+      </SettingsSection>
+
+      <SettingsSection title="Picker">
+        <p className="text-muted" style={{ fontSize: '.78rem', marginBottom: 10, lineHeight: 1.5 }}>
+          How picking items appears when fulfilling orders and invoices.
+        </p>
+        <div role="radiogroup" aria-label="Picker view mode" style={{ display: 'flex', gap: 8 }}>
+          {[
+            { id: 'list', label: 'List', sub: 'Compact, one row per item' },
+            { id: 'card', label: 'Card', sub: 'Swipe through one at a time' },
+          ].map(({ id, label, sub }) => {
+            const active = (s.pickerViewMode || 'list') === id
+            return (
+              <button
+                key={id}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => set('pickerViewMode', id)}
+                style={{
+                  flex: 1,
+                  padding: '10px 8px',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  background: active ? 'var(--accent)' : 'var(--card-bg)',
+                  border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
+                  color: active ? '#fff' : 'var(--text)',
+                  transition: 'background .15s, border-color .15s',
+                }}
+              >
+                <div style={{ fontWeight: 700, fontSize: '.82rem' }}>{label}</div>
+                <div style={{ fontSize: '.68rem', opacity: active ? 0.85 : 0.6, marginTop: 2 }}>
+                  {sub}
+                </div>
+              </button>
+            )
+          })}
+        </div>
       </SettingsSection>
 
       <SettingsSection title="Integrations">
@@ -586,6 +816,10 @@ export function Settings({ ai, onStartTour }) {
           </p>
         ) : null}
       </SettingsSection>
+
+      {contactsApi ? (
+        <ContactsImportSection contactsApi={contactsApi} sqApiKey={s.sqApiKey} onToast={toast} />
+      ) : null}
 
       <SettingsSection title="AI" dataTour="settings-ai">
         {/* ── Mode selector ── */}
@@ -1014,7 +1248,7 @@ export function Settings({ ai, onStartTour }) {
                             </label>
                           </div>
 
-                          <details style={{ marginBottom: 12 }}>
+                          <details style={{ marginBottom: 12 }} onToggle={onByokAdvancedToggle}>
                             <summary
                               style={{
                                 fontSize: '.75rem',
@@ -1035,16 +1269,83 @@ export function Settings({ ai, onStartTour }) {
                                 />
                               </label>
                             </div>
-                            <div className="field">
-                              <label>
-                                Model
-                                <input
-                                  value={s.byokModel || ''}
-                                  onChange={(e) => set('byokModel', e.target.value.trim())}
-                                  placeholder={BYOK_PRESETS[byokProvider]?.defaultModel || ''}
-                                />
-                              </label>
-                            </div>
+                            {(() => {
+                              const { status, models, error } = byokListEntry
+                              const hasList = status === 'ok' && models.length > 0
+                              const currentModel = s.byokModel || ''
+                              const modelInList =
+                                hasList && currentModel && models.includes(currentModel)
+                              const selectValue = modelInList ? currentModel : '__custom'
+                              const showCustom = !hasList || selectValue === '__custom'
+                              return (
+                                <div className="field">
+                                  <label htmlFor="byok-model-select">Model</label>
+                                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                    <select
+                                      id="byok-model-select"
+                                      aria-label="Model"
+                                      style={{ flex: 1 }}
+                                      disabled={status === 'loading'}
+                                      value={selectValue}
+                                      onChange={(e) => {
+                                        const v = e.target.value
+                                        if (v === '__custom') {
+                                          if (modelInList) set('byokModel', '')
+                                        } else {
+                                          set('byokModel', v)
+                                        }
+                                      }}
+                                    >
+                                      {hasList
+                                        ? models.map((m) => (
+                                            <option key={m} value={m}>
+                                              {m}
+                                            </option>
+                                          ))
+                                        : null}
+                                      <option value="__custom">Custom…</option>
+                                    </select>
+                                    <button
+                                      type="button"
+                                      className="btn btn-ghost btn-sm"
+                                      disabled={!byokKey || status === 'loading'}
+                                      onClick={refreshByokModels}
+                                      title="Refresh model list from the provider"
+                                    >
+                                      {status === 'loading' ? '…' : '↻'}
+                                    </button>
+                                  </div>
+                                  {showCustom && (
+                                    <input
+                                      aria-label="Custom model"
+                                      style={{ marginTop: 6 }}
+                                      value={s.byokModel || ''}
+                                      onChange={(e) => set('byokModel', e.target.value.trim())}
+                                      placeholder={BYOK_PRESETS[byokProvider]?.defaultModel || ''}
+                                    />
+                                  )}
+                                  <p
+                                    data-testid="byok-model-list-status"
+                                    aria-live="polite"
+                                    style={{
+                                      fontSize: '.72rem',
+                                      color: status === 'error' ? '#f87171' : 'var(--muted)',
+                                      marginTop: 4,
+                                      marginBottom: 0,
+                                    }}
+                                  >
+                                    {status === 'loading' && 'Loading models…'}
+                                    {status === 'ok' &&
+                                      `${models.length} model${models.length === 1 ? '' : 's'} from provider`}
+                                    {status === 'error' &&
+                                      `Couldn't fetch models: ${error} — enter one manually`}
+                                    {status === 'idle' &&
+                                      !byokKey &&
+                                      'Enter an API key to load the list'}
+                                  </p>
+                                </div>
+                              )
+                            })()}
                           </details>
 
                           <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
@@ -1134,12 +1435,15 @@ export function Settings({ ai, onStartTour }) {
         <div className="field">
           <label>
             Shop type
-            <textarea
-              rows={2}
+            <select
               value={s.smartPasteContext?.shopType || ''}
               onChange={(e) => setSmartPasteContext('shopType', e.target.value)}
-              placeholder="brick-and-mortar, online only, trade counter, pop-up market stall"
-            />
+            >
+              <option value="" disabled>
+                Select how you trade…
+              </option>
+              {renderPresetOptions(s.smartPasteContext?.shopType || '', SHOP_TYPE_OPTIONS)}
+            </select>
           </label>
           <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
             How you trade — helps the AI weight wholesale vs retail phrasing.
@@ -1148,12 +1452,15 @@ export function Settings({ ai, onStartTour }) {
         <div className="field">
           <label>
             Customer type
-            <textarea
-              rows={2}
+            <select
               value={s.smartPasteContext?.customerType || ''}
               onChange={(e) => setSmartPasteContext('customerType', e.target.value)}
-              placeholder="restaurants, trade contractors, walk-in retail, boutique resellers"
-            />
+            >
+              <option value="" disabled>
+                Select who you sell to…
+              </option>
+              {renderPresetOptions(s.smartPasteContext?.customerType || '', CUSTOMER_TYPE_OPTIONS)}
+            </select>
           </label>
           <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
             Who you sell to — sets expectations for quantities and vocabulary.
@@ -1162,28 +1469,30 @@ export function Settings({ ai, onStartTour }) {
         <div className="field">
           <label>
             Customer vocabulary / jargon
-            <textarea
-              rows={3}
+            <select
               value={s.smartPasteContext?.vocabulary || ''}
               onChange={(e) => setSmartPasteContext('vocabulary', e.target.value)}
-              placeholder={
-                'abbreviations, brand nicknames, short codes — e.g.\n"pdr" = powder, "M8x20" = M8 20mm bolt, "chedd" = cheddar'
-              }
-            />
+            >
+              <option value="">None / skip</option>
+              {renderPresetOptions(s.smartPasteContext?.vocabulary || '', VOCABULARY_OPTIONS)}
+            </select>
           </label>
           <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
-            Shorthand the AI would otherwise fail on. One per line is fine.
+            Shorthand the AI would otherwise fail on. Optional — leave blank if none applies.
           </p>
         </div>
         <div className="field">
           <label>
             Language / locale
-            <textarea
-              rows={2}
+            <select
               value={s.smartPasteContext?.locale || ''}
               onChange={(e) => setSmartPasteContext('locale', e.target.value)}
-              placeholder='e.g. "UK English + Spanish, sometimes mixed"'
-            />
+            >
+              <option value="" disabled>
+                Select a language…
+              </option>
+              {renderPresetOptions(s.smartPasteContext?.locale || '', LOCALE_OPTIONS)}
+            </select>
           </label>
           <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
             Languages customers write in — covers codeswitching and regional spellings.

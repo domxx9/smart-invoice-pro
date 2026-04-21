@@ -26,7 +26,11 @@ export function buildInvoicePDF(inv, settings) {
   const primary = hexToRgb(tmpl.primaryColor || '#f5a623')
   const secondary = hexToRgb(tmpl.secondaryColor || '#1e1e1e')
   const tertiary = hexToRgb(tmpl.tertiaryColor || '#f5f5f5')
-  const { sub, tax, total } = calcTotals(inv.items, inv.tax)
+  const { sub, discountLines, discountTotal, tax, total } = calcTotals(
+    inv.items,
+    inv.tax,
+    inv.discounts,
+  )
   const cFmt = (n) =>
     new Intl.NumberFormat(undefined, {
       style: 'currency',
@@ -211,14 +215,27 @@ export function buildInvoicePDF(inv, settings) {
   // ── Totals + notes + business block ──────────────────────────────
   // Estimate height needed
   const notesH = tmpl.showNotes && inv.notes ? 20 : 0
+  const discountsH = (discountLines?.length || 0) * 5 + (discountTotal > 0 ? 2 : 0)
   const bizAddr2 = [
     settings.address1,
     settings.address2,
     [settings.city, settings.postcode].filter(Boolean).join(', '),
     settings.country,
   ].filter(Boolean)
-  const bizH = 14 + bizAddr2.length * 5 + 4
-  const totalsH = 8 + 6 + (tmpl.showTaxLine ? 7 : 0) + 14
+  const bankRowCount =
+    (settings.bankName ? 1 : 0) +
+    (settings.bankAccountName ? 1 : 0) +
+    (settings.bankAccountNumber || settings.bankSortCode ? 1 : 0) +
+    (settings.bankIban ? 1 : 0) +
+    (settings.bankSwift ? 1 : 0)
+  const hasPaymentBlock = bankRowCount > 0 || !!settings.paymentInstructions
+  const hasCompliance = !!(settings.taxIdNumber || settings.companyNumber)
+  const paymentH = hasPaymentBlock
+    ? 10 + bankRowCount * 5 + (settings.paymentInstructions ? 10 : 0)
+    : 0
+  const complianceH = hasCompliance ? 5 : 0
+  const bizH = 14 + bizAddr2.length * 5 + 4 + paymentH + complianceH
+  const totalsH = 8 + 6 + discountsH + (tmpl.showTaxLine ? 7 : 0) + 14
   const endH = totalsH + notesH + bizH + 10
 
   if (y + endH > H - 14) {
@@ -234,13 +251,22 @@ export function buildInvoicePDF(inv, settings) {
   doc.line(margin, y, W - margin, y)
   y += 6
 
-  // Subtotal / Tax / Total
+  // Subtotal / Discounts / Tax / Total
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8.5)
   doc.setTextColor(100, 100, 100)
   doc.text('Subtotal', margin, y)
   doc.text(cFmt(sub), W - margin, y, { align: 'right' })
   y += 6
+  if (discountLines && discountLines.length) {
+    for (const d of discountLines) {
+      const label = d.name || (d.type === 'percent' ? `Discount (${d.value}%)` : 'Discount')
+      doc.text(label, margin, y)
+      doc.text(`-${cFmt(d.amount)}`, W - margin, y, { align: 'right' })
+      y += 5
+    }
+    y += 1
+  }
   if (tmpl.showTaxLine) {
     doc.text(`Tax (${inv.tax || 0}%)`, margin, y)
     doc.text(cFmt(tax), W - margin, y, { align: 'right' })
@@ -303,6 +329,65 @@ export function buildInvoicePDF(inv, settings) {
     doc.text(line, margin, y)
     y += 5
   })
+
+  // ── Payment details block ─────────────────────────────────────────
+  const bankLines = []
+  if (settings.bankName) bankLines.push(settings.bankName)
+  if (settings.bankAccountName) bankLines.push(settings.bankAccountName)
+  if (settings.bankAccountNumber && settings.bankSortCode) {
+    bankLines.push(`Acct ${settings.bankAccountNumber}  ·  Sort ${settings.bankSortCode}`)
+  } else if (settings.bankAccountNumber) {
+    bankLines.push(`Acct ${settings.bankAccountNumber}`)
+  } else if (settings.bankSortCode) {
+    bankLines.push(`Sort ${settings.bankSortCode}`)
+  }
+  if (settings.bankIban) bankLines.push(`IBAN ${settings.bankIban}`)
+  if (settings.bankSwift) bankLines.push(`SWIFT ${settings.bankSwift}`)
+
+  if (bankLines.length || settings.paymentInstructions) {
+    y += 3
+    doc.setDrawColor(235, 235, 235)
+    doc.line(margin, y, W - margin, y)
+    y += 5
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(7.5)
+    doc.setTextColor(120, 120, 120)
+    doc.text('PAYMENT DETAILS', margin, y)
+    y += 5
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    doc.setTextColor(60, 60, 60)
+    for (const line of bankLines) {
+      doc.text(line, margin, y, { maxWidth: W - margin * 2 })
+      y += 4.5
+    }
+    if (settings.paymentInstructions) {
+      y += 1
+      doc.setFont('helvetica', 'italic')
+      doc.setFontSize(7.5)
+      doc.setTextColor(90, 90, 90)
+      const instr = doc.splitTextToSize(settings.paymentInstructions, W - margin * 2)
+      doc.text(instr, margin, y)
+      y += instr.length * 4 + 2
+    }
+  }
+
+  // ── Compliance identifiers (VAT / Company Number) ─────────────────
+  const complianceBits = []
+  if (settings.taxIdNumber) {
+    complianceBits.push(`${settings.taxIdLabel || 'Tax ID'} ${settings.taxIdNumber}`)
+  }
+  if (settings.companyNumber) {
+    complianceBits.push(`Co. No. ${settings.companyNumber}`)
+  }
+  if (complianceBits.length) {
+    y += 1
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7)
+    doc.setTextColor(130, 130, 130)
+    doc.text(complianceBits.join('  ·  '), margin, y, { maxWidth: W - margin * 2 })
+    y += 4
+  }
 
   // ── Page footers on every page ────────────────────────────────────
   const totalPages = doc.getNumberOfPages()

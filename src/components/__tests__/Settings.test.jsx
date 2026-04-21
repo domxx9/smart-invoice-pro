@@ -3,6 +3,12 @@ import { render, screen, fireEvent, within } from '@testing-library/react'
 import { Settings } from '../Settings.jsx'
 import { SettingsProvider, isSmartPasteContextSet } from '../../contexts/SettingsContext.jsx'
 import { ToastProvider } from '../../contexts/ToastContext.jsx'
+import {
+  SHOP_TYPE_OPTIONS,
+  CUSTOMER_TYPE_OPTIONS,
+  VOCABULARY_OPTIONS,
+  LOCALE_OPTIONS,
+} from '../../constants/smartPasteContextPresets.js'
 
 // Stub gemma — jsdom can't handle MediaPipe/WebGPU imports.
 vi.mock('../../gemma.js', () => ({
@@ -45,27 +51,62 @@ function openContextSection() {
   fireEvent.click(screen.getByRole('button', { expanded: false, name: /^Smart Paste AI Context/i }))
 }
 
-const CONTEXT_LABELS = [
-  /Product type/i,
-  /Shop type/i,
-  /Customer type/i,
-  /Customer vocabulary/i,
-  /Language ?\/ ?locale/i,
-]
-
 beforeEach(() => {
   sessionStorage.clear()
   localStorage.clear()
 })
 
 describe('Settings — Smart Paste AI Context section', () => {
-  it('renders 5 labeled textareas inside the new section', () => {
+  it('keeps product type as a free-form textarea', () => {
     renderSettings()
     openContextSection()
-    for (const label of CONTEXT_LABELS) {
+    const field = screen.getByLabelText(/Product type/i)
+    expect(field.tagName).toBe('TEXTAREA')
+  })
+
+  it('renders the four remaining fields as preset dropdowns (SMA-97)', () => {
+    renderSettings()
+    openContextSection()
+    for (const label of [
+      /Shop type/i,
+      /Customer type/i,
+      /Customer vocabulary/i,
+      /Language ?\/ ?locale/i,
+    ]) {
       const field = screen.getByLabelText(label)
-      expect(field).toBeInTheDocument()
-      expect(field.tagName).toBe('TEXTAREA')
+      expect(field.tagName).toBe('SELECT')
+    }
+  })
+
+  it('prefills each preset dropdown with its option list', () => {
+    renderSettings()
+    openContextSection()
+    const cases = [
+      [/Shop type/i, SHOP_TYPE_OPTIONS],
+      [/Customer type/i, CUSTOMER_TYPE_OPTIONS],
+      [/Language ?\/ ?locale/i, LOCALE_OPTIONS],
+    ]
+    for (const [label, options] of cases) {
+      const select = screen.getByLabelText(label)
+      for (const opt of options) {
+        expect(within(select).getByRole('option', { name: opt })).toBeInTheDocument()
+      }
+    }
+  })
+
+  it('surfaces a blank option on the vocabulary (slang) dropdown', () => {
+    renderSettings()
+    openContextSection()
+    const vocab = screen.getByLabelText(/Customer vocabulary/i)
+    // The blank option should be selectable (no `disabled` attribute) and
+    // the select should default to the empty string when no context saved.
+    const blank = within(vocab).getByRole('option', { name: /none ?\/ ?skip/i })
+    expect(blank).toBeInTheDocument()
+    expect(blank).not.toHaveAttribute('disabled')
+    expect(vocab).toHaveValue('')
+    // Preset slang options are still listed.
+    for (const opt of VOCABULARY_OPTIONS) {
+      expect(within(vocab).getByRole('option', { name: opt })).toBeInTheDocument()
     }
   })
 
@@ -76,13 +117,13 @@ describe('Settings — Smart Paste AI Context section', () => {
     expect(anchor).toHaveTextContent(/Smart Paste AI Context/i)
   })
 
-  it('round-trips values through localStorage across remount', () => {
+  it('round-trips preset selections through localStorage across remount', () => {
     const values = {
       'Product type': 'artisan cheese',
-      'Shop type': 'brick-and-mortar',
-      'Customer type': 'restaurants',
-      'Customer vocabulary': '"chedd" = cheddar',
-      'Language / locale': 'UK English + Spanish',
+      'Shop type': SHOP_TYPE_OPTIONS[0],
+      'Customer type': CUSTOMER_TYPE_OPTIONS[1],
+      'Customer vocabulary': VOCABULARY_OPTIONS[2],
+      'Language / locale': LOCALE_OPTIONS[0],
     }
 
     const first = renderSettings()
@@ -98,10 +139,10 @@ describe('Settings — Smart Paste AI Context section', () => {
     const stored = JSON.parse(localStorage.getItem('sip_settings'))
     expect(stored.smartPasteContext).toEqual({
       productType: 'artisan cheese',
-      shopType: 'brick-and-mortar',
-      customerType: 'restaurants',
-      vocabulary: '"chedd" = cheddar',
-      locale: 'UK English + Spanish',
+      shopType: SHOP_TYPE_OPTIONS[0],
+      customerType: CUSTOMER_TYPE_OPTIONS[1],
+      vocabulary: VOCABULARY_OPTIONS[2],
+      locale: LOCALE_OPTIONS[0],
     })
 
     renderSettings()
@@ -112,6 +153,30 @@ describe('Settings — Smart Paste AI Context section', () => {
     for (const [label, value] of Object.entries(values)) {
       expect(section.getByLabelText(new RegExp(label, 'i'))).toHaveValue(value)
     }
+  })
+
+  it('preserves a legacy free-form value as a selectable option (migration)', () => {
+    localStorage.setItem(
+      'sip_settings',
+      JSON.stringify({
+        smartPasteContext: {
+          productType: 'legacy product blurb',
+          shopType: 'freehand shop description',
+          customerType: CUSTOMER_TYPE_OPTIONS[0],
+          vocabulary: '',
+          locale: LOCALE_OPTIONS[0],
+        },
+      }),
+    )
+
+    renderSettings()
+    openContextSection()
+    const shop = screen.getByLabelText(/Shop type/i)
+    // Legacy value must be shown as selected so the user sees what was saved.
+    expect(shop).toHaveValue('freehand shop description')
+    expect(
+      within(shop).getByRole('option', { name: 'freehand shop description' }),
+    ).toBeInTheDocument()
   })
 })
 
@@ -124,18 +189,25 @@ describe('isSmartPasteContextSet', () => {
     locale: 'e',
   }
 
-  it('returns true when every phrase is non-empty after trim', () => {
+  it('returns true when every required phrase is non-empty after trim', () => {
     expect(isSmartPasteContextSet({ smartPasteContext: full })).toBe(true)
   })
 
-  it('returns false when any phrase is blank', () => {
-    for (const key of Object.keys(full)) {
+  it('still returns true when vocabulary is blank (SMA-97 — slang is optional)', () => {
+    expect(isSmartPasteContextSet({ smartPasteContext: { ...full, vocabulary: '' } })).toBe(true)
+    expect(isSmartPasteContextSet({ smartPasteContext: { ...full, vocabulary: '   \n\t' } })).toBe(
+      true,
+    )
+  })
+
+  it('returns false when any required phrase is blank', () => {
+    for (const key of ['productType', 'shopType', 'customerType', 'locale']) {
       expect(isSmartPasteContextSet({ smartPasteContext: { ...full, [key]: '' } })).toBe(false)
     }
   })
 
-  it('returns false when a phrase is whitespace-only', () => {
-    expect(isSmartPasteContextSet({ smartPasteContext: { ...full, vocabulary: '   \n\t' } })).toBe(
+  it('returns false when a required phrase is whitespace-only', () => {
+    expect(isSmartPasteContextSet({ smartPasteContext: { ...full, locale: '   \n\t' } })).toBe(
       false,
     )
   })
