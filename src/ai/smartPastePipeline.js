@@ -15,6 +15,7 @@
 import { getTopCandidates } from '../matcher.js'
 import { buildExtractPrompt } from './prompts/extractPrompt.js'
 import { buildMatchPrompt } from './prompts/matchPrompt.js'
+import { repairTokens, tokenizeQuery } from './productDictionary.js'
 import { logger } from '../utils/logger.js'
 
 const MATCH_BATCH_SIZE = 2
@@ -322,6 +323,28 @@ export function filterCandidates({ extracted, products, topN = 50 } = {}) {
   }))
 }
 
+// SMA-120: when Stage 2 returns zero candidates for a line, retry with
+// dictionary-repaired tokens before paying for an LLM call. Mutates
+// `entry.candidates` in place when a repair surfaces new hits and records
+// the repair on `entry.repairs` so the orchestrator can log/audit it.
+async function repairFilteredEntry({ entry, products, topN, productDictionary, repairOpts }) {
+  if (!entry || !productDictionary || !Array.isArray(products) || !products.length) return null
+  if (entry.candidates && entry.candidates.length) return null
+  const text = entry.extracted?.text || ''
+  const queryTokens = tokenizeQuery(text)
+  if (!queryTokens.length) return null
+  const result = await repairTokens(queryTokens, productDictionary, repairOpts)
+  if (!result.repairs.length) return null
+  const repairedQuery = result.tokens.filter(Boolean).join(' ').trim()
+  if (!repairedQuery || repairedQuery === queryTokens.join(' ')) return null
+  const candidates = getTopCandidates(repairedQuery, products, topN)
+  if (!candidates.length) return null
+  entry.candidates = candidates
+  entry.repairs = result.repairs
+  entry.repairedQuery = repairedQuery
+  return result
+}
+
 // Stage 3 LLM budget. 512 tokens covers a 2-line match-batch comfortably;
 // the response shape is small (one object per line). Salvage still kicks
 // in via safeParseJsonArray if a provider truncates anyway.
@@ -381,6 +404,8 @@ export async function runSmartPastePipeline({
   context,
   runInference,
   onStage,
+  productDictionary,
+  repairOpts,
 } = {}) {
   if (typeof runInference !== 'function') {
     throw new Error('runSmartPastePipeline: runInference is required')
@@ -424,6 +449,28 @@ export async function runSmartPastePipeline({
   })
 
   const filtered = filterCandidates({ extracted, products })
+
+  let dictionaryRepairs = 0
+  if (productDictionary) {
+    for (const entry of filtered) {
+      const repaired = await repairFilteredEntry({
+        entry,
+        products,
+        topN: 50,
+        productDictionary,
+        repairOpts,
+      })
+      if (repaired) {
+        dictionaryRepairs += repaired.repairs.length
+        logger.info('smartPaste.dictionary_repair', {
+          original: entry.extracted?.text,
+          repairs: repaired.repairs,
+          repairedQuery: entry.repairedQuery,
+        })
+      }
+    }
+  }
+
   const batches = chunk(filtered, MATCH_BATCH_SIZE)
   // SMA-99: emit Stage 1 completion with totalBatches so the widget can size
   // its progress bar before the first match batch kicks off. Back-compat: old
@@ -560,6 +607,16 @@ export async function runSmartPastePipeline({
     })
   }
 
-  logger.info('smartPaste.pipeline_complete', { fallback: false, callCount })
-  return { extracted, rows, callCount, fallback: false }
+  logger.info('smartPaste.pipeline_complete', {
+    fallback: false,
+    callCount,
+    ...(dictionaryRepairs ? { dictionaryRepairs } : {}),
+  })
+  return {
+    extracted,
+    rows,
+    callCount,
+    fallback: false,
+    ...(dictionaryRepairs ? { dictionaryRepairs } : {}),
+  }
 }
