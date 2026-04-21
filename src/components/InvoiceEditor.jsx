@@ -71,6 +71,8 @@ export function InvoiceEditor({
   toast,
   smartPasteContext,
   onOpenSettings,
+  searchTier,
+  byokProvider,
 }) {
   const [inv, setInv] = useState(invoice)
   const [picking, setPicking] = useState(false)
@@ -159,6 +161,8 @@ export function InvoiceEditor({
         toast={toast}
         smartPasteContext={smartPasteContext}
         onOpenSettings={onOpenSettings}
+        searchTier={searchTier}
+        byokProvider={byokProvider}
       />
 
       {inv.status === 'pending' && (

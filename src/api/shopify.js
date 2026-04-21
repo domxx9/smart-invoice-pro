@@ -160,7 +160,7 @@ function flattenProduct(p) {
   })
 }
 
-export async function fetchShopifyProducts(shopDomain, accessToken, onProgress) {
+export async function fetchShopifyProducts(shopDomain, accessToken, onProgress, onStats) {
   if (!shopDomain) throw new Error('Shopify shop domain is required')
   if (!accessToken) throw new Error('Shopify access token is required')
 
@@ -185,6 +185,7 @@ export async function fetchShopifyProducts(shopDomain, accessToken, onProgress) 
   } while (pageInfo)
 
   logger.info('shopify', `synced ${rawCount} products → ${flattened.length} variants`)
+  onStats?.({ parentCount: rawCount, variantCount: flattened.length })
   return flattened
 }
 

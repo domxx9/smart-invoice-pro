@@ -822,6 +822,36 @@ export function Settings({ ai, onStartTour, contactsApi }) {
       ) : null}
 
       <SettingsSection title="AI" dataTour="settings-ai">
+        {/* SMA-123: read-only tier indicator. `pickTier` drives this off
+            catalog size — users can't flip it manually. */}
+        {(() => {
+          const tier = s.searchTier === 'byok' ? 'byok' : 'local'
+          const tierLabel = tier === 'byok' ? 'Cloud (BYOK)' : 'On-device'
+          const tierHelp =
+            tier === 'byok'
+              ? 'Catalog exceeds the on-device threshold — search runs through your BYOK key.'
+              : 'Catalog fits on-device — search runs fully offline.'
+          return (
+            <div
+              data-testid="search-tier-indicator"
+              data-tier={tier}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 2,
+                padding: '8px 12px',
+                borderRadius: 6,
+                marginBottom: 12,
+                background: 'var(--card-bg)',
+                border: '1px solid var(--border)',
+              }}
+            >
+              <div style={{ fontSize: '.72rem', color: 'var(--muted)' }}>Search tier</div>
+              <div style={{ fontSize: '.82rem', fontWeight: 600 }}>{tierLabel}</div>
+              <div style={{ fontSize: '.7rem', color: 'var(--muted)' }}>{tierHelp}</div>
+            </div>
+          )
+        })()}
         {/* ── Mode selector ── */}
         {(() => {
           const aiMode = s.aiMode || 'small'

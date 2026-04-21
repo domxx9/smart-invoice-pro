@@ -56,6 +56,9 @@ const DEFAULTS = {
   pdfTemplate: {},
   pickerViewMode: 'list',
   debug: { ...DEFAULT_DEBUG },
+  // SMA-123: catalog-size-driven search routing. `pickTier` (src/catalog/tier.js)
+  // updates this after every full sync — do not edit by hand.
+  searchTier: 'local',
 }
 
 export function isSmartPasteContextSet(settings) {

@@ -6,6 +6,7 @@ import { SettingsProvider, useSettings } from './contexts/SettingsContext.jsx'
 import { useInvoiceState } from './hooks/useInvoiceState.js'
 import { useCatalogSync } from './hooks/useCatalogSync.js'
 import { useOrderSync } from './hooks/useOrderSync.js'
+import { pickTier } from './catalog/tier.js'
 import { useAiModel } from './hooks/useAiModel.js'
 import { useEasterEgg, EasterEggToast } from './hooks/useEasterEgg.jsx'
 import { Confetti } from './components/Confetti.jsx'
@@ -68,13 +69,21 @@ function AppShell() {
     onPaid: () => setConfettiTrigger((t) => t + 1),
     onOpenEditor: () => setTab('invoices'),
   })
+  const handleCatalogSyncStats = (stats) => {
+    // SMA-123: re-tier on every full sync. `pickTier` is pure; settings are
+    // persisted via saveSettings so the new tier survives reload.
+    const nextTier = pickTier(stats)
+    if (nextTier !== settings.searchTier) {
+      saveSettings({ ...settings, searchTier: nextTier })
+    }
+  }
   const syncArgs = {
     activeIntegration: settings.activeIntegration,
     sqApiKey: settings.sqApiKey,
     shopifyShopDomain: settings.shopifyShopDomain,
     shopifyAccessToken: settings.shopifyAccessToken,
   }
-  const catalog = useCatalogSync(syncArgs)
+  const catalog = useCatalogSync({ ...syncArgs, onSyncStats: handleCatalogSyncStats })
   const orderSync = useOrderSync(syncArgs)
   const contactsApi = useContacts()
   const [quickAddContactOpen, setQuickAddContactOpen] = useState(false)
@@ -237,6 +246,8 @@ function AppShell() {
                   toast={toast}
                   smartPasteContext={settings.smartPasteContext}
                   onOpenSettings={() => setTab('settings')}
+                  searchTier={settings.searchTier}
+                  byokProvider={settings.byokProvider}
                 />
               </section>
             )}

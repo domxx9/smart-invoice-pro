@@ -1,7 +1,9 @@
 import { useRef, useState } from 'react'
 import { cleanWhatsApp, extractItems, matchItems, fmt } from '../helpers.js'
-import { runSmartPastePipeline } from '../ai/smartPastePipeline.js'
 import { isSmartPasteContextSet } from '../contexts/SettingsContext.jsx'
+import { runCatalogSearch } from '../catalog/search.js'
+import { SEARCH_TIER_BYOK } from '../catalog/tier.js'
+import { getSecret } from '../secure-storage.js'
 import { logger } from '../utils/logger.js'
 import { Icon } from './Icon.jsx'
 
@@ -62,6 +64,8 @@ export function SmartPasteWidget({
   toast,
   smartPasteContext,
   onOpenSettings,
+  searchTier,
+  byokProvider,
 }) {
   const [pasteText, setPasteText] = useState('')
   const [pasteResults, setPasteResults] = useState(null)
@@ -75,6 +79,10 @@ export function SmartPasteWidget({
   const [processing, setProcessing] = useState(null)
   const [bannerDismissed, setBannerDismissed] = useState(false)
   const [skipHint, setSkipHint] = useState(null)
+  // SMA-123: shown when tier=byok but no BYOK key is configured. Search
+  // falls back to BM25 so the user still gets results, but they need to
+  // finish setup for accurate AI matching on large catalogs.
+  const [byokKeyBannerVisible, setByokKeyBannerVisible] = useState(false)
   // SMA-100: row indices already auto-added to the invoice this parse session.
   // Used to dedupe when a batch's data flows into `setPasteResults` more than
   // once (progressive stream + final replace), or if onStage double-fires.
@@ -237,16 +245,24 @@ export function SmartPasteWidget({
         return next
       })
       setVisibleRowCount((prev) => Math.max(prev, offset + convertedBatch.length))
-      setProcessing((prev) =>
-        prev ? { ...prev, completedSteps: prev.completedSteps + 1 } : prev,
-      )
+      setProcessing((prev) => (prev ? { ...prev, completedSteps: prev.completedSteps + 1 } : prev))
       // SMA-100: commit this batch's auto_matches to the invoice so a
       // mid-pipeline navigation does not drop them.
       autoAddMatches(convertedBatch, offset)
     }
 
+    // SMA-123: dispatch through the tier router. `runCatalogSearch` picks
+    // between the SMA-117 local pipeline, a BYOK LLM call, or a BM25
+    // fallback when the tier is `byok` but no key is configured.
+    const byokApiKeyConfigured =
+      searchTier === SEARCH_TIER_BYOK && aiMode === 'byok' && !!byokProvider
+        ? !!(await getSecret(`sip_byok_${byokProvider}`))
+        : false
+
     const invokePipeline = () =>
-      runSmartPastePipeline({
+      runCatalogSearch({
+        tier: searchTier,
+        byok: { aiMode, byokProvider, byokApiKeyConfigured },
         text: cleaned,
         products,
         context: smartPasteContext,
@@ -297,6 +313,15 @@ export function SmartPasteWidget({
         toast?.('AI extract failed — using fallback')
       }
       return
+    }
+
+    if (pipelineResult.mode === 'bm25_fallback') {
+      // SMA-123: tier=byok + no BYOK key → surface the banner and show
+      // lexical-only rows. Rows already match the pipeline shape, so the
+      // widget renders them through the same conversion pathway.
+      setByokKeyBannerVisible(true)
+    } else {
+      setByokKeyBannerVisible(false)
     }
 
     const converted = pipelineResult.rows.map(convertPipelineRow)
@@ -356,6 +381,60 @@ export function SmartPasteWidget({
           Paste order text · auto-match catalog
         </span>
       </div>
+
+      {byokKeyBannerVisible && (
+        <div
+          role="note"
+          data-testid="smart-paste-byok-key-banner"
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 8,
+            padding: '10px 12px',
+            borderRadius: 8,
+            marginBottom: 10,
+            background: 'rgba(245,166,35,.08)',
+            border: '1px solid rgba(245,166,35,.3)',
+          }}
+        >
+          <div style={{ flex: 1, fontSize: '.78rem', lineHeight: 1.4 }}>
+            <div style={{ fontWeight: 600, marginBottom: 2 }}>BYOK key required</div>
+            <div style={{ color: 'var(--muted)' }}>
+              This catalog is too large for on-device search. Matches shown now use a lexical
+              fallback. Add a BYOK key for accurate AI matching —{' '}
+              <a
+                href="#ai"
+                onClick={(e) => {
+                  if (typeof onOpenSettings === 'function') {
+                    e.preventDefault()
+                    onOpenSettings('ai')
+                  }
+                }}
+                style={{ color: 'var(--accent)', fontWeight: 600 }}
+              >
+                open Settings → AI
+              </a>
+              .
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setByokKeyBannerVisible(false)}
+            aria-label="Dismiss BYOK key banner"
+            style={{
+              flexShrink: 0,
+              background: 'none',
+              border: 'none',
+              color: 'var(--muted)',
+              fontSize: '.95rem',
+              cursor: 'pointer',
+              padding: 2,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {showContextBanner && (
         <div
@@ -475,9 +554,7 @@ export function SmartPasteWidget({
         </div>
       )}
 
-      {!processing && pasteResults && (
-        <PasteMoreBar onClick={resetForNextPaste} />
-      )}
+      {!processing && pasteResults && <PasteMoreBar onClick={resetForNextPaste} />}
 
       {showResults && (
         <div style={{ marginTop: 8 }}>
@@ -507,9 +584,7 @@ export function SmartPasteWidget({
 function SmartPasteProcessingCard({ processing }) {
   const { phase, completedSteps, totalSteps } = processing
   const indeterminate = !totalSteps || totalSteps <= 0
-  const pct = indeterminate
-    ? 0
-    : Math.min(100, Math.round((completedSteps / totalSteps) * 100))
+  const pct = indeterminate ? 0 : Math.min(100, Math.round((completedSteps / totalSteps) * 100))
   const label =
     phase === 'extract'
       ? 'Reading your paste…'
