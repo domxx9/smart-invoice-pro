@@ -14,6 +14,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+@CapacitorPlugin(name = "LlmRunner")
 public class ExecutorchPlugin extends Plugin {
     private static final String TAG = "ExecutorchPlugin";
     private static final String EVENT_TOKEN = "executorch:token";
