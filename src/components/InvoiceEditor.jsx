@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { SmartPasteWidget } from './SmartPasteWidget.jsx'
 import { InvoiceFields } from './InvoiceFields.jsx'
 import { InvoiceLineItems } from './InvoiceLineItems.jsx'
@@ -23,6 +23,8 @@ export function InvoiceEditor({
   toast,
   smartPasteContext,
   onOpenSettings,
+  searchTier,
+  byokProvider,
 }) {
   const [inv, setInv] = useState(invoice)
   const [guardDismissed, setGuardDismissed] = useState(false)
@@ -30,19 +32,67 @@ export function InvoiceEditor({
   const [modalContact, setModalContact] = useState(undefined)
   const { issues, hasIssues } = useInvoiceIntelligence({ invoice: inv, products })
 
-  const setField = (k, v) => setInv((p) => ({ ...p, [k]: v }))
-  const setItem = (idx, k, v) =>
-    setInv((p) => {
-      const items = [...p.items]
-      items[idx] = { ...items[idx], [k]: v }
-      return { ...p, items }
-    })
-  const addItem = () =>
-    setInv((p) => ({ ...p, items: [...p.items, { desc: '', qty: 1, price: '' }] }))
-  const removeItem = (idx) => setInv((p) => ({ ...p, items: p.items.filter((_, i) => i !== idx) }))
-  const addProduct = (prod) =>
-    setInv((p) => ({ ...p, items: [...p.items, { desc: prod.name, qty: 1, price: prod.price }] }))
-  const addItems = (items) => setInv((p) => ({ ...p, items: [...p.items, ...items] }))
+  const setField = useCallback((k, v) => setInv((p) => ({ ...p, [k]: v })), [])
+  const setItem = useCallback(
+    (idx, k, v) =>
+      setInv((p) => {
+        const items = [...p.items]
+        items[idx] = { ...items[idx], [k]: v }
+        return { ...p, items }
+      }),
+    [],
+  )
+  const addItem = useCallback(
+    () => setInv((p) => ({ ...p, items: [...p.items, { desc: '', qty: 1, price: '' }] })),
+    [],
+  )
+  const removeItem = useCallback(
+    (idx) => setInv((p) => ({ ...p, items: p.items.filter((_, i) => i !== idx) })),
+    [],
+  )
+  const addProduct = useCallback(
+    (prod) =>
+      setInv((p) => ({
+        ...p,
+        items: [...p.items, { desc: prod.name, qty: 1, price: prod.price }],
+      })),
+    [],
+  )
+  const addItems = useCallback(
+    (items) => setInv((p) => ({ ...p, items: [...p.items, ...items] })),
+    [],
+  )
+
+  const addDiscount = useCallback(
+    () =>
+      setInv((p) => ({
+        ...p,
+        discounts: [
+          ...(p.discounts || []),
+          {
+            id: `d_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            name: '',
+            type: 'percent',
+            value: '',
+          },
+        ],
+      })),
+    [],
+  )
+  const setDiscount = useCallback(
+    (idx, k, v) =>
+      setInv((p) => {
+        const discounts = [...(p.discounts || [])]
+        if (!discounts[idx]) return p
+        discounts[idx] = { ...discounts[idx], [k]: v }
+        return { ...p, discounts }
+      }),
+    [],
+  )
+  const removeDiscount = useCallback(
+    (idx) => setInv((p) => ({ ...p, discounts: (p.discounts || []).filter((_, i) => i !== idx) })),
+    [],
+  )
 
   useEffect(() => {
     setInv((p) => ({ ...p, contactIds }))
@@ -88,6 +138,8 @@ export function InvoiceEditor({
         toast={toast}
         smartPasteContext={smartPasteContext}
         onOpenSettings={onOpenSettings}
+        searchTier={searchTier}
+        byokProvider={byokProvider}
       />
 
       <div className="card">
@@ -106,6 +158,9 @@ export function InvoiceEditor({
           addItem={addItem}
           removeItem={removeItem}
           addProduct={addProduct}
+          addDiscount={addDiscount}
+          setDiscount={setDiscount}
+          removeDiscount={removeDiscount}
         />
         <div className="field mt-8">
           <label>
