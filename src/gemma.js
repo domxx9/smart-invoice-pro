@@ -39,8 +39,6 @@ export const MODELS = {
     label: 'Gemma 3 1B (int4)',
     description: 'Recommended · 4-bit quantised · web optimised',
     size: '~670 MB',
-    // Served through Vercel edge proxy (adds CORS headers) for web.
-    // Native uses CapacitorHttp directly to GitHub, so no CORS needed there.
     url: 'https://smart-invoice-pro-six.vercel.app/api/model-proxy?id=small',
     nativeUrl:
       'https://github.com/domxx9/smart-invoice-pro/releases/download/v1.0-models/gemma3-1b-int4-web.task',
@@ -55,6 +53,15 @@ export const MODELS = {
     url: 'https://huggingface.co/litert-community/gemma-2-2b-it-litert-lm/resolve/main/gemma-2-2b-it-litert-lm.task',
     filename: 'sip_gemma_pro.task',
   },
+  embedder: {
+    id: 'embedder',
+    label: 'Universal Sentence Encoder',
+    description: 'Lightweight semantic search model',
+    size: '~30 MB',
+    url: 'https://storage.googleapis.com/mediapipe-models/text_embedder/universal_sentence_encoder/float32/1/universal_sentence_encoder.tflite',
+    filename: 'sip_embedder.tflite',
+    public: true,
+  },
   alt: {
     id: 'alt',
     label: 'Llama 3.2 1B',
@@ -62,6 +69,16 @@ export const MODELS = {
     size: '~1 GB',
     url: 'https://huggingface.co/litert-community/Llama-3.2-1B-Instruct-it-litert-lm/resolve/main/Llama-3.2-1B-Instruct-it-litert-lm.task',
     filename: 'sip_gemma_alt.task',
+  },
+  llama_et: {
+    id: 'llama_et',
+    label: 'Llama 3.2 1B (ExecuTorch)',
+    description: 'Native Android · ExecuTorch backend · no WebGPU required',
+    size: '~1 GB',
+    url: null,
+    tokenizerUrl: null,
+    filename: 'sip_llama_et.pte',
+    executorch: true,
   },
 }
 
