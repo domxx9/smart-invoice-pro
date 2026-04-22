@@ -15,14 +15,13 @@ import {
   isNativePlatform,
 } from '../gemma.js'
 import { initGemma } from '../gemmaWorker.js'
-import { testConnection as byokTestConnection } from '../byok.js'
+import { testConnection as byokTestConnection, listModels as byokListModels } from '../byok.js'
 import { getSecret, deleteSecret } from '../secure-storage.js'
 import { runInference as pipelineRunInference } from '../ai/pipeline.js'
 import { logger } from '../utils/logger.js'
 import {
   isAvailable as executorchAvailable,
   loadModel as executorchLoadModel,
-  infer as executorchInfer,
   unloadModel as executorchUnloadModel,
 } from '../plugins/executorch.js'
 import { Filesystem, Directory } from '@capacitor/filesystem'
@@ -243,6 +242,15 @@ export function useAiModel(toast, settings) {
     setByokError('')
   }, [])
 
+  const handleByokListModels = useCallback(async ({ provider, baseUrl } = {}) => {
+    if (!provider) return { ok: false, models: [], error: 'Pick a provider first' }
+    const apiKey = await getSecret(`sip_byok_${provider}`)
+    if (!apiKey) return { ok: false, models: [], error: 'Enter an API key first' }
+    const result = await byokListModels({ provider, apiKey, baseUrl })
+    if (!result.ok) return { ok: false, models: [], error: result.error }
+    return { ok: true, models: result.models }
+  }, [])
+
   const handleExecutorchLoad = useCallback(
     async (modelId) => {
       if (!executorchAvailable()) {
@@ -257,7 +265,10 @@ export function useAiModel(toast, settings) {
       }
       setAiLoading(true)
       try {
-        await executorchLoadModel({ modelPath: model.filename, tokenizerPath: model.filename.replace('.pte', '_tokenizer.bin') })
+        await executorchLoadModel({
+          modelPath: model.filename,
+          tokenizerPath: model.filename.replace('.pte', '_tokenizer.bin'),
+        })
         setExecutorchReady(true)
         setExecutorchModelId(modelId)
         toast?.('Native AI model loaded', 'success', '⚡')
@@ -271,25 +282,25 @@ export function useAiModel(toast, settings) {
     [toast],
   )
 
-  const handleExecutorchDelete = useCallback(
-    async (modelId) => {
-      try {
-        await executorchUnloadModel()
-      } catch {
-        /* best-effort */
-      }
-      try {
-        await Filesystem.deleteFile({ path: AI_MODELS[modelId]?.filename, directory: Directory.Data })
-        await Filesystem.deleteFile({ path: AI_MODELS[modelId]?.filename.replace('.pte', '_tokenizer.bin'), directory: Directory.Data })
-      } catch {
-        /* already gone */
-      }
-      setExecutorchReady(false)
-      setExecutorchModelId(null)
-      setAiDownloaded((p) => ({ ...p, [modelId]: false }))
-    },
-    [],
-  )
+  const handleExecutorchDelete = useCallback(async (modelId) => {
+    try {
+      await executorchUnloadModel()
+    } catch {
+      /* best-effort */
+    }
+    try {
+      await Filesystem.deleteFile({ path: AI_MODELS[modelId]?.filename, directory: Directory.Data })
+      await Filesystem.deleteFile({
+        path: AI_MODELS[modelId]?.filename.replace('.pte', '_tokenizer.bin'),
+        directory: Directory.Data,
+      })
+    } catch {
+      /* already gone */
+    }
+    setExecutorchReady(false)
+    setExecutorchModelId(null)
+    setAiDownloaded((p) => ({ ...p, [modelId]: false }))
+  }, [])
 
   const runInference = useCallback(
     ({ prompt, maxTokens = 512 } = {}) =>
@@ -323,6 +334,7 @@ export function useAiModel(toast, settings) {
     handleEmbedderLoad: handleEmbedderLoadAction,
     handleByokTest,
     handleByokClear,
+    handleByokListModels,
     handleExecutorchLoad,
     handleExecutorchDelete,
     runInference,
