@@ -3,10 +3,16 @@ import { SmartPasteWidget } from './SmartPasteWidget.jsx'
 import { InvoiceFields } from './InvoiceFields.jsx'
 import { InvoiceLineItems } from './InvoiceLineItems.jsx'
 import { InvoiceActions } from './InvoiceActions.jsx'
+import { InvoiceIntelligenceGuard } from './InvoiceIntelligenceGuard.jsx'
+import { ContactModal } from './ContactModal.jsx'
+import { useInvoiceIntelligence } from '../hooks/useInvoiceIntelligence.js'
 
 export function InvoiceEditor({
   invoice,
   products,
+  contacts,
+  onAddContact,
+  onUpdateContact,
   onSave,
   onClose,
   onDelete,
@@ -19,6 +25,10 @@ export function InvoiceEditor({
   onOpenSettings,
 }) {
   const [inv, setInv] = useState(invoice)
+  const [guardDismissed, setGuardDismissed] = useState(false)
+  const [contactIds, setContactIds] = useState(invoice.contactIds || [])
+  const [modalContact, setModalContact] = useState(undefined)
+  const { issues, hasIssues } = useInvoiceIntelligence({ invoice: inv, products })
 
   const setField = (k, v) => setInv((p) => ({ ...p, [k]: v }))
   const setItem = (idx, k, v) =>
@@ -39,6 +49,19 @@ export function InvoiceEditor({
     onDraftChange?.(inv)
   }, [inv]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const handleOpenModal = (contact) => setModalContact(contact)
+  const handleCloseModal = () => setModalContact(undefined)
+
+  const handleSaveContact = (data) => {
+    if (modalContact?.id) {
+      onUpdateContact(modalContact.id, data)
+    } else {
+      const newContact = onAddContact(data)
+      setContactIds((prev) => [...prev, newContact.id])
+    }
+    setModalContact(undefined)
+  }
+
   return (
     <div style={{ paddingBottom: 140 }}>
       <div className="flex-between mb-16">
@@ -47,6 +70,10 @@ export function InvoiceEditor({
           {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
         </span>
       </div>
+
+      {!guardDismissed && hasIssues && (
+        <InvoiceIntelligenceGuard issues={issues} onDismiss={() => setGuardDismissed(true)} />
+      )}
 
       <SmartPasteWidget
         products={products}
@@ -60,7 +87,14 @@ export function InvoiceEditor({
       />
 
       <div className="card">
-        <InvoiceFields inv={inv} setField={setField} />
+        <InvoiceFields
+          inv={inv}
+          setField={setField}
+          contacts={contacts}
+          contactIds={contactIds}
+          onContactIdsChange={setContactIds}
+          onOpenModal={handleOpenModal}
+        />
         <InvoiceLineItems
           inv={inv}
           products={products}
@@ -82,6 +116,14 @@ export function InvoiceEditor({
       </div>
 
       <InvoiceActions inv={inv} onSave={onSave} onClose={onClose} onDelete={onDelete} />
+
+      {modalContact !== undefined && (
+        <ContactModal
+          contact={modalContact}
+          onSave={handleSaveContact}
+          onClose={handleCloseModal}
+        />
+      )}
     </div>
   )
 }

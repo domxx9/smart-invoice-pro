@@ -1,6 +1,31 @@
-export function InvoiceFields({ inv, setField }) {
+import { ContactSelector } from './ContactSelector.jsx'
+
+export function InvoiceFields({
+  inv,
+  setField,
+  contacts = [],
+  contactIds = [],
+  onContactIdsChange,
+}) {
+  const primaryContact = contacts.find((c) => contactIds.includes(c.id))
+
   return (
     <div className="invoice-meta">
+      <ContactSelector
+        contacts={contacts}
+        selectedIds={contactIds}
+        onChange={onContactIdsChange}
+        onOpenModal={(contact) => {
+          console.log('open modal for contact:', contact)
+        }}
+      />
+
+      {primaryContact && (
+        <div className="contact-autofill-banner">
+          <span>Auto-filled from {primaryContact.name}</span>
+        </div>
+      )}
+
       <div className="field">
         <label>
           Customer Name

@@ -4,6 +4,7 @@ import { SAMPLE_INVOICES } from './constants.js'
 import { ToastProvider, useToast } from './contexts/ToastContext.jsx'
 import { SettingsProvider, useSettings } from './contexts/SettingsContext.jsx'
 import { useInvoiceState } from './hooks/useInvoiceState.js'
+import { useContacts } from './hooks/useContacts.js'
 import { useCatalogSync } from './hooks/useCatalogSync.js'
 import { useOrderSync } from './hooks/useOrderSync.js'
 import { useAiModel } from './hooks/useAiModel.js'
@@ -63,9 +64,12 @@ function AppShell() {
     sqApiKey: settings.sqApiKey,
     shopifyShopDomain: settings.shopifyShopDomain,
     shopifyAccessToken: settings.shopifyAccessToken,
+    runInference: ai.runInference,
+    aiMode: settings.aiMode,
   }
   const catalog = useCatalogSync(syncArgs)
   const orderSync = useOrderSync(syncArgs)
+  const contactsHook = useContacts()
   const hasConnectedProvider =
     settings.activeIntegration === 'shopify'
       ? !!(settings.shopifyShopDomain && settings.shopifyAccessToken)
@@ -178,6 +182,9 @@ function AppShell() {
                 <InvoiceEditor
                   invoice={inv.editing}
                   products={catalog.products}
+                  contacts={contactsHook.contacts}
+                  onAddContact={contactsHook.addContact}
+                  onUpdateContact={contactsHook.updateContact}
                   onSave={handleSave}
                   onClose={inv.handleCloseEditor}
                   onDelete={inv.handleDeleteInvoice}
