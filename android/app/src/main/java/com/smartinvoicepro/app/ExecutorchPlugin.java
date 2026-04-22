@@ -104,7 +104,7 @@ public class ExecutorchPlugin extends Plugin {
     }
 
     @PluginMethod
-    public void cancel(PluginCall call) {
+    public void cancelInfer(PluginCall call) {
         if (mModule != null && mGenerating.get()) {
             try {
                 mModule.stop();
