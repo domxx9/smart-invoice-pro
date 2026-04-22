@@ -74,9 +74,10 @@ export const MODELS = {
     id: 'llama_et',
     label: 'Llama 3.2 1B (ExecuTorch)',
     description: 'Native Android · ExecuTorch backend · no WebGPU required',
-    size: '~1 GB',
-    url: null,
-    tokenizerUrl: null,
+    size: '~1.2 GB',
+    url: 'https://huggingface.co/executorch-community/Llama-3.2-1B-Instruct-QLORA_INT4_EO8-ET/resolve/main/Llama-3.2-1B-Instruct-QLORA_INT4_EO8.pte',
+    tokenizerUrl:
+      'https://huggingface.co/executorch-community/Llama-3.2-1B-Instruct-QLORA_INT4_EO8-ET/resolve/main/tokenizer.model',
     filename: 'sip_llama_et.pte',
     executorch: true,
   },
