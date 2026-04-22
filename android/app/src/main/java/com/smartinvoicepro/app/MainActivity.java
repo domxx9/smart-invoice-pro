@@ -27,6 +27,8 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        registerPlugin(ExecutorchPlugin.class);
+
         getBridge().getWebView().setWebViewClient(new BridgeWebViewClient(getBridge()) {
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
