@@ -6,6 +6,7 @@ import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.CapacitorPlugin;
 
 import org.pytorch.executorch.extension.llm.LlmCallback;
 import org.pytorch.executorch.extension.llm.LlmModule;
@@ -14,6 +15,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+@CapacitorPlugin(name = "LlmRunner")
 public class ExecutorchPlugin extends Plugin {
     private static final String TAG = "ExecutorchPlugin";
     private static final String EVENT_TOKEN = "executorch:token";
@@ -103,7 +105,7 @@ public class ExecutorchPlugin extends Plugin {
     }
 
     @PluginMethod
-    public void cancel(PluginCall call) {
+    public void cancelInfer(PluginCall call) {
         if (mModule != null && mGenerating.get()) {
             try {
                 mModule.stop();
