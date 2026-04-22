@@ -17,6 +17,7 @@
 import { inferGemma, cancelGemma } from '../gemmaWorker.js'
 import { generate as byokGenerate } from '../byok.js'
 import { getSecret } from '../secure-storage.js'
+import { isAvailable, infer as executorchInfer } from '../plugins/executorch.js'
 
 // Default wall-clock ceiling for a single on-device inference call (SMA-78).
 // Dogfood traces showed Stage 1 hanging for ~2 hours producing degenerate
@@ -89,6 +90,16 @@ export async function runInference({ prompt, maxTokens = 512, settings } = {}) {
     const stopReason =
       result && typeof result === 'object' && 'stopReason' in result ? result.stopReason : null
     return { text, source: 'small', stopReason }
+  }
+
+  if (mode === 'executorch') {
+    if (!isAvailable()) throw new Error('ExecuTorch not available on this platform')
+    try {
+      const result = await executorchInfer({ prompt, maxTokens })
+      return { text: result.text ?? '', source: 'executorch', stopReason: null }
+    } catch (e) {
+      throw new Error(sanitize(e, null))
+    }
   }
 
   if (mode === 'byok') {
