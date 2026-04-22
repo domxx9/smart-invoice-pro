@@ -9,6 +9,7 @@ vi.mock('../../gemma.js', () => ({
   getLoadedModelId: () => null,
   getBackendInfo: () => null,
   cancelDownload: () => {},
+  isNativePlatform: () => false,
 }))
 
 vi.mock('../../utils/shareBackup.js', () => ({
@@ -112,16 +113,12 @@ describe('Settings — Backup & restore section', () => {
     renderSettings()
     fireEvent.click(screen.getByRole('button', { name: /Export all data \(JSON\)/i }))
 
-    await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent(/disk full/i),
-    )
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/disk full/i))
   })
 
   it('disables both buttons while an export is in flight', async () => {
     let resolveShare
-    shareOrDownload.mockImplementationOnce(
-      () => new Promise((resolve) => (resolveShare = resolve)),
-    )
+    shareOrDownload.mockImplementationOnce(() => new Promise((resolve) => (resolveShare = resolve)))
     renderSettings()
 
     const jsonBtn = screen.getByRole('button', { name: /Export all data \(JSON\)/i })

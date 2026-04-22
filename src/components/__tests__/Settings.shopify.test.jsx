@@ -10,6 +10,7 @@ vi.mock('../../gemma.js', () => ({
   getLoadedModelId: () => null,
   getBackendInfo: () => null,
   cancelDownload: () => {},
+  isNativePlatform: () => false,
 }))
 
 // Mock the shopify client so we can assert the Test Connection wiring.
