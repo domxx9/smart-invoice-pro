@@ -1,6 +1,43 @@
-export function InvoiceFields({ inv, setField }) {
+import { useEffect } from 'react'
+import { ContactSelector } from './ContactSelector.jsx'
+
+export function InvoiceFields({
+  inv,
+  setField,
+  contacts = [],
+  contactIds = [],
+  onContactIdsChange,
+  onOpenModal,
+}) {
+  const primaryContact = contacts.find((c) => contactIds.includes(c.id))
+
+  useEffect(() => {
+    if (!primaryContact) return
+    setField('customer', primaryContact.name || '')
+    setField('customerBusiness', primaryContact.business || '')
+    setField('email', primaryContact.email || '')
+    setField('address1', primaryContact.address1 || '')
+    setField('address2', primaryContact.address2 || '')
+    setField('city', primaryContact.city || '')
+    setField('postcode', primaryContact.postcode || '')
+    setField('country', primaryContact.country || '')
+  }, [primaryContact, setField])
+
   return (
     <div className="invoice-meta">
+      <ContactSelector
+        contacts={contacts}
+        selectedIds={contactIds}
+        onChange={onContactIdsChange}
+        onOpenModal={onOpenModal}
+      />
+
+      {primaryContact && (
+        <div className="contact-autofill-banner">
+          <span>Auto-filled from {primaryContact.name}</span>
+        </div>
+      )}
+
       <div className="field">
         <label>
           Customer Name

@@ -1,66 +1,18 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { SmartPasteWidget } from './SmartPasteWidget.jsx'
 import { InvoiceFields } from './InvoiceFields.jsx'
 import { InvoiceLineItems } from './InvoiceLineItems.jsx'
 import { InvoiceActions } from './InvoiceActions.jsx'
-import { PickerUI } from './PickerUI.jsx'
-import { FulfilmentChoiceModal } from './FulfilmentChoiceModal.jsx'
-import { usePicker } from '../hooks/usePicker.js'
-import { useSettings } from '../contexts/SettingsContext.jsx'
-
-function InvoicePicker({ inv, onSkip, onFulfil, onClose }) {
-  const { settings } = useSettings()
-  const viewMode = settings?.pickerViewMode === 'card' ? 'card' : 'list'
-
-  const items = useMemo(
-    () =>
-      (Array.isArray(inv.items) ? inv.items : []).map((it) => ({
-        name: it?.desc || '',
-        qty: Math.max(0, Math.floor(Number(it?.qty) || 0)),
-      })),
-    [inv.items],
-  )
-
-  const { picks, unavailable, handlePick, handleUnavailable } = usePicker(items)
-
-  return (
-    <PickerUI
-      items={items}
-      picks={picks}
-      unavailable={unavailable}
-      onPick={handlePick}
-      onUnavailable={handleUnavailable}
-      viewMode={viewMode}
-      onClose={onClose}
-      header={
-        <div>
-          <h2 style={{ fontSize: '1rem', fontWeight: 700 }}>Fulfil {inv.id}</h2>
-          <p style={{ fontSize: '.75rem', color: 'var(--muted)', marginTop: 2 }}>
-            {inv.customer || 'Invoice fulfillment'}
-          </p>
-        </div>
-      }
-      footer={
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button type="button" className="btn btn-ghost btn-full" onClick={onSkip}>
-            Skip
-          </button>
-          <button
-            type="button"
-            className="btn btn-primary btn-full"
-            onClick={() => onFulfil({ picks, unavailable })}
-          >
-            Mark as Fulfilled
-          </button>
-        </div>
-      }
-    />
-  )
-}
+import { InvoiceIntelligenceGuard } from './InvoiceIntelligenceGuard.jsx'
+import { ContactModal } from './ContactModal.jsx'
+import { useInvoiceIntelligence } from '../hooks/useInvoiceIntelligence.js'
 
 export function InvoiceEditor({
   invoice,
   products,
+  contacts,
+  onAddContact,
+  onUpdateContact,
   onSave,
   onClose,
   onDelete,
@@ -71,12 +23,12 @@ export function InvoiceEditor({
   toast,
   smartPasteContext,
   onOpenSettings,
-  searchTier,
-  byokProvider,
 }) {
   const [inv, setInv] = useState(invoice)
-  const [picking, setPicking] = useState(false)
-  const [choosingFulfilment, setChoosingFulfilment] = useState(false)
+  const [guardDismissed, setGuardDismissed] = useState(false)
+  const [contactIds, setContactIds] = useState(invoice.contactIds || [])
+  const [modalContact, setModalContact] = useState(undefined)
+  const { issues, hasIssues } = useInvoiceIntelligence({ invoice: inv, products })
 
   const setField = (k, v) => setInv((p) => ({ ...p, [k]: v }))
   const setItem = (idx, k, v) =>
@@ -92,55 +44,26 @@ export function InvoiceEditor({
     setInv((p) => ({ ...p, items: [...p.items, { desc: prod.name, qty: 1, price: prod.price }] }))
   const addItems = (items) => setInv((p) => ({ ...p, items: [...p.items, ...items] }))
 
-  const addDiscount = () =>
-    setInv((p) => ({
-      ...p,
-      discounts: [
-        ...(p.discounts || []),
-        {
-          id: `d_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-          name: '',
-          type: 'percent',
-          value: '',
-        },
-      ],
-    }))
-  const setDiscount = (idx, k, v) =>
-    setInv((p) => {
-      const discounts = [...(p.discounts || [])]
-      if (!discounts[idx]) return p
-      discounts[idx] = { ...discounts[idx], [k]: v }
-      return { ...p, discounts }
-    })
-  const removeDiscount = (idx) =>
-    setInv((p) => ({ ...p, discounts: (p.discounts || []).filter((_, i) => i !== idx) }))
+  useEffect(() => {
+    setInv((p) => ({ ...p, contactIds }))
+  }, [contactIds])
 
   useEffect(() => {
     localStorage.setItem('sip_draft_edit', JSON.stringify(inv))
     onDraftChange?.(inv)
   }, [inv]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleSkipFulfil = () => {
-    setPicking(false)
-    setChoosingFulfilment(false)
-    onSave({ ...inv, status: 'fulfilled', fulfillmentMethod: 'instant' })
-  }
+  const handleOpenModal = (contact) => setModalContact(contact)
+  const handleCloseModal = () => setModalContact(undefined)
 
-  const handleFulfilWithPicks = ({ picks, unavailable }) => {
-    setPicking(false)
-    setChoosingFulfilment(false)
-    onSave({
-      ...inv,
-      status: 'fulfilled',
-      fulfillmentMethod: 'picked',
-      picks,
-      unavailable,
-    })
-  }
-
-  const handleChoosePicker = () => {
-    setChoosingFulfilment(false)
-    setPicking(true)
+  const handleSaveContact = (data) => {
+    if (modalContact?.id) {
+      onUpdateContact(modalContact.id, data)
+    } else {
+      const newContact = onAddContact(data)
+      setContactIds((prev) => [...prev, newContact.id])
+    }
+    setModalContact(undefined)
   }
 
   return (
@@ -152,6 +75,10 @@ export function InvoiceEditor({
         </span>
       </div>
 
+      {!guardDismissed && hasIssues && (
+        <InvoiceIntelligenceGuard issues={issues} onDismiss={() => setGuardDismissed(true)} />
+      )}
+
       <SmartPasteWidget
         products={products}
         onAddItems={addItems}
@@ -161,38 +88,17 @@ export function InvoiceEditor({
         toast={toast}
         smartPasteContext={smartPasteContext}
         onOpenSettings={onOpenSettings}
-        searchTier={searchTier}
-        byokProvider={byokProvider}
       />
 
-      {inv.status === 'pending' && (
-        <div
-          className="card"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: '.92rem' }}>Ready to fulfil?</div>
-            <div style={{ fontSize: '.74rem', color: 'var(--muted)', marginTop: 2 }}>
-              Pick items off the shelf or mark as fulfilled instantly.
-            </div>
-          </div>
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            onClick={() => setChoosingFulfilment(true)}
-          >
-            Mark as Fulfilled
-          </button>
-        </div>
-      )}
-
       <div className="card">
-        <InvoiceFields inv={inv} setField={setField} />
+        <InvoiceFields
+          inv={inv}
+          setField={setField}
+          contacts={contacts}
+          contactIds={contactIds}
+          onContactIdsChange={setContactIds}
+          onOpenModal={handleOpenModal}
+        />
         <InvoiceLineItems
           inv={inv}
           products={products}
@@ -200,9 +106,6 @@ export function InvoiceEditor({
           addItem={addItem}
           removeItem={removeItem}
           addProduct={addProduct}
-          addDiscount={addDiscount}
-          setDiscount={setDiscount}
-          removeDiscount={removeDiscount}
         />
         <div className="field mt-8">
           <label>
@@ -218,21 +121,11 @@ export function InvoiceEditor({
 
       <InvoiceActions inv={inv} onSave={onSave} onClose={onClose} onDelete={onDelete} />
 
-      {choosingFulfilment && (
-        <FulfilmentChoiceModal
-          invoiceId={inv.id}
-          onPicker={handleChoosePicker}
-          onSkip={handleSkipFulfil}
-          onClose={() => setChoosingFulfilment(false)}
-        />
-      )}
-
-      {picking && (
-        <InvoicePicker
-          inv={inv}
-          onSkip={handleSkipFulfil}
-          onFulfil={handleFulfilWithPicks}
-          onClose={() => setPicking(false)}
+      {modalContact !== undefined && (
+        <ContactModal
+          contact={modalContact}
+          onSave={handleSaveContact}
+          onClose={handleCloseModal}
         />
       )}
     </div>
