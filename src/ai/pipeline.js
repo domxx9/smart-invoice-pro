@@ -17,7 +17,7 @@
 import { inferGemma, cancelGemma } from '../gemmaWorker.js'
 import { generate as byokGenerate } from '../byok.js'
 import { getSecret } from '../secure-storage.js'
-import { isAvailable, infer as executorchInfer, cancelInfer } from '../plugins/executorch.js'
+import { isAvailable, infer as executorchInfer } from '../plugins/executorch.js'
 
 // Default wall-clock ceiling for a single on-device inference call (SMA-78).
 // Dogfood traces showed Stage 1 hanging for ~2 hours producing degenerate
