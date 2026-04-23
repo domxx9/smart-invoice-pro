@@ -25,12 +25,16 @@ export function InvoiceFields({
 
   return (
     <div className="invoice-meta">
-      <ContactSelector
-        contacts={contacts}
-        selectedIds={contactIds}
-        onChange={onContactIdsChange}
-        onOpenModal={onOpenModal}
-      />
+      {contacts.length === 0 ? (
+        <p style={{ color: '#888', fontSize: '0.875rem' }}>No contacts exist</p>
+      ) : (
+        <ContactSelector
+          contacts={contacts}
+          selectedIds={contactIds}
+          onChange={onContactIdsChange}
+          onOpenModal={onOpenModal}
+        />
+      )}
 
       {primaryContact && (
         <div className="contact-autofill-banner">
