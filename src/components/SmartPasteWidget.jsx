@@ -5,6 +5,7 @@ import { runCatalogSearch } from '../catalog/search.js'
 import { SEARCH_TIER_BYOK } from '../catalog/tier.js'
 import { getSecret } from '../secure-storage.js'
 import { logger } from '../utils/logger.js'
+import { saveCorrection } from '../services/correctionStore.js'
 import { Icon } from './Icon.jsx'
 import { SmartPasteFeedbackModal } from './SmartPasteFeedbackModal.jsx'
 
@@ -385,8 +386,15 @@ export function SmartPasteWidget({
     if (!toAdd.length) return
     onAddItems(toAdd)
 
-    // SMA-173: show feedback modal if user made corrections
     const correctionList = Object.values(corrections)
+    correctionList.forEach((c) => {
+      saveCorrection({
+        originalText: c.originalText,
+        correctedProductId: c.correctedProductId,
+        correctedProductName: c.correctedProduct,
+      })
+    })
+
     if (correctionList.length > 0) {
       setFeedbackModal({ corrections: correctionList, rawText: rawPasteRef.current })
     }
