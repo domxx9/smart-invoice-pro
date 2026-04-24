@@ -20,7 +20,7 @@ async function getPlugin() {
 export async function setSecret(key, value) {
   if (isNative()) {
     const plugin = await getPlugin()
-    await plugin.set({ key, value })
+    await Promise.resolve(plugin.set({ key, value }))
   } else {
     sessionStorage.setItem(key, value)
   }
@@ -30,7 +30,7 @@ export async function getSecret(key) {
   if (isNative()) {
     const plugin = await getPlugin()
     try {
-      const { value } = await plugin.get({ key })
+      const { value } = await Promise.resolve(plugin.get({ key }))
       return value ?? ''
     } catch {
       // key not found in secure storage
@@ -45,9 +45,9 @@ export async function deleteSecret(key) {
   if (isNative()) {
     const plugin = await getPlugin()
     try {
-      await plugin.remove({ key })
+      await Promise.resolve(plugin.remove({ key }))
     } catch {
-      // key didn't exist — ignore
+      // key didn't exist — nothing to remove
     }
   } else {
     sessionStorage.removeItem(key)
