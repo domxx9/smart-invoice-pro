@@ -6,6 +6,7 @@ import { SEARCH_TIER_BYOK } from '../catalog/tier.js'
 import { getSecret } from '../secure-storage.js'
 import { logger } from '../utils/logger.js'
 import { Icon } from './Icon.jsx'
+import { SmartPasteFeedbackModal } from './SmartPasteFeedbackModal.jsx'
 
 const AI_CONFIDENCE_FLOOR = 65
 // Mirrors MATCH_BATCH_SIZE in src/ai/smartPastePipeline.js — kept in sync so
@@ -87,6 +88,10 @@ export function SmartPasteWidget({
   // Used to dedupe when a batch's data flows into `setPasteResults` more than
   // once (progressive stream + final replace), or if onStage double-fires.
   const autoAddedRef = useRef(new Set())
+  // SMA-173: track corrections for feedback loop
+  const [corrections, setCorrections] = useState({})
+  const [feedbackModal, setFeedbackModal] = useState(null)
+  const rawPasteRef = useRef('')
 
   const contextReady = isSmartPasteContextSet({ smartPasteContext })
   const showContextBanner = aiMode === 'byok' && !contextReady && !bannerDismissed
@@ -120,7 +125,32 @@ export function SmartPasteWidget({
     setBatchFailed({})
     setProcessing(null)
     setSkipHint(null)
+    setCorrections({})
     autoAddedRef.current = new Set()
+    rawPasteRef.current = ''
+  }
+
+  // SMA-173: user picks the correct product for a row
+  const correctRow = (i, product) => {
+    const row = pasteResults?.[i]
+    if (!row || !product) return
+    setCorrections((prev) => ({
+      ...prev,
+      [i]: {
+        originalText: row.name,
+        aiMatch: row.product?.name ?? row.bestGuess?.name ?? null,
+        confidence: row.confidence,
+        correctedProduct: product.name,
+        correctedProductId: product.id,
+      },
+    }))
+    setPasteResults((prev) => {
+      if (!prev) return prev
+      const updated = [...prev]
+      updated[i] = { ...updated[i], product, bestGuess: null, confidence: 100 }
+      return updated
+    })
+    decide(i, 'confirmed')
   }
 
   // SMA-100: commit any auto_match rows in `rows` to the invoice via
@@ -157,6 +187,8 @@ export function SmartPasteWidget({
     setPasteDecisions({})
     setBatchFailed({})
     setSkipHint(null)
+    setCorrections({})
+    rawPasteRef.current = pasteText.trim()
     // SMA-100: fresh parse session → drop prior auto-add bookkeeping before
     // any row flows into the invoice below.
     autoAddedRef.current = new Set()
@@ -352,8 +384,15 @@ export function SmartPasteWidget({
     })
     if (!toAdd.length) return
     onAddItems(toAdd)
+
+    // SMA-173: show feedback modal if user made corrections
+    const correctionList = Object.values(corrections)
+    if (correctionList.length > 0) {
+      setFeedbackModal({ corrections: correctionList, rawText: rawPasteRef.current })
+    }
+
     const allGone = pasteResults.every((r, i) => !r || newDecisions[i] === 'dismissed')
-    if (allGone) resetForNextPaste()
+    if (allGone && !correctionList.length) resetForNextPaste()
     else setPasteDecisions(newDecisions)
   }
 
@@ -565,8 +604,10 @@ export function SmartPasteWidget({
               i={i}
               status={s}
               failed={!!batchFailed[i]}
+              products={products}
               onDecide={decide}
               onUnmatch={unmatch}
+              onCorrect={correctRow}
             />
           ))}
 
@@ -576,6 +617,18 @@ export function SmartPasteWidget({
             </button>
           )}
         </div>
+      )}
+
+      {feedbackModal && (
+        <SmartPasteFeedbackModal
+          corrections={feedbackModal.corrections}
+          rawText={feedbackModal.rawText}
+          toast={toast}
+          onClose={() => {
+            setFeedbackModal(null)
+            resetForNextPaste()
+          }}
+        />
       )}
     </div>
   )
@@ -690,7 +743,9 @@ function PasteMoreBar({ onClick }) {
   )
 }
 
-function PasteResultRow({ r, i, status, failed, onDecide, onUnmatch }) {
+function PasteResultRow({ r, i, status, failed, products, onDecide, onUnmatch, onCorrect }) {
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [pickerFilter, setPickerFilter] = useState('')
   // SMA-100: `saved` rows render in the same green band as auto_match but
   // display a "Saved to invoice" badge and hide the ✕ unmatch action — the
   // line item is already in the invoice below and the user edits it there.
@@ -819,48 +874,170 @@ function PasteResultRow({ r, i, status, failed, onDecide, onUnmatch }) {
             >
               ✗ Discard
             </button>
+            <button
+              className="btn btn-sm"
+              onClick={() => {
+                setPickerOpen(!pickerOpen)
+                setPickerFilter('')
+              }}
+              style={{
+                flex: 1,
+                fontSize: '.75rem',
+                background: 'rgba(90,140,255,.08)',
+                color: 'var(--accent)',
+                border: '1px solid rgba(90,140,255,.25)',
+              }}
+            >
+              Pick
+            </button>
           </div>
+          {pickerOpen && (
+            <ProductPicker
+              products={products}
+              filter={pickerFilter}
+              onFilter={setPickerFilter}
+              onSelect={(p) => {
+                onCorrect(i, p)
+                setPickerOpen(false)
+              }}
+            />
+          )}
         </div>
       )}
 
       {isRed && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 8,
-          }}
-        >
-          <div style={{ fontSize: '.82rem', color: 'var(--danger)' }}>
-            ✗ No match — &ldquo;{r.name}&rdquo;
-            {status === 'discarded' && (
-              <span style={{ fontSize: '.72rem', color: 'var(--muted)', marginLeft: 6 }}>
-                Discarded
-              </span>
-            )}
-            {failedMarker}
-            <div style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 2 }}>
-              Add manually then tap Handled
-            </div>
-          </div>
-          <button
-            onClick={() => onDecide(i, 'dismissed')}
+        <div>
+          <div
             style={{
-              flexShrink: 0,
-              background: 'none',
-              border: '1px solid var(--border)',
-              borderRadius: 6,
-              color: 'var(--muted)',
-              fontSize: '.72rem',
-              padding: '4px 8px',
-              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
             }}
           >
-            Handled
-          </button>
+            <div style={{ fontSize: '.82rem', color: 'var(--danger)' }}>
+              ✗ No match — &ldquo;{r.name}&rdquo;
+              {status === 'discarded' && (
+                <span style={{ fontSize: '.72rem', color: 'var(--muted)', marginLeft: 6 }}>
+                  Discarded
+                </span>
+              )}
+              {failedMarker}
+            </div>
+            <button
+              onClick={() => onDecide(i, 'dismissed')}
+              style={{
+                flexShrink: 0,
+                background: 'none',
+                border: '1px solid var(--border)',
+                borderRadius: 6,
+                color: 'var(--muted)',
+                fontSize: '.72rem',
+                padding: '4px 8px',
+                cursor: 'pointer',
+              }}
+            >
+              Handled
+            </button>
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+            <button
+              className="btn btn-sm"
+              onClick={() => {
+                setPickerOpen(!pickerOpen)
+                setPickerFilter('')
+              }}
+              style={{
+                flex: 1,
+                fontSize: '.75rem',
+                background: 'rgba(90,140,255,.08)',
+                color: 'var(--accent)',
+                border: '1px solid rgba(90,140,255,.25)',
+              }}
+            >
+              {pickerOpen ? 'Cancel' : 'Pick correct product'}
+            </button>
+          </div>
+          {pickerOpen && (
+            <ProductPicker
+              products={products}
+              filter={pickerFilter}
+              onFilter={setPickerFilter}
+              onSelect={(p) => {
+                onCorrect(i, p)
+                setPickerOpen(false)
+              }}
+            />
+          )}
         </div>
       )}
+    </div>
+  )
+}
+
+function ProductPicker({ products, filter, onFilter, onSelect }) {
+  const lc = filter.toLowerCase()
+  const filtered = (products || [])
+    .filter((p) => !lc || p.name.toLowerCase().includes(lc))
+    .slice(0, 8)
+
+  return (
+    <div
+      style={{
+        marginTop: 6,
+        border: '1px solid var(--border)',
+        borderRadius: 6,
+        background: 'var(--card)',
+        maxHeight: 180,
+        overflow: 'auto',
+      }}
+    >
+      <input
+        type="text"
+        placeholder="Search products…"
+        value={filter}
+        onChange={(e) => onFilter(e.target.value)}
+        style={{
+          width: '100%',
+          padding: '6px 8px',
+          fontSize: '.75rem',
+          border: 'none',
+          borderBottom: '1px solid var(--border)',
+          background: 'transparent',
+          color: 'var(--text)',
+          outline: 'none',
+          boxSizing: 'border-box',
+        }}
+      />
+      {filtered.length === 0 && (
+        <div style={{ padding: '8px 10px', fontSize: '.72rem', color: 'var(--muted)' }}>
+          No products found
+        </div>
+      )}
+      {filtered.map((p) => (
+        <button
+          key={p.id ?? p.name}
+          type="button"
+          onClick={() => onSelect(p)}
+          style={{
+            display: 'block',
+            width: '100%',
+            textAlign: 'left',
+            padding: '6px 10px',
+            fontSize: '.75rem',
+            border: 'none',
+            borderBottom: '1px solid var(--border)',
+            background: 'transparent',
+            color: 'var(--text)',
+            cursor: 'pointer',
+          }}
+        >
+          {p.name}
+          {p.price != null && (
+            <span style={{ float: 'right', color: 'var(--muted)' }}>{fmt(p.price)}</span>
+          )}
+        </button>
+      ))}
     </div>
   )
 }
