@@ -1,5 +1,9 @@
 import Fuse from 'fuse.js'
 import { normalizeText, EXTENDED_STOPWORDS } from './helpers.js'
+import {
+  getCorrectionMap,
+  normalizeText as correctionNormalize,
+} from './services/correctionStore.js'
 
 const FUSE_OPTIONS = {
   keys: [
@@ -122,8 +126,7 @@ function bagRank(queryTokens, ctx, limit) {
   return ranked.slice(0, limit)
 }
 
-const confFromBag = (matched, qTokenCount) =>
-  Math.round((matched / Math.max(qTokenCount, 1)) * 100)
+const confFromBag = (matched, qTokenCount) => Math.round((matched / Math.max(qTokenCount, 1)) * 100)
 
 function singleTokenFuseHit(query, ctx) {
   const [hit] = ctx.fuse.search(query, { limit: 1 })
@@ -164,10 +167,30 @@ export function getTopCandidates(name, products, n = 5) {
 }
 
 export function matchItems(extracted, products) {
+  const correctionMap = getCorrectionMap()
   const ctx = products && products.length ? getIndex(products) : null
   return extracted.map(({ raw, name, qty }) => {
     const query = (name || '').trim()
-    if (!ctx || !query) return { raw, name, qty, product: null, bestGuess: null, confidence: 0 }
+    if (!query) return { raw, name, qty, product: null, bestGuess: null, confidence: 0 }
+
+    const normalized = correctionNormalize(query)
+    const correction = correctionMap.get(normalized)
+    if (correction) {
+      const product = products.find((p) => p.id === correction.productId)
+      if (product) {
+        return {
+          raw,
+          name,
+          qty,
+          product,
+          bestGuess: null,
+          confidence: Math.min(95, 80 + correction.count * 3),
+          source: 'correction',
+        }
+      }
+    }
+
+    if (!ctx) return { raw, name, qty, product: null, bestGuess: null, confidence: 0 }
     const qTokens = tokenize(query)
     let pct = 0
     let original = null
