@@ -395,6 +395,8 @@ export function SmartPasteWidget({
       })
     })
 
+    // SMA-173: show feedback modal if user made corrections
+    const correctionList = Object.values(corrections)
     if (correctionList.length > 0) {
       setFeedbackModal({ corrections: correctionList, rawText: rawPasteRef.current })
     }
@@ -979,6 +981,73 @@ function PasteResultRow({ r, i, status, failed, products, onDecide, onUnmatch, o
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+function ProductPicker({ products, filter, onFilter, onSelect }) {
+  const lc = filter.toLowerCase()
+  const filtered = (products || [])
+    .filter((p) => !lc || p.name.toLowerCase().includes(lc))
+    .slice(0, 8)
+
+  return (
+    <div
+      style={{
+        marginTop: 6,
+        border: '1px solid var(--border)',
+        borderRadius: 6,
+        background: 'var(--card)',
+        maxHeight: 180,
+        overflow: 'auto',
+      }}
+    >
+      <input
+        type="text"
+        placeholder="Search products…"
+        value={filter}
+        onChange={(e) => onFilter(e.target.value)}
+        style={{
+          width: '100%',
+          padding: '6px 8px',
+          fontSize: '.75rem',
+          border: 'none',
+          borderBottom: '1px solid var(--border)',
+          background: 'transparent',
+          color: 'var(--text)',
+          outline: 'none',
+          boxSizing: 'border-box',
+        }}
+      />
+      {filtered.length === 0 && (
+        <div style={{ padding: '8px 10px', fontSize: '.72rem', color: 'var(--muted)' }}>
+          No products found
+        </div>
+      )}
+      {filtered.map((p) => (
+        <button
+          key={p.id ?? p.name}
+          type="button"
+          onClick={() => onSelect(p)}
+          style={{
+            display: 'block',
+            width: '100%',
+            textAlign: 'left',
+            padding: '6px 10px',
+            fontSize: '.75rem',
+            border: 'none',
+            borderBottom: '1px solid var(--border)',
+            background: 'transparent',
+            color: 'var(--text)',
+            cursor: 'pointer',
+          }}
+        >
+          {p.name}
+          {p.price != null && (
+            <span style={{ float: 'right', color: 'var(--muted)' }}>{fmt(p.price)}</span>
+          )}
+        </button>
+      ))}
     </div>
   )
 }
