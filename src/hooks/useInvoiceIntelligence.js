@@ -42,6 +42,4 @@ export function useInvoiceIntelligence({ invoice, products } = {}) {
   }, [invoice, products])
 
   return { issues, hasIssues: issues.length > 0 }
-export function useInvoiceIntelligence() {
-  return { issues: [], hasIssues: false }
 }
