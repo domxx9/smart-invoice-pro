@@ -70,8 +70,16 @@ export function isSmartPasteContextSet(settings) {
 }
 
 function loadSettings() {
-  const saved = localStorage.getItem('sip_settings')
-  const s = saved ? JSON.parse(saved) : {}
+  let s = {}
+  try {
+    const saved = localStorage.getItem('sip_settings')
+    if (saved) {
+      const parsed = JSON.parse(saved)
+      if (parsed && typeof parsed === 'object') s = parsed
+    }
+  } catch {
+    localStorage.removeItem('sip_settings')
+  }
   const merged = {
     ...DEFAULTS,
     ...s,
