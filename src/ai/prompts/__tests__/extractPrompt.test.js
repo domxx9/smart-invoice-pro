@@ -74,4 +74,39 @@ describe('extractPrompt corrections', () => {
     const lowIdx = prompt.indexOf('low count')
     expect(highIdx).toBeLessThan(lowIdx)
   })
+
+  it('omits productName parens when correctedProductName is absent', () => {
+    saveCorrection({
+      originalText: 'mystery sku',
+      correctedProductId: 'SKU-X',
+      correctedProductName: undefined,
+    })
+    const prompt = buildExtractPrompt({ text: 'test', context: {} })
+    expect(prompt).toContain('SKU-X')
+    expect(prompt).not.toContain('SKU-X (')
+  })
+
+  it('JSON-encodes special chars in correction originalText', () => {
+    saveCorrection({
+      originalText: 'widget "deluxe"',
+      correctedProductId: 'WD-1',
+      correctedProductName: 'Widget Deluxe',
+    })
+    const prompt = buildExtractPrompt({ text: 'test', context: {} })
+    // JSON.stringify wraps with quotes and escapes inner quotes
+    expect(prompt).toContain('"widget \\"deluxe\\""')
+  })
+
+  it('corrections stanza appears before customer message block', () => {
+    saveCorrection({
+      originalText: 'anchor term',
+      correctedProductId: 'A1',
+      correctedProductName: 'Anchor',
+    })
+    const prompt = buildExtractPrompt({ text: 'buy anchor term', context: {} })
+    const corrIdx = prompt.indexOf('Known product corrections')
+    const msgIdx = prompt.indexOf('<customer_message>')
+    expect(corrIdx).toBeGreaterThanOrEqual(0)
+    expect(corrIdx).toBeLessThan(msgIdx)
+  })
 })

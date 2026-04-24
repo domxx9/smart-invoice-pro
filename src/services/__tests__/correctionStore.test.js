@@ -240,4 +240,64 @@ describe('correctionStore', () => {
       expect(stats.lastCorrectionAt).not.toBeNull()
     })
   })
+
+  describe('edge cases', () => {
+    it('saveCorrection with null correctedProductName still saves the entry', () => {
+      saveCorrection({
+        originalText: 'mystery part',
+        correctedProductId: 'MP-99',
+        correctedProductName: null,
+      })
+      const entries = getCorrections()
+      expect(entries.length).toBe(1)
+      expect(entries[0].correctedProductName).toBeNull()
+      expect(entries[0].correctedProductId).toBe('MP-99')
+    })
+
+    it('getCorrectionMap gracefully returns empty Map when localStorage contains malformed JSON', () => {
+      localStorage.setItem('sip_correction_history_v1', 'not valid json {{{')
+      const map = getCorrectionMap()
+      expect(map).toBeInstanceOf(Map)
+      expect(map.size).toBe(0)
+    })
+
+    it('getCorrections returns [] when localStorage contains a non-array JSON value', () => {
+      localStorage.setItem('sip_correction_history_v1', JSON.stringify({ corrupted: true }))
+      const entries = getCorrections()
+      expect(entries).toEqual([])
+    })
+
+    it('normalizeText with numeric input coerces to string', () => {
+      expect(normalizeText(42)).toBe('42')
+    })
+
+    it('getStats uniqueMappings counts each normalized+product pair independently', () => {
+      // Same text → two different products = 2 unique mappings
+      saveCorrection({
+        originalText: 'widget',
+        correctedProductId: 'p1',
+        correctedProductName: 'A',
+      })
+      saveCorrection({
+        originalText: 'widget',
+        correctedProductId: 'p2',
+        correctedProductName: 'B',
+      })
+      // Different text → same product = 1 more unique mapping
+      saveCorrection({
+        originalText: 'gadget',
+        correctedProductId: 'p1',
+        correctedProductName: 'A',
+      })
+      const stats = getStats()
+      expect(stats.uniqueMappings).toBe(3)
+    })
+
+    it('clearCorrections leaves storage key absent so subsequent getCorrections returns []', () => {
+      saveCorrection({ originalText: 'test', correctedProductId: 'p1', correctedProductName: 'T' })
+      clearCorrections()
+      expect(localStorage.getItem('sip_correction_history_v1')).toBeNull()
+      expect(getCorrections()).toEqual([])
+    })
+  })
 })
