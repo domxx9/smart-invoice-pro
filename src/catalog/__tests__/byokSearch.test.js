@@ -515,7 +515,7 @@ describe('runByokCatalogSearch — correction map injection', () => {
     })
 
     const matchPrompt = capturedPrompts[1]
-    // Count how many correction entries appear (each starts with `- "term`)
+    // Count correction entries (each starts with `- "term`)
     const correctionLines = matchPrompt.split('\n').filter((l) => l.startsWith('- "term '))
     expect(correctionLines.length).toBe(20)
   })
