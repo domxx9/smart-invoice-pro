@@ -236,6 +236,9 @@ function AppShell() {
                 <InvoiceEditor
                   invoice={inv.editing}
                   products={catalog.products}
+                  contacts={contactsApi.contacts}
+                  onAddContact={contactsApi.addContact}
+                  onUpdateContact={contactsApi.updateContact}
                   onSave={handleSave}
                   onClose={inv.handleCloseEditor}
                   onDelete={inv.handleDeleteInvoice}

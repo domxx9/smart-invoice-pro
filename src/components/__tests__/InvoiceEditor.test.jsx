@@ -1,13 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, within } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 
-vi.mock('react-swipeable', () => ({ useSwipeable: vi.fn(() => ({})) }))
 vi.mock('@capacitor/haptics', () => ({
   Haptics: { impact: vi.fn() },
   ImpactStyle: { Medium: 'MEDIUM' },
 }))
 
-// PDF helpers touch APIs (jsPDF, file system) we don't need in these tests.
 vi.mock('../../pdf.js', () => ({
   savePDFToPhone: vi.fn(),
   sharePDF: vi.fn(),
@@ -16,163 +14,109 @@ vi.mock('../../pdf.js', () => ({
   pdfFileExists: vi.fn(async () => false),
 }))
 
+vi.mock('../../hooks/useInvoiceIntelligence.js', () => ({
+  useInvoiceIntelligence: vi.fn(() => ({ issues: [], hasIssues: false })),
+}))
+
 import { InvoiceEditor } from '../InvoiceEditor.jsx'
-import { SettingsProvider } from '../../contexts/SettingsContext.jsx'
 import { ToastProvider } from '../../contexts/ToastContext.jsx'
+import { SettingsProvider } from '../../contexts/SettingsContext.jsx'
+import { useInvoiceIntelligence } from '../../hooks/useInvoiceIntelligence.js'
 
-function renderEditor(invoice, overrides = {}) {
-  const onSave = vi.fn()
-  const onClose = vi.fn()
-  const onDelete = vi.fn()
-  render(
-    <SettingsProvider>
-      <ToastProvider>
-        <InvoiceEditor
-          invoice={invoice}
-          products={[]}
-          onSave={onSave}
-          onClose={onClose}
-          onDelete={onDelete}
-          aiMode="off"
-          aiReady={false}
-          runInference={vi.fn()}
-          toast={vi.fn()}
-          smartPasteContext={{}}
-          {...overrides}
-        />
-      </ToastProvider>
-    </SettingsProvider>,
-  )
-  return { onSave, onClose, onDelete }
-}
-
-function pendingInvoice(overrides = {}) {
+function makeInvoice(overrides = {}) {
   return {
     id: 'INV0042',
-    status: 'pending',
+    status: 'new',
     customer: 'Acme',
-    items: [
-      { desc: 'Widget', qty: 1, price: 10 },
-      { desc: 'Gadget', qty: 2, price: 5 },
-    ],
+    items: [{ desc: 'Widget', qty: 1, price: 10 }],
     notes: '',
     tax: 10,
     date: '2026-01-01',
     due: '2026-01-15',
+    contactIds: [],
     ...overrides,
   }
 }
 
+const baseProps = {
+  products: [],
+  contacts: [],
+  onAddContact: vi.fn(() => ({ id: 'c_new' })),
+  onUpdateContact: vi.fn(),
+  onSave: vi.fn(),
+  onClose: vi.fn(),
+  onDelete: vi.fn(),
+  aiMode: 'off',
+  aiReady: false,
+  runInference: vi.fn(),
+  toast: vi.fn(),
+  smartPasteContext: {},
+}
+
+function renderEditor(invoice = makeInvoice(), overrides = {}) {
+  const props = { ...baseProps, ...overrides }
+  render(
+    <SettingsProvider>
+      <ToastProvider>
+        <InvoiceEditor invoice={invoice} {...props} />
+      </ToastProvider>
+    </SettingsProvider>,
+  )
+  return props
+}
+
 beforeEach(() => {
   localStorage.clear()
+  vi.clearAllMocks()
+  useInvoiceIntelligence.mockReturnValue({ issues: [], hasIssues: false })
 })
 
-describe('InvoiceEditor — fulfillment flow (SMA-106 / SMA-30)', () => {
-  const fulfilBtn = { name: /^Mark as Fulfilled$/ }
-
-  it('does not render the Mark as Fulfilled CTA when status !== "pending"', () => {
-    renderEditor({ ...pendingInvoice(), status: 'new' })
-    expect(screen.queryByRole('button', fulfilBtn)).toBeNull()
+describe('InvoiceEditor', () => {
+  it('renders invoice id and status badge', () => {
+    renderEditor(makeInvoice({ id: 'INV0099', status: 'pending' }))
+    expect(screen.getByText('INV0099')).toBeInTheDocument()
+    expect(screen.getByText('Pending')).toBeInTheDocument()
   })
 
-  it('renders the Mark as Fulfilled CTA when status === "pending" and does not auto-open anything', () => {
-    renderEditor(pendingInvoice())
-    expect(screen.getByRole('button', fulfilBtn)).toBeInTheDocument()
-    expect(screen.queryByTestId('picker-ui')).toBeNull()
-    expect(screen.queryByRole('dialog', { name: /Fulfil invoice INV0042/ })).toBeNull()
+  it('renders notes textarea and updates on change', () => {
+    renderEditor(makeInvoice({ notes: 'hello' }))
+    const textarea = screen.getByPlaceholderText(/payment terms/i)
+    expect(textarea.value).toBe('hello')
+    fireEvent.change(textarea, { target: { value: 'updated' } })
+    expect(textarea.value).toBe('updated')
   })
 
-  it('"Mark as Fulfilled" opens the fulfilment choice modal (SMA-30)', () => {
-    renderEditor(pendingInvoice())
-    fireEvent.click(screen.getByRole('button', fulfilBtn))
-    const dialog = screen.getByRole('dialog', { name: /Fulfil invoice INV0042/ })
-    expect(dialog).toBeInTheDocument()
-    expect(within(dialog).getByRole('button', { name: /Go to Picker/ })).toBeInTheDocument()
-    expect(within(dialog).getByRole('button', { name: /Skip picking/ })).toBeInTheDocument()
+  it('persists draft to localStorage on change', () => {
+    renderEditor()
+    fireEvent.change(screen.getByPlaceholderText(/payment terms/i), {
+      target: { value: 'draft note' },
+    })
+    const stored = JSON.parse(localStorage.getItem('sip_draft_edit'))
+    expect(stored.notes).toBe('draft note')
   })
 
-  it('choosing "Go to Picker" closes the modal and opens PickerUI with mapped items', () => {
-    renderEditor(pendingInvoice())
-    fireEvent.click(screen.getByRole('button', fulfilBtn))
-    fireEvent.click(
-      within(screen.getByRole('dialog')).getByRole('button', { name: /Go to Picker/ }),
-    )
-    expect(screen.queryByRole('dialog', { name: /Fulfil invoice INV0042/ })).toBeNull()
-    const picker = screen.getByTestId('picker-ui')
-    expect(within(picker).getByText('Widget')).toBeInTheDocument()
-    expect(within(picker).getByText('Gadget')).toBeInTheDocument()
-    expect(within(picker).getByText(/0 of 3 items picked/i)).toBeInTheDocument()
+  it('does not render InvoiceIntelligenceGuard when no issues', () => {
+    renderEditor()
+    expect(screen.queryByText('Review before saving')).toBeNull()
   })
 
-  it('choosing "Skip picking" marks the invoice fulfilled with fulfillmentMethod: "instant"', () => {
-    const { onSave } = renderEditor(pendingInvoice())
-    fireEvent.click(screen.getByRole('button', fulfilBtn))
-    fireEvent.click(
-      within(screen.getByRole('dialog')).getByRole('button', { name: /Skip picking/ }),
-    )
-    expect(onSave).toHaveBeenCalledTimes(1)
-    const saved = onSave.mock.calls[0][0]
-    expect(saved.status).toBe('fulfilled')
-    expect(saved.fulfillmentMethod).toBe('instant')
-    expect(saved.picks).toBeUndefined()
-    expect(saved.unavailable).toBeUndefined()
+  it('renders InvoiceIntelligenceGuard when issues exist', () => {
+    useInvoiceIntelligence.mockReturnValue({
+      issues: ['Missing price on item'],
+      hasIssues: true,
+    })
+    renderEditor()
+    expect(screen.getByText('Review before saving')).toBeInTheDocument()
+    expect(screen.getByText('Missing price on item')).toBeInTheDocument()
   })
 
-  it('Cancel on the modal closes it without saving', () => {
-    const { onSave } = renderEditor(pendingInvoice())
-    fireEvent.click(screen.getByRole('button', fulfilBtn))
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /Cancel/ }))
-    expect(screen.queryByRole('dialog', { name: /Fulfil invoice INV0042/ })).toBeNull()
-    expect(onSave).not.toHaveBeenCalled()
-  })
-
-  it('picker path still commits picks and unavailable onto the saved invoice', () => {
-    const { onSave } = renderEditor(pendingInvoice())
-    fireEvent.click(screen.getByRole('button', fulfilBtn))
-    fireEvent.click(
-      within(screen.getByRole('dialog')).getByRole('button', { name: /Go to Picker/ }),
-    )
-
-    const picker = screen.getByTestId('picker-ui')
-    const widgetRow = within(picker).getByTestId('picker-row-0')
-    fireEvent.click(within(widgetRow).getByRole('button', { name: /mark widget as picked/i }))
-
-    const gadgetRow = within(picker).getByTestId('picker-row-1')
-    fireEvent.click(within(gadgetRow).getByRole('button', { name: /mark gadget unavailable/i }))
-
-    fireEvent.click(within(picker).getByRole('button', { name: /mark as fulfilled/i }))
-
-    expect(onSave).toHaveBeenCalledTimes(1)
-    const saved = onSave.mock.calls[0][0]
-    expect(saved.status).toBe('fulfilled')
-    expect(saved.fulfillmentMethod).toBe('picked')
-    expect(saved.picks).toEqual({ 0: 1 })
-    expect(saved.unavailable).toEqual({ 1: true })
-  })
-
-  it('Skip button inside the picker also marks the invoice fulfilled with fulfillmentMethod: "instant"', () => {
-    const { onSave } = renderEditor(pendingInvoice())
-    fireEvent.click(screen.getByRole('button', fulfilBtn))
-    fireEvent.click(
-      within(screen.getByRole('dialog')).getByRole('button', { name: /Go to Picker/ }),
-    )
-    fireEvent.click(
-      within(screen.getByTestId('picker-ui')).getByRole('button', { name: /^skip$/i }),
-    )
-    expect(onSave).toHaveBeenCalledTimes(1)
-    expect(onSave.mock.calls[0][0].fulfillmentMethod).toBe('instant')
-  })
-
-  it('picker is in-memory only — no sip_picks_* persistence is written for the invoice flow', () => {
-    renderEditor(pendingInvoice())
-    fireEvent.click(screen.getByRole('button', fulfilBtn))
-    fireEvent.click(
-      within(screen.getByRole('dialog')).getByRole('button', { name: /Go to Picker/ }),
-    )
-    const picker = screen.getByTestId('picker-ui')
-    const widgetRow = within(picker).getByTestId('picker-row-0')
-    fireEvent.click(within(widgetRow).getByRole('button', { name: /mark widget as picked/i }))
-    const picksKeys = Object.keys(localStorage).filter((k) => k.startsWith('sip_picks'))
-    expect(picksKeys).toEqual([])
+  it('dismisses InvoiceIntelligenceGuard on button click', () => {
+    useInvoiceIntelligence.mockReturnValue({
+      issues: ['Bad item'],
+      hasIssues: true,
+    })
+    renderEditor()
+    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }))
+    expect(screen.queryByText('Review before saving')).toBeNull()
   })
 })

@@ -18,7 +18,7 @@ const baseInv = {
 
 describe('InvoiceFields', () => {
   it('renders customer, date, tax inputs with current values', () => {
-    render(<InvoiceFields inv={baseInv} setField={vi.fn()} />)
+    render(<InvoiceFields inv={baseInv} setField={vi.fn()} contacts={[]} contactIds={[]} />)
     expect(screen.getByDisplayValue('Jane Smith')).toBeInTheDocument()
     expect(screen.getByDisplayValue('2026-01-01')).toBeInTheDocument()
     expect(screen.getByDisplayValue('20')).toBeInTheDocument()
@@ -26,8 +26,9 @@ describe('InvoiceFields', () => {
 
   it('calls setField when a text input changes', () => {
     const setField = vi.fn()
-    render(<InvoiceFields inv={baseInv} setField={setField} />)
-    fireEvent.change(screen.getByPlaceholderText('Jane Smith'), {
+    render(<InvoiceFields inv={baseInv} setField={setField} contacts={[]} contactIds={[]} />)
+    const inputs = screen.getAllByPlaceholderText('Jane Smith')
+    fireEvent.change(inputs[0], {
       target: { value: 'John Doe' },
     })
     expect(setField).toHaveBeenCalledWith('customer', 'John Doe')
@@ -35,8 +36,8 @@ describe('InvoiceFields', () => {
 
   it('calls setField when tax % changes', () => {
     const setField = vi.fn()
-    render(<InvoiceFields inv={baseInv} setField={setField} />)
-    const taxInput = screen.getByDisplayValue('20')
+    render(<InvoiceFields inv={baseInv} setField={setField} contacts={[]} contactIds={[]} />)
+    const taxInput = screen.getByRole('spinbutton', { name: /tax %/i })
     fireEvent.change(taxInput, { target: { value: '10' } })
     expect(setField).toHaveBeenCalledWith('tax', '10')
   })
