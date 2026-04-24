@@ -14,6 +14,7 @@ import { useSettings } from '../contexts/SettingsContext.jsx'
 import { useToast } from '../contexts/ToastContext.jsx'
 import { SettingsSection } from './SettingsSection.jsx'
 import { PdfTemplateEditor } from './PdfTemplateEditor.jsx'
+import { FineTuneExportButton } from './FineTuneExportButton.jsx'
 import { Icon } from './Icon.jsx'
 import { RestoreBackupModal } from './RestoreBackupModal.jsx'
 import { TOUR_SECTIONS } from './TourOverlay.jsx'
@@ -1532,6 +1533,7 @@ export function Settings({ ai, onStartTour }) {
           Five short phrases about your business. Smart Paste prepends these to every AI call so the
           model maps messy customer messages onto your real catalog.
         </p>
+        <FineTuneExportButton />
         <div className="field">
           <label>
             Product type
