@@ -107,7 +107,7 @@ export function InvoiceEditor({
   }, [editing])
 
   useEffect(() => {
-    setInv((p) => ({ ...p, contactIds }))
+    setInv((p) => (p ? { ...p, contactIds } : p))
   }, [contactIds])
 
   useEffect(() => {
