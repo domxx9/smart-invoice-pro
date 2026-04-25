@@ -71,7 +71,16 @@ export function useContacts() {
 
   const updateContact = useCallback(
     (id, patch) => {
-      commit(ref.current.map((c) => (c.id === id ? normaliseContact({ ...c, ...patch, id }) : c)))
+      const normalisedPatch = { ...patch }
+      if (patch.business !== undefined) {
+        normalisedPatch.businessName = patch.business
+        delete normalisedPatch.business
+      }
+      commit(
+        ref.current.map((c) =>
+          c.id === id ? normaliseContact({ ...c, ...normalisedPatch, id }) : c,
+        ),
+      )
     },
     [commit],
   )
