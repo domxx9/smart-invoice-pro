@@ -6,17 +6,13 @@ import { InvoiceActions } from './InvoiceActions.jsx'
 import { InvoiceIntelligenceGuard } from './InvoiceIntelligenceGuard.jsx'
 import { ContactModal } from './ContactModal.jsx'
 import { useInvoiceIntelligence } from '../hooks/useInvoiceIntelligence.js'
+import { useInvoice } from '../contexts/InvoiceContext.jsx'
+import { useCatalog } from '../contexts/CatalogContext.jsx'
 
 export function InvoiceEditor({
-  invoice,
-  products,
   contacts,
   onAddContact,
   onUpdateContact,
-  onSave,
-  onClose,
-  onDelete,
-  onDraftChange,
   aiMode,
   aiReady,
   runInference,
@@ -26,9 +22,19 @@ export function InvoiceEditor({
   searchTier,
   byokProvider,
 }) {
-  const [inv, setInv] = useState(invoice)
+  const {
+    editing,
+    handleSave: ctxHandleSave,
+    handleCloseEditor,
+    handleDeleteInvoice,
+    handleDraftChange,
+  } = useInvoice()
+  const { catalog } = useCatalog()
+  const products = catalog.products
+
+  const [inv, setInv] = useState(() => editing)
   const [guardDismissed, setGuardDismissed] = useState(false)
-  const [contactIds, setContactIds] = useState(invoice.contactIds || [])
+  const [contactIds, setContactIds] = useState(() => editing?.contactIds || [])
   const [modalContact, setModalContact] = useState(undefined)
   const { issues, hasIssues } = useInvoiceIntelligence({ invoice: inv, products })
 
@@ -62,7 +68,6 @@ export function InvoiceEditor({
     (items) => setInv((p) => ({ ...p, items: [...p.items, ...items] })),
     [],
   )
-
   const addDiscount = useCallback(
     () =>
       setInv((p) => ({
@@ -95,13 +100,30 @@ export function InvoiceEditor({
   )
 
   useEffect(() => {
-    setInv((p) => ({ ...p, contactIds }))
+    setInv(editing)
+    if (editing) {
+      setContactIds(editing.contactIds || [])
+    }
+  }, [editing])
+
+  useEffect(() => {
+    setInv((p) => (p ? { ...p, contactIds } : p))
   }, [contactIds])
 
   useEffect(() => {
     localStorage.setItem('sip_draft_edit', JSON.stringify(inv))
-    onDraftChange?.(inv)
+    handleDraftChange?.(inv)
   }, [inv]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!inv) {
+    return (
+      <div style={{ paddingBottom: 140 }}>
+        <div className="flex-between mb-16">
+          <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>No invoice</h2>
+        </div>
+      </div>
+    )
+  }
 
   const handleOpenModal = (contact) => setModalContact(contact)
   const handleCloseModal = () => setModalContact(undefined)
@@ -174,7 +196,12 @@ export function InvoiceEditor({
         </div>
       </div>
 
-      <InvoiceActions inv={inv} onSave={onSave} onClose={onClose} onDelete={onDelete} />
+      <InvoiceActions
+        inv={inv}
+        onSave={ctxHandleSave}
+        onClose={handleCloseEditor}
+        onDelete={handleDeleteInvoice}
+      />
 
       {modalContact !== undefined && (
         <ContactModal

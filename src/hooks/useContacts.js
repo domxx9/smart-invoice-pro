@@ -71,9 +71,7 @@ export function useContacts() {
 
   const updateContact = useCallback(
     (id, patch) => {
-      commit(
-        ref.current.map((c) => (c.id === id ? normaliseContact({ ...c, ...patch, id }) : c)),
-      )
+      commit(ref.current.map((c) => (c.id === id ? normaliseContact({ ...c, ...patch, id }) : c)))
     },
     [commit],
   )
@@ -111,5 +109,7 @@ export function useContacts() {
     [commit],
   )
 
-  return { contacts, addContact, updateContact, deleteContact, mergeContacts }
+  const getContact = useCallback((id) => ref.current.find((c) => c.id === id) ?? null, [])
+
+  return { contacts, addContact, updateContact, deleteContact, mergeContacts, getContact }
 }
