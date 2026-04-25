@@ -3,10 +3,9 @@ import { CSS } from './styles.js'
 import { SAMPLE_INVOICES } from './constants.js'
 import { ToastProvider, useToast } from './contexts/ToastContext.jsx'
 import { SettingsProvider, useSettings } from './contexts/SettingsContext.jsx'
+import { CatalogProvider } from './contexts/CatalogContext.jsx'
+import { OrderProvider } from './contexts/OrderContext.jsx'
 import { useInvoiceState } from './hooks/useInvoiceState.js'
-import { useCatalogSync } from './hooks/useCatalogSync.js'
-import { useOrderSync } from './hooks/useOrderSync.js'
-import { pickTier } from './catalog/tier.js'
 import { useAiModel } from './hooks/useAiModel.js'
 import { useEasterEgg, EasterEggToast } from './hooks/useEasterEgg.jsx'
 import { Confetti } from './components/Confetti.jsx'
@@ -34,7 +33,11 @@ export default function App() {
       <style>{CSS}</style>
       <SettingsProvider>
         <ToastProvider>
-          <AppShell />
+          <CatalogProvider>
+            <OrderProvider>
+              <AppShell />
+            </OrderProvider>
+          </CatalogProvider>
         </ToastProvider>
       </SettingsProvider>
     </ErrorBoundary>
@@ -69,22 +72,6 @@ function AppShell() {
     onPaid: () => setConfettiTrigger((t) => t + 1),
     onOpenEditor: () => setTab('invoices'),
   })
-  const handleCatalogSyncStats = (stats) => {
-    // SMA-123: re-tier on every full sync. `pickTier` is pure; settings are
-    // persisted via saveSettings so the new tier survives reload.
-    const nextTier = pickTier(stats)
-    if (nextTier !== settings.searchTier) {
-      saveSettings({ ...settings, searchTier: nextTier })
-    }
-  }
-  const syncArgs = {
-    activeIntegration: settings.activeIntegration,
-    sqApiKey: settings.sqApiKey,
-    shopifyShopDomain: settings.shopifyShopDomain,
-    shopifyAccessToken: settings.shopifyAccessToken,
-  }
-  const catalog = useCatalogSync({ ...syncArgs, onSyncStats: handleCatalogSyncStats })
-  const orderSync = useOrderSync(syncArgs)
   const contactsApi = useContacts()
   const [quickAddContactOpen, setQuickAddContactOpen] = useState(false)
   const hasConnectedProvider =
@@ -105,8 +92,6 @@ function AppShell() {
     }
   }
   const handleOnboardConnect = (credentials, fetchedProducts, bizDetails, startTour = true) => {
-    // credentials shape for back-compat: if a string is passed, treat it as a Squarespace
-    // API key — that was the pre-Shopify signature. New callers pass an object.
     const creds =
       typeof credentials === 'string'
         ? { provider: 'squarespace', apiKey: credentials }
@@ -127,7 +112,7 @@ function AppShell() {
       currency: bizDetails.currency || 'GBP',
       defaultTax: parseFloat(bizDetails.defaultTax) || 20,
     })
-    if (fetchedProducts?.length) catalog.saveProducts(fetchedProducts)
+    if (fetchedProducts?.length) inv.saveProducts(fetchedProducts)
     localStorage.setItem('sip_onboarded', 'real')
     setOnboarded(true)
     if (startTour) setTourStep(0)
@@ -195,7 +180,7 @@ function AppShell() {
         />
         <main id="main-content" tabIndex={-1} className="content">
           <PullToRefresh
-            onRefresh={tab === 'orders' ? orderSync.handleSyncOrders : catalog.handleSyncCatalog}
+            onRefresh={tab === 'orders' ? inv.handleSyncOrders : inv.handleSyncCatalog}
             enabled={(tab === 'inventory' || tab === 'orders') && hasConnectedProvider}
           >
             {tab === 'dashboard' && (
@@ -235,8 +220,6 @@ function AppShell() {
               <section aria-label="Invoice editor">
                 <InvoiceEditor
                   invoice={inv.editing}
-                  products={catalog.products}
-                  contacts={contactsApi.contacts}
                   onAddContact={contactsApi.addContact}
                   onUpdateContact={contactsApi.updateContact}
                   onSave={handleSave}
@@ -256,28 +239,12 @@ function AppShell() {
             )}
             {tab === 'orders' && (
               <section aria-label="Orders">
-                <Orders
-                  orders={orderSync.orders}
-                  onSync={orderSync.handleSyncOrders}
-                  syncStatus={orderSync.orderSyncStatus}
-                  syncCount={orderSync.orderSyncCount}
-                  hasApiKey={hasConnectedProvider}
-                  lastSynced={orderSync.lastOrderSync}
-                  picks={orderSync.picks}
-                  onPickChange={orderSync.savePick}
-                />
+                <Orders />
               </section>
             )}
             {tab === 'inventory' && (
               <section aria-label="Catalog">
-                <Inventory
-                  products={catalog.products}
-                  onSync={catalog.handleSyncCatalog}
-                  syncStatus={catalog.syncStatus}
-                  syncCount={catalog.syncCount}
-                  hasApiKey={hasConnectedProvider}
-                  lastSynced={catalog.lastSynced}
-                />
+                <Inventory />
               </section>
             )}
             {tab === 'settings' && (
