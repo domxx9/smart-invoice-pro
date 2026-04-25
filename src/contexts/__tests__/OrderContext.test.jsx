@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { OrderProvider, useOrders } from '../contexts/OrderContext.jsx'
-import { SettingsProvider } from '../contexts/SettingsContext.jsx'
+import { OrderProvider, useOrders } from '../OrderContext.jsx'
+import { SettingsProvider } from '../SettingsContext.jsx'
 
 let mockUseOrderSync = vi.fn(() => ({
   orders: [],
@@ -13,7 +13,7 @@ let mockUseOrderSync = vi.fn(() => ({
   handleSyncOrders: vi.fn(),
 }))
 
-vi.mock('../hooks/useOrderSync.js', () => ({
+vi.mock('../../hooks/useOrderSync.js', () => ({
   useOrderSync: (...args) => mockUseOrderSync(...args),
 }))
 

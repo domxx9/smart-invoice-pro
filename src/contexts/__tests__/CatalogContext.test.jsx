@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { CatalogProvider, useCatalog } from '../contexts/CatalogContext.jsx'
-import { SettingsProvider } from '../contexts/SettingsContext.jsx'
+import { CatalogProvider, useCatalog } from '../CatalogContext.jsx'
+import { SettingsProvider } from '../SettingsContext.jsx'
 
 let mockUseCatalogSync = vi.fn(() => ({
   products: [],
@@ -12,7 +12,7 @@ let mockUseCatalogSync = vi.fn(() => ({
   handleSyncCatalog: vi.fn(),
 }))
 
-vi.mock('../hooks/useCatalogSync.js', () => ({
+vi.mock('../../hooks/useCatalogSync.js', () => ({
   useCatalogSync: (...args) => mockUseCatalogSync(...args),
 }))
 
