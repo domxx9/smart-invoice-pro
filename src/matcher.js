@@ -155,15 +155,59 @@ export function matchProduct(name, products) {
   }
 }
 
-export function getTopCandidates(name, products, n = 5) {
+function calcBoost(product, context) {
+  if (!context) return 0
+  let boost = 0
+  if (context.productType && product.category === context.productType) {
+    boost += 0.5
+  }
+  if (context.vocabulary) {
+    const vocabTerms = context.vocabulary.toLowerCase().split(/\s+/)
+    const descNormalized = (product.desc || '').toLowerCase()
+    for (const term of vocabTerms) {
+      if (descNormalized.includes(term)) boost += 0.25
+    }
+  }
+  return boost
+}
+
+export function getTopCandidates(name, products, n = 5, context) {
   const query = (name || '').trim()
   if (!query || !products || !products.length) return []
   const ctx = getIndex(products)
   const qTokens = tokenize(query)
   if (qTokens.length <= 1) {
-    return ctx.fuse.search(query, { limit: n }).map((r) => ctx.originals[r.refIndex])
+    const fetchLimit = context && (context.productType || context.vocabulary) ? products.length : n
+    const results = ctx.fuse.search(query, { limit: fetchLimit })
+    if (!context || (!context.productType && !context.vocabulary)) {
+      return results.map((r) => ctx.originals[r.refIndex])
+    }
+    const withBoost = results.map((r) => ({
+      refIndex: r.refIndex,
+      score: r.score,
+      boost: calcBoost(ctx.originals[r.refIndex], context),
+    }))
+    withBoost.sort((a, b) => {
+      if (b.boost !== a.boost) return b.boost - a.boost
+      return a.score - b.score
+    })
+    return withBoost.slice(0, n).map((r) => ctx.originals[r.refIndex])
   }
-  return bagRank(qTokens, ctx, n).map((r) => ctx.originals[r.refIndex])
+  const fetchLimit = context && (context.productType || context.vocabulary) ? products.length : n
+  const ranked = bagRank(qTokens, ctx, fetchLimit)
+  if (!context || (!context.productType && !context.vocabulary)) {
+    return ranked.slice(0, n).map((r) => ctx.originals[r.refIndex])
+  }
+  const withBoost = ranked.map((r) => ({
+    ...r,
+    boost: calcBoost(ctx.originals[r.refIndex], context),
+  }))
+  withBoost.sort((a, b) => {
+    if (b.matched !== a.matched) return b.matched - a.matched
+    if (b.boost !== a.boost) return b.boost - a.boost
+    return b.sub - a.sub
+  })
+  return withBoost.slice(0, n).map((r) => ctx.originals[r.refIndex])
 }
 
 export function matchItems(extracted, products) {
