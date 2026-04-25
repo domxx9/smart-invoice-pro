@@ -155,15 +155,42 @@ export function matchProduct(name, products) {
   }
 }
 
-export function getTopCandidates(name, products, n = 5) {
+export function getTopCandidates(name, products, n = 5, context) {
   const query = (name || '').trim()
   if (!query || !products || !products.length) return []
   const ctx = getIndex(products)
   const qTokens = tokenize(query)
   if (qTokens.length <= 1) {
-    return ctx.fuse.search(query, { limit: n }).map((r) => ctx.originals[r.refIndex])
+    const hits = ctx.fuse.search(query, { limit: n })
+    if (!context) return hits.map((r) => ctx.originals[r.refIndex])
+    return contextRerank(
+      hits.map((r) => ({ product: ctx.originals[r.refIndex], tier: Math.round(r.score * 20) })),
+      context,
+    )
   }
-  return bagRank(qTokens, ctx, n).map((r) => ctx.originals[r.refIndex])
+  const ranked = bagRank(qTokens, ctx, n)
+  if (!context) return ranked.map((r) => ctx.originals[r.refIndex])
+  return contextRerank(
+    ranked.map((r) => ({ product: ctx.originals[r.refIndex], tier: -r.matched })),
+    context,
+  )
+}
+
+function contextRerank(items, { productType, vocabulary }) {
+  const vocabTokens = vocabulary ? tokenize(vocabulary) : []
+  return items
+    .map((item, i) => {
+      let boost = 0
+      const p = item.product
+      if (productType && p.category === productType) boost += 1
+      if (vocabTokens.length > 0) {
+        const pTokens = new Set(tokenize(`${p.name || ''} ${p.desc || ''}`))
+        boost += vocabTokens.filter((t) => pTokens.has(t)).length
+      }
+      return { product: p, tier: item.tier, boost, i }
+    })
+    .sort((a, b) => a.tier - b.tier || b.boost - a.boost || a.i - b.i)
+    .map(({ product }) => product)
 }
 
 export function matchItems(extracted, products) {
