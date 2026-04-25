@@ -12,6 +12,8 @@
  *   [{ "lineIndex": number, "productId": string|null, "confidence": number }, ...]
  */
 
+import { getCorrectionMap } from '../../services/correctionStore.js'
+
 const CONTEXT_FIELDS = [
   ['productType', 'Product type'],
   ['shopType', 'Shop type'],
@@ -51,12 +53,36 @@ function renderLine(entry, index) {
   return [header, 'Candidates:', renderCandidates(entry?.candidates)].join('\n')
 }
 
+function buildCorrectionHints(batch) {
+  const map = getCorrectionMap()
+  if (!map.size || !Array.isArray(batch)) return null
+  const hints = []
+  for (const entry of batch) {
+    const extracted = entry?.extracted || {}
+    const normalized = (extracted.text || '').toLowerCase().replace(/\s+/g, ' ').trim()
+    if (normalized && map.has(normalized)) {
+      const { productId, productName } = map.get(normalized)
+      const name = productName ? ` "${productName}"` : ''
+      hints.push(
+        `Line ${batch.indexOf(entry)}: "${normalized}" → product ID "${productId}"${name}. Weight this mapping higher.`,
+      )
+    }
+  }
+  if (!hints.length) return null
+  return [
+    'Note: The user has previously confirmed the following product mappings. Weight these higher:',
+    ...hints,
+  ].join('\n')
+}
+
 export function buildMatchPrompt({ batch, context } = {}) {
   const lines = Array.isArray(batch) ? batch : []
   const stanza = buildContextStanza(context)
+  const correctionHints = buildCorrectionHints(lines)
 
   const sections = []
   if (stanza) sections.push(stanza)
+  if (correctionHints) sections.push(correctionHints)
   sections.push(
     [
       'Task: for each line below, pick the single best product id from its candidate list.',

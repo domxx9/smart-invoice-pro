@@ -1,12 +1,33 @@
 import { useState } from 'react'
 import { submitPasteFeedback } from '../api/feedbackSubmit.js'
 
-export function SmartPasteFeedbackModal({ corrections, rawText, onClose, toast }) {
+const FINETUNE_STORAGE_KEY = 'sip_finetune_export_v1'
+
+function buildJsonlEntry(correction) {
+  const promptPart = `Match: '${correction.originalText}'`
+  const completion = correction.correctedProduct
+  return JSON.stringify({ prompt: promptPart, completion })
+}
+
+function appendFinetuneExport(corrections) {
+  const existing = localStorage.getItem(FINETUNE_STORAGE_KEY) || ''
+  const entries = existing ? existing.trim().split('\n').filter(Boolean) : []
+  for (const c of corrections) {
+    entries.push(buildJsonlEntry(c))
+  }
+  localStorage.setItem(FINETUNE_STORAGE_KEY, entries.join('\n'))
+}
+
+export function SmartPasteFeedbackModal({ corrections, rawText, onClose, toast, byokMode }) {
   const [submitting, setSubmitting] = useState(false)
+  const [sendForFineTuning, setSendForFineTuning] = useState(false)
 
   const handleSubmit = async () => {
     setSubmitting(true)
     try {
+      if (sendForFineTuning) {
+        appendFinetuneExport(corrections)
+      }
       await submitPasteFeedback({
         rawText,
         corrections,
@@ -93,6 +114,32 @@ export function SmartPasteFeedbackModal({ corrections, rawText, onClose, toast }
             </div>
           ))}
         </div>
+
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 8,
+            fontSize: '.78rem',
+            color: 'var(--muted)',
+            lineHeight: 1.4,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={sendForFineTuning}
+            onChange={(e) => setSendForFineTuning(e.target.checked)}
+            style={{ marginTop: 2, flexShrink: 0 }}
+          />
+          <span>
+            Send corrections for AI fine-tuning
+            {byokMode ? (
+              <> — can be used with your BYOK provider&apos;s fine-tuning API.</>
+            ) : (
+              <> — stored locally for future model updates.</>
+            )}
+          </span>
+        </label>
 
         <button
           type="button"
