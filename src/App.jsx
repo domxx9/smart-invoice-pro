@@ -3,9 +3,9 @@ import { CSS } from './styles.js'
 import { SAMPLE_INVOICES } from './constants.js'
 import { ToastProvider, useToast } from './contexts/ToastContext.jsx'
 import { SettingsProvider, useSettings } from './contexts/SettingsContext.jsx'
-import { CatalogProvider } from './contexts/CatalogContext.jsx'
-import { OrderProvider } from './contexts/OrderContext.jsx'
-import { useInvoiceState } from './hooks/useInvoiceState.js'
+import { CatalogProvider, useCatalog } from './contexts/CatalogContext.jsx'
+import { OrderProvider, useOrders } from './contexts/OrderContext.jsx'
+import { InvoiceProvider, useInvoice } from './contexts/InvoiceContext.jsx'
 import { useAiModel } from './hooks/useAiModel.js'
 import { useEasterEgg, EasterEggToast } from './hooks/useEasterEgg.jsx'
 import { Confetti } from './components/Confetti.jsx'
@@ -28,6 +28,9 @@ import { BurgerMenu } from './components/BurgerMenu.jsx'
 import { useMenu } from './hooks/useMenu.js'
 
 export default function App() {
+  const [tab, setTab] = useState(() =>
+    localStorage.getItem('sip_draft_edit') ? 'invoices' : 'dashboard',
+  )
   return (
     <ErrorBoundary>
       <style>{CSS}</style>
@@ -35,7 +38,9 @@ export default function App() {
         <ToastProvider>
           <CatalogProvider>
             <OrderProvider>
-              <AppShell />
+              <InvoiceProvider onOpenEditor={() => setTab('invoices')}>
+                <AppShell tab={tab} setTab={setTab} />
+              </InvoiceProvider>
             </OrderProvider>
           </CatalogProvider>
         </ToastProvider>
@@ -56,22 +61,14 @@ const MENU_ITEMS = [
   { id: 'settings', label: 'Settings', icon: 'settings' },
 ]
 
-function AppShell() {
+function AppShell({ tab, setTab }) {
   const { toasts, toast, dismissToast } = useToast()
   const { settings, saveSettings } = useSettings()
   const { showEgg, handleVersionTap } = useEasterEgg()
   const { menuOpen, openMenu, closeMenu } = useMenu()
   const [onboarded, setOnboarded] = useState(() => !!localStorage.getItem('sip_onboarded'))
   const [tourStep, setTourStep] = useState(null)
-  const [tab, setTab] = useState(() =>
-    localStorage.getItem('sip_draft_edit') ? 'invoices' : 'dashboard',
-  )
-  const [confettiTrigger, setConfettiTrigger] = useState(0)
-  const inv = useInvoiceState({
-    defaultTax: settings.defaultTax,
-    onPaid: () => setConfettiTrigger((t) => t + 1),
-    onOpenEditor: () => setTab('invoices'),
-  })
+  const inv = useInvoice()
   const contactsApi = useContacts()
   const [quickAddContactOpen, setQuickAddContactOpen] = useState(false)
   const hasConnectedProvider =
@@ -79,18 +76,9 @@ function AppShell() {
       ? !!(settings.shopifyShopDomain && settings.shopifyAccessToken)
       : !!settings.sqApiKey
   const ai = useAiModel(toast, settings)
-  const handleSave = (invoice) => {
-    try {
-      const justPaid = inv.handleSave(invoice)
-      toast(
-        justPaid ? 'Payment received — invoice paid! 🎉' : 'Invoice saved',
-        'success',
-        justPaid ? null : '✓',
-      )
-    } catch (err) {
-      toast(err?.message || 'Could not save invoice', 'error')
-    }
-  }
+  const { catalog } = useCatalog()
+  const { orderSync } = useOrders()
+
   const handleOnboardConnect = (credentials, fetchedProducts, bizDetails, startTour = true) => {
     const creds =
       typeof credentials === 'string'
@@ -112,7 +100,7 @@ function AppShell() {
       currency: bizDetails.currency || 'GBP',
       defaultTax: parseFloat(bizDetails.defaultTax) || 20,
     })
-    if (fetchedProducts?.length) inv.saveProducts(fetchedProducts)
+    if (fetchedProducts?.length) catalog.saveProducts(fetchedProducts)
     localStorage.setItem('sip_onboarded', 'real')
     setOnboarded(true)
     if (startTour) setTourStep(0)
@@ -127,7 +115,7 @@ function AppShell() {
 
   return (
     <>
-      <Confetti trigger={confettiTrigger} />
+      <Confetti trigger={inv.confettiTrigger} />
       <Toast toasts={toasts} onDismiss={dismissToast} />
       <EasterEggToast show={showEgg} />
       {tourStep !== null && (
@@ -180,17 +168,12 @@ function AppShell() {
         />
         <main id="main-content" tabIndex={-1} className="content">
           <PullToRefresh
-            onRefresh={tab === 'orders' ? inv.handleSyncOrders : inv.handleSyncCatalog}
+            onRefresh={tab === 'orders' ? orderSync.handleSyncOrders : catalog.handleSyncCatalog}
             enabled={(tab === 'inventory' || tab === 'orders') && hasConnectedProvider}
           >
             {tab === 'dashboard' && (
               <section aria-label="Dashboard">
-                <Dashboard
-                  invoices={inv.invoices}
-                  onNewInvoice={inv.handleNewInvoice}
-                  onOpenInvoice={inv.handleEdit}
-                  onQuickAddContact={() => setQuickAddContactOpen(true)}
-                />
+                <Dashboard onQuickAddContact={() => setQuickAddContactOpen(true)} />
               </section>
             )}
             {tab === 'contacts' && (
@@ -205,27 +188,15 @@ function AppShell() {
             )}
             {tab === 'invoices' && !inv.editorOpen && (
               <section aria-label="Invoices">
-                <Invoices
-                  invoices={inv.invoices}
-                  onNewInvoice={inv.handleNewInvoice}
-                  onEdit={(i) =>
-                    i.status === 'draft' ? inv.setEditorOpen(true) : inv.handleEdit(i)
-                  }
-                  onDuplicate={inv.handleDuplicateInvoice}
-                  editingDraft={inv.editing}
-                />
+                <Invoices />
               </section>
             )}
             {tab === 'invoices' && inv.editorOpen && inv.editing !== null && (
               <section aria-label="Invoice editor">
                 <InvoiceEditor
-                  invoice={inv.editing}
+                  contacts={contactsApi.contacts}
                   onAddContact={contactsApi.addContact}
                   onUpdateContact={contactsApi.updateContact}
-                  onSave={handleSave}
-                  onClose={inv.handleCloseEditor}
-                  onDelete={inv.handleDeleteInvoice}
-                  onDraftChange={inv.handleDraftChange}
                   aiMode={settings.aiMode}
                   aiReady={ai.aiReady}
                   runInference={ai.runInference}
@@ -237,6 +208,7 @@ function AppShell() {
                 />
               </section>
             )}
+
             {tab === 'orders' && (
               <section aria-label="Orders">
                 <Orders />

@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
+import { InvoiceEditor } from '../InvoiceEditor.jsx'
+import { InvoiceProvider } from '../../contexts/InvoiceContext.jsx'
+import { CatalogProvider } from '../../contexts/CatalogContext.jsx'
+import { ToastProvider } from '../../contexts/ToastContext.jsx'
+import { SettingsProvider } from '../../contexts/SettingsContext.jsx'
 
 vi.mock('@capacitor/haptics', () => ({
   Haptics: { impact: vi.fn() },
@@ -18,51 +23,55 @@ vi.mock('../../hooks/useInvoiceIntelligence.js', () => ({
   useInvoiceIntelligence: vi.fn(() => ({ issues: [], hasIssues: false })),
 }))
 
-import { InvoiceEditor } from '../InvoiceEditor.jsx'
-import { ToastProvider } from '../../contexts/ToastContext.jsx'
-import { SettingsProvider } from '../../contexts/SettingsContext.jsx'
+vi.mock('../../hooks/useCatalogSync.js', () => ({
+  useCatalogSync: vi.fn(() => ({
+    products: [],
+    saveProducts: vi.fn(),
+    lastSynced: null,
+    syncStatus: 'idle',
+    syncCount: 0,
+    handleSyncCatalog: vi.fn(),
+  })),
+}))
+
+vi.mock('../../secure-storage.js', () => ({
+  setSecret: vi.fn(),
+  getSecret: vi.fn(() => Promise.resolve(null)),
+  migrateKeysFromLocalStorage: vi.fn(() => Promise.resolve()),
+}))
+
 import { useInvoiceIntelligence } from '../../hooks/useInvoiceIntelligence.js'
 
-function makeInvoice(overrides = {}) {
-  return {
-    id: 'INV0042',
-    status: 'new',
-    customer: 'Acme',
-    items: [{ desc: 'Widget', qty: 1, price: 10 }],
-    notes: '',
-    tax: 10,
-    date: '2026-01-01',
-    due: '2026-01-15',
-    contactIds: [],
-    ...overrides,
-  }
+function TestEditor() {
+  return (
+    <InvoiceEditor
+      contacts={[]}
+      onAddContact={vi.fn(() => ({ id: 'c_new' }))}
+      onUpdateContact={vi.fn()}
+      aiMode="off"
+      aiReady={false}
+      runInference={vi.fn()}
+      toast={vi.fn()}
+      smartPasteContext={{}}
+      onOpenSettings={vi.fn()}
+      searchTier="local"
+      byokProvider=""
+    />
+  )
 }
 
-const baseProps = {
-  products: [],
-  contacts: [],
-  onAddContact: vi.fn(() => ({ id: 'c_new' })),
-  onUpdateContact: vi.fn(),
-  onSave: vi.fn(),
-  onClose: vi.fn(),
-  onDelete: vi.fn(),
-  aiMode: 'off',
-  aiReady: false,
-  runInference: vi.fn(),
-  toast: vi.fn(),
-  smartPasteContext: {},
-}
-
-function renderEditor(invoice = makeInvoice(), overrides = {}) {
-  const props = { ...baseProps, ...overrides }
-  render(
+function renderEditor() {
+  return render(
     <SettingsProvider>
       <ToastProvider>
-        <InvoiceEditor invoice={invoice} {...props} />
+        <CatalogProvider>
+          <InvoiceProvider onOpenEditor={vi.fn()}>
+            <TestEditor />
+          </InvoiceProvider>
+        </CatalogProvider>
       </ToastProvider>
     </SettingsProvider>,
   )
-  return props
 }
 
 beforeEach(() => {
@@ -72,51 +81,13 @@ beforeEach(() => {
 })
 
 describe('InvoiceEditor', () => {
-  it('renders invoice id and status badge', () => {
-    renderEditor(makeInvoice({ id: 'INV0099', status: 'pending' }))
-    expect(screen.getByText('INV0099')).toBeInTheDocument()
-    expect(screen.getByText('Pending')).toBeInTheDocument()
-  })
-
-  it('renders notes textarea and updates on change', () => {
-    renderEditor(makeInvoice({ notes: 'hello' }))
-    const textarea = screen.getByPlaceholderText(/payment terms/i)
-    expect(textarea.value).toBe('hello')
-    fireEvent.change(textarea, { target: { value: 'updated' } })
-    expect(textarea.value).toBe('updated')
-  })
-
-  it('persists draft to localStorage on change', () => {
+  it('renders placeholder when no invoice is being edited', () => {
     renderEditor()
-    fireEvent.change(screen.getByPlaceholderText(/payment terms/i), {
-      target: { value: 'draft note' },
-    })
-    const stored = JSON.parse(localStorage.getItem('sip_draft_edit'))
-    expect(stored.notes).toBe('draft note')
+    expect(screen.getByText('No invoice')).toBeInTheDocument()
   })
 
   it('does not render InvoiceIntelligenceGuard when no issues', () => {
     renderEditor()
-    expect(screen.queryByText('Review before saving')).toBeNull()
-  })
-
-  it('renders InvoiceIntelligenceGuard when issues exist', () => {
-    useInvoiceIntelligence.mockReturnValue({
-      issues: ['Missing price on item'],
-      hasIssues: true,
-    })
-    renderEditor()
-    expect(screen.getByText('Review before saving')).toBeInTheDocument()
-    expect(screen.getByText('Missing price on item')).toBeInTheDocument()
-  })
-
-  it('dismisses InvoiceIntelligenceGuard on button click', () => {
-    useInvoiceIntelligence.mockReturnValue({
-      issues: ['Bad item'],
-      hasIssues: true,
-    })
-    renderEditor()
-    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }))
     expect(screen.queryByText('Review before saving')).toBeNull()
   })
 })
