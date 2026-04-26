@@ -2,7 +2,7 @@
  * BYOK pipeline wiring for SmartPasteWidget (SMA-59).
  *
  * The widget drives the Smart Paste two-stage pipeline for BYOK users with
- * business context set. These tests stub `runSmartPastePipeline` to verify:
+ * business context set. These tests stub `runCatalogSearch` to verify:
  *   - pipeline is invoked with the expected args
  *   - Stage 1 failure (fallback: true) keeps regex rows + toasts
  *   - missing business context renders the banner and short-circuits
@@ -11,11 +11,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 
-vi.mock('../../ai/smartPastePipeline.js', () => ({
-  runSmartPastePipeline: vi.fn(),
+vi.mock('../../catalog/search.js', () => ({
+  runCatalogSearch: vi.fn(),
 }))
 
-import { runSmartPastePipeline } from '../../ai/smartPastePipeline.js'
+import { runCatalogSearch } from '../../catalog/search.js'
 import { SmartPasteWidget } from '../SmartPasteWidget.jsx'
 import { logger } from '../../utils/logger.js'
 
@@ -73,12 +73,12 @@ function typeAndParse(text) {
 }
 
 beforeEach(() => {
-  runSmartPastePipeline.mockReset()
+  runCatalogSearch.mockReset()
 })
 
 describe('SmartPasteWidget pipeline wiring', () => {
-  it('invokes runSmartPastePipeline with text, products, context, runInference', async () => {
-    runSmartPastePipeline.mockResolvedValue({
+  it('invokes runCatalogSearch with text, products, context, runInference', async () => {
+    runCatalogSearch.mockResolvedValue({
       extracted: [{ text: 'Mystery Item', qty: 1, description: 'Mystery' }],
       rows: [
         {
@@ -97,9 +97,9 @@ describe('SmartPasteWidget pipeline wiring', () => {
     typeAndParse('Mystery Item')
 
     await waitFor(() => {
-      expect(runSmartPastePipeline).toHaveBeenCalledTimes(1)
+      expect(runCatalogSearch).toHaveBeenCalledTimes(1)
     })
-    const call = runSmartPastePipeline.mock.calls[0][0]
+    const call = runCatalogSearch.mock.calls[0][0]
     expect(call.text).toContain('Mystery Item')
     expect(call.products).toEqual(products)
     expect(call.context).toEqual(FULL_CONTEXT)
@@ -112,7 +112,7 @@ describe('SmartPasteWidget pipeline wiring', () => {
   })
 
   it('Stage 1 failure keeps regex rows, toasts fallback, and fires no further calls', async () => {
-    runSmartPastePipeline.mockResolvedValue({
+    runCatalogSearch.mockResolvedValue({
       extracted: [],
       rows: [],
       callCount: 1,
@@ -142,7 +142,7 @@ describe('SmartPasteWidget pipeline wiring', () => {
     expect(screen.getByTestId('smart-paste-context-banner')).toBeInTheDocument()
     typeAndParse('4 x Blue Molar Extractor\n2 x Sterilisation Cassette')
 
-    expect(runSmartPastePipeline).not.toHaveBeenCalled()
+    expect(runCatalogSearch).not.toHaveBeenCalled()
   })
 
   it('opens settings when the banner link is clicked', () => {
@@ -171,7 +171,7 @@ describe('SmartPasteWidget pipeline wiring', () => {
 
     let emit
     let resolvePipeline
-    runSmartPastePipeline.mockImplementation(async ({ onStage }) => {
+    runCatalogSearch.mockImplementation(async ({ onStage }) => {
       emit = onStage
       onStage({ stage: 'extract' })
       onStage({
@@ -195,9 +195,7 @@ describe('SmartPasteWidget pipeline wiring', () => {
     )
 
     // Textarea is hidden; spinner + progress are visible.
-    await waitFor(() =>
-      expect(screen.getByTestId('smart-paste-processing')).toBeInTheDocument(),
-    )
+    await waitFor(() => expect(screen.getByTestId('smart-paste-processing')).toBeInTheDocument())
     expect(screen.queryByPlaceholderText(/Paste an order/)).not.toBeInTheDocument()
     // No rows revealed yet.
     expect(screen.queryByText(/Blue Molar Extractor/)).not.toBeInTheDocument()
@@ -260,7 +258,7 @@ describe('SmartPasteWidget pipeline wiring', () => {
   it('marks rows with batch-failed and reveals them when onStage emits an error (SMA-99)', async () => {
     const paste = ['1 x Nope alpha xyz', '1 x Nope beta xyz'].join('\n')
     let resolvePipeline
-    runSmartPastePipeline.mockImplementation(async ({ onStage }) => {
+    runCatalogSearch.mockImplementation(async ({ onStage }) => {
       onStage({ stage: 'extract' })
       onStage({
         stage: 'extract',
@@ -314,7 +312,7 @@ describe('SmartPasteWidget pipeline wiring', () => {
 
   it('progress label advances from "Reading your paste…" to a counted match label (SMA-99)', async () => {
     let emit
-    runSmartPastePipeline.mockImplementation(async ({ onStage }) => {
+    runCatalogSearch.mockImplementation(async ({ onStage }) => {
       emit = onStage
       onStage({ stage: 'extract' })
       return new Promise(() => {})
@@ -336,7 +334,7 @@ describe('SmartPasteWidget pipeline wiring', () => {
   })
 
   it('"Paste more" bar clears results and restores the textarea (SMA-99)', async () => {
-    runSmartPastePipeline.mockResolvedValue({
+    runCatalogSearch.mockResolvedValue({
       extracted: [{ text: 'Mystery', qty: 1, description: 'Mystery' }],
       rows: [
         {
@@ -378,7 +376,7 @@ describe('SmartPasteWidget pipeline wiring', () => {
 
     let emit
     let resolvePipeline
-    runSmartPastePipeline.mockImplementation(async ({ onStage }) => {
+    runCatalogSearch.mockImplementation(async ({ onStage }) => {
       emit = onStage
       onStage({ stage: 'extract' })
       onStage({
@@ -430,10 +428,7 @@ describe('SmartPasteWidget pipeline wiring', () => {
         { text: 'Alpha', qty: 2, description: 'Alpha' },
         { text: 'Beta', qty: 3, description: 'Beta' },
       ],
-      rows: [
-        pipelineRow('Alpha', 2, products[0], 90),
-        pipelineRow('Beta', 3, products[1], 91),
-      ],
+      rows: [pipelineRow('Alpha', 2, products[0], 90), pipelineRow('Beta', 3, products[1], 91)],
       callCount: 3,
       fallback: false,
     })
@@ -455,7 +450,7 @@ describe('SmartPasteWidget pipeline wiring', () => {
       source,
     })
 
-    runSmartPastePipeline.mockResolvedValue({
+    runCatalogSearch.mockResolvedValue({
       extracted: [{ text: 'Unsure item', qty: 1, description: 'Unsure item' }],
       // Low-confidence AI pick → convertPipelineRow routes it to bestGuess,
       // not product, so autoAddMatches must skip it.
@@ -485,7 +480,7 @@ describe('SmartPasteWidget pipeline wiring', () => {
       source: 'ai',
     })
 
-    runSmartPastePipeline.mockImplementation(async ({ onStage }) => {
+    runCatalogSearch.mockImplementation(async ({ onStage }) => {
       onStage({ stage: 'extract' })
       onStage({
         stage: 'extract',
@@ -521,14 +516,14 @@ describe('SmartPasteWidget pipeline wiring', () => {
   it("does not call the pipeline when aiMode is 'off'", () => {
     setup({ aiMode: 'off' })
     typeAndParse('2 x Blue Molar Extractor')
-    expect(runSmartPastePipeline).not.toHaveBeenCalled()
+    expect(runCatalogSearch).not.toHaveBeenCalled()
   })
 
   it('skips the pipeline when fuzzy already matched every row above the floor', () => {
     setup()
     // Exact catalog name → auto_match at 100%, no low-confidence rows.
     typeAndParse('2 x Blue Molar Extractor')
-    expect(runSmartPastePipeline).not.toHaveBeenCalled()
+    expect(runCatalogSearch).not.toHaveBeenCalled()
     expect(screen.getByText(/100% match/)).toBeInTheDocument()
   })
 })
@@ -539,7 +534,7 @@ describe('SmartPasteWidget skip diagnostics (SMA-68)', () => {
   let errorSpy
 
   beforeEach(() => {
-    runSmartPastePipeline.mockReset()
+    runCatalogSearch.mockReset()
     infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {})
     warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {})
     errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => {})
@@ -561,7 +556,7 @@ describe('SmartPasteWidget skip diagnostics (SMA-68)', () => {
   })
 
   it('routes aiMode="small" with model loaded through the pipeline', async () => {
-    runSmartPastePipeline.mockResolvedValue({
+    runCatalogSearch.mockResolvedValue({
       extracted: [{ text: 'Mystery', qty: 1, description: '' }],
       rows: [
         {
@@ -576,7 +571,7 @@ describe('SmartPasteWidget skip diagnostics (SMA-68)', () => {
     })
     setup({ aiMode: 'small', aiReady: true })
     typeAndParse('Mystery Item')
-    await waitFor(() => expect(runSmartPastePipeline).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(runCatalogSearch).toHaveBeenCalledTimes(1))
     const skipCall = infoSpy.mock.calls.find(([tag]) => tag === 'smartPaste.pipeline_skipped')
     expect(skipCall).toBeFalsy()
     const started = infoSpy.mock.calls.find(([tag]) => tag === 'smartPaste.pipeline_started')
@@ -587,7 +582,7 @@ describe('SmartPasteWidget skip diagnostics (SMA-68)', () => {
     setup({ aiMode: 'small', aiReady: false })
     typeAndParse('4 x Mystery widget')
     expect(lastSkipReason()).toBe('model_not_loaded')
-    expect(runSmartPastePipeline).not.toHaveBeenCalled()
+    expect(runCatalogSearch).not.toHaveBeenCalled()
     const hint = screen.getByTestId('smart-paste-skip-hint')
     expect(hint).toHaveTextContent(/On-device model isn.?t loaded/i)
     expect(hint).toHaveTextContent(/Settings → AI/i)
@@ -603,7 +598,7 @@ describe('SmartPasteWidget skip diagnostics (SMA-68)', () => {
   })
 
   it('does not gate on context for aiMode="small" — pipeline runs without it', async () => {
-    runSmartPastePipeline.mockResolvedValue({
+    runCatalogSearch.mockResolvedValue({
       extracted: [{ text: 'Mystery', qty: 1, description: '' }],
       rows: [
         {
@@ -620,7 +615,7 @@ describe('SmartPasteWidget skip diagnostics (SMA-68)', () => {
     // The banner is BYOK-only; on-device should never render it.
     expect(screen.queryByTestId('smart-paste-context-banner')).not.toBeInTheDocument()
     typeAndParse('Mystery Item')
-    await waitFor(() => expect(runSmartPastePipeline).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(runCatalogSearch).toHaveBeenCalledTimes(1))
     const skipCall = infoSpy.mock.calls.find(([tag]) => tag === 'smartPaste.pipeline_skipped')
     expect(skipCall).toBeFalsy()
   })
@@ -675,7 +670,7 @@ describe('SmartPasteWidget skip diagnostics (SMA-68)', () => {
   })
 
   it('logs pipeline_started before invoking the pipeline on happy path', async () => {
-    runSmartPastePipeline.mockResolvedValue({
+    runCatalogSearch.mockResolvedValue({
       extracted: [{ text: 'Mystery', qty: 1, description: '' }],
       rows: [
         {
@@ -690,7 +685,7 @@ describe('SmartPasteWidget skip diagnostics (SMA-68)', () => {
     })
     setup()
     typeAndParse('Mystery Item')
-    await waitFor(() => expect(runSmartPastePipeline).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(runCatalogSearch).toHaveBeenCalledTimes(1))
     const started = infoSpy.mock.calls.find(([tag]) => tag === 'smartPaste.pipeline_started')
     expect(started).toBeTruthy()
     expect(started[1]).toMatchObject({
@@ -699,8 +694,8 @@ describe('SmartPasteWidget skip diagnostics (SMA-68)', () => {
     })
   })
 
-  it('logs pipeline_threw with the error message when the pipeline throws', async () => {
-    runSmartPastePipeline.mockRejectedValue(new Error('quota exceeded'))
+  it('logs pipeline_threw with the error message when runCatalogSearch throws', async () => {
+    runCatalogSearch.mockRejectedValue(new Error('quota exceeded'))
     const toast = vi.fn()
     setup({ toast })
     typeAndParse('Mystery Item')
@@ -712,8 +707,8 @@ describe('SmartPasteWidget skip diagnostics (SMA-68)', () => {
     expect(toast).toHaveBeenCalledWith(expect.stringContaining('AI extract failed'))
   })
 
-  it('retries once and warns when the pipeline throws "API key not configured"', async () => {
-    runSmartPastePipeline
+  it('retries once and warns when runCatalogSearch throws "API key not configured"', async () => {
+    runCatalogSearch
       .mockRejectedValueOnce(new Error('BYOK: API key not configured'))
       .mockResolvedValueOnce({
         extracted: [{ text: 'Mystery', qty: 1, description: '' }],
@@ -730,12 +725,11 @@ describe('SmartPasteWidget skip diagnostics (SMA-68)', () => {
       })
     setup()
     typeAndParse('Mystery Item')
-    await waitFor(() => expect(runSmartPastePipeline).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(runCatalogSearch).toHaveBeenCalledTimes(2))
     const warnCall = warnSpy.mock.calls.find(
       ([tag]) => tag === 'smartPaste.byok_key_not_hydrated_yet',
     )
     expect(warnCall).toBeTruthy()
-    // The retry succeeded — no error log should have been emitted.
     expect(errorSpy.mock.calls.find(([tag]) => tag === 'smartPaste.pipeline_threw')).toBeFalsy()
   })
 })

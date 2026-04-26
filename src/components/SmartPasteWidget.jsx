@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { cleanWhatsApp, extractItems, matchItems, fmt } from '../helpers.js'
 import { isSmartPasteContextSet } from '../contexts/SettingsContext.jsx'
 import { runCatalogSearch } from '../catalog/search.js'
@@ -93,9 +93,17 @@ export function SmartPasteWidget({
   const [corrections, setCorrections] = useState({})
   const [feedbackModal, setFeedbackModal] = useState(null)
   const rawPasteRef = useRef('')
+  const isMountedRef = useRef(true)
 
   const contextReady = isSmartPasteContextSet({ smartPasteContext })
   const showContextBanner = aiMode === 'byok' && !contextReady && !bannerDismissed
+
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
 
   const decide = (i, val) => setPasteDecisions((d) => ({ ...d, [i]: val }))
   const unmatch = (i) =>
@@ -317,33 +325,42 @@ export function SmartPasteWidget({
         try {
           pipelineResult = await invokePipeline()
         } catch (err2) {
+          if (typeof toast !== 'function') {
+            throw new Error('SmartPasteWidget: toast prop is not a function')
+          }
+          if (!isMountedRef.current) return
           logger.error('smartPaste.pipeline_threw', {
             message: String(err2?.message ?? err2),
           })
           setProcessing(null)
           setVisibleRowCount(fuzzyRows.length)
-          toast?.('AI extract failed — using fallback')
+          toast('AI extract failed — using fallback')
           return
         }
       } else {
+        if (typeof toast !== 'function') {
+          throw new Error('SmartPasteWidget: toast prop is not a function')
+        }
+        if (!isMountedRef.current) return
         logger.error('smartPaste.pipeline_threw', { message })
         setProcessing(null)
         setVisibleRowCount(fuzzyRows.length)
-        toast?.('AI extract failed — using fallback')
+        toast('AI extract failed — using fallback')
         return
       }
     }
 
     if (!pipelineResult || pipelineResult.fallback) {
-      // SMA-78: the on-device small model can hang indefinitely on
-      // pathological pastes. When the pipeline aborts via the wall-clock
-      // guard, route the user toward BYOK instead of silently blaming "AI".
       setProcessing(null)
       setVisibleRowCount(fuzzyRows.length)
+      if (typeof toast !== 'function') {
+        throw new Error('SmartPasteWidget: toast prop is not a function')
+      }
+      if (!isMountedRef.current) return
       if (pipelineResult?.fallbackReason === 'stage1_timeout') {
-        toast?.('On-device model taking too long — try cloud (BYOK)')
+        toast('On-device model taking too long — try cloud (BYOK)')
       } else {
-        toast?.('AI extract failed — using fallback')
+        toast('AI extract failed — using fallback')
       }
       return
     }
