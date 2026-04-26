@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 
 /**
- * Pull-to-refresh wrapper. The `onRefresh` prop MUST be wrapped in `useCallback` by the caller,
- * otherwise the listener may invoke a stale closure. Internally this component uses a ref to always
- * call the current `onRefresh` value without re-registering listeners on every render.
+ * Pull-to-refresh wrapper. Internally keeps an always-current ref to `onRefresh` so
+ * touch listeners are never re-registered when the callback identity changes.
+ * Callers do not need to wrap onRefresh in useCallback.
  */
 export function PullToRefresh({ onRefresh, enabled = true, children }) {
   const [ptState, setPtState] = useState('idle')
