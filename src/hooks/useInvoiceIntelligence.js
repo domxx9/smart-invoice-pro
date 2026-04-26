@@ -32,7 +32,7 @@ export function useInvoiceIntelligence({ invoice, products }) {
   invoice.items.forEach((item, idx) => {
     if (!item.desc || item.desc.trim() === '' || item.price === 0) return
     const catalogPrice = catalog.get(item.desc.toLowerCase())
-    if (catalogPrice === undefined) return
+    if (catalogPrice === undefined || catalogPrice <= 0) return
     const diff = item.price / catalogPrice
     if (diff >= 1.4) {
       issues.push({
