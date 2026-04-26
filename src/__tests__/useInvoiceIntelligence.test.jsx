@@ -108,6 +108,13 @@ describe('useInvoiceIntelligence — price anomaly detection', () => {
     expect(result.current.issues.some((i) => i.type === 'anomaly')).toBe(false)
   })
 
+  it('ignores items where catalog price is zero (avoids division by zero)', () => {
+    const invoice = buildInvoice([{ desc: 'Free Item', qty: 1, price: 0.01 }])
+    const products = [{ name: 'Free Item', price: 0 }]
+    const { result } = renderHook(() => useInvoiceIntelligence({ invoice, products }))
+    expect(result.current.issues.some((i) => i.type === 'anomaly')).toBe(false)
+  })
+
   it('matches by exact lowercased description', () => {
     const invoice = buildInvoice([{ desc: 'WEB DESIGN', qty: 1, price: 3000 }])
     const products = [{ name: 'web design', price: 100 }]

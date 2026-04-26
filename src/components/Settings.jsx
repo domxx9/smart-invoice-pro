@@ -13,6 +13,7 @@ import {
 import { useSettings } from '../contexts/SettingsContext.jsx'
 import { useToast } from '../contexts/ToastContext.jsx'
 import { SettingsSection } from './SettingsSection.jsx'
+import { ContactsImportSection } from './ContactsImportSection.jsx'
 import { PdfTemplateEditor } from './PdfTemplateEditor.jsx'
 import { FineTuneExportButton } from './FineTuneExportButton.jsx'
 import { Icon } from './Icon.jsx'
@@ -36,7 +37,7 @@ import {
 
 const LOG_LEVELS = ['debug', 'info', 'warn', 'error']
 
-export function Settings({ ai, onStartTour }) {
+export function Settings({ ai, onStartTour, contactsApi }) {
   const {
     aiModelId,
     aiDownloaded,
@@ -235,6 +236,31 @@ export function Settings({ ai, onStartTour }) {
   return (
     <div>
       <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: 20 }}>Settings</h2>
+
+      {!isNativePlatform() && (
+        <div
+          data-testid="web-storage-warning"
+          style={{
+            display: 'flex',
+            gap: 10,
+            alignItems: 'flex-start',
+            marginBottom: 16,
+            padding: '10px 12px',
+            borderRadius: 8,
+            background: 'rgba(255,170,0,.12)',
+            border: '1px solid rgba(255,170,0,.4)',
+            color: 'var(--text)',
+            fontSize: '.78rem',
+            lineHeight: 1.5,
+          }}
+        >
+          <span style={{ fontSize: '1rem', flexShrink: 0 }}>⚠️</span>
+          <span>
+            <strong>API keys are stored in sessionStorage</strong> — unencrypted and cleared when
+            you close this tab. For secure key storage use the <strong>mobile app</strong>.
+          </span>
+        </div>
+      )}
 
       {showLogs && (
         <div
@@ -728,6 +754,10 @@ export function Settings({ ai, onStartTour }) {
           </p>
         ) : null}
       </SettingsSection>
+
+      {contactsApi && (
+        <ContactsImportSection contactsApi={contactsApi} sqApiKey={s.sqApiKey} onToast={toast} />
+      )}
 
       <SettingsSection title="AI" dataTour="settings-ai">
         {/* ── Mode selector ── */}
