@@ -1,10 +1,18 @@
 import { useState, useEffect, useRef } from 'react'
 
+/**
+ * Pull-to-refresh wrapper. The `onRefresh` prop MUST be wrapped in `useCallback` by the caller,
+ * otherwise the listener may invoke a stale closure. Internally this component uses a ref to always
+ * call the current `onRefresh` value without re-registering listeners on every render.
+ */
 export function PullToRefresh({ onRefresh, enabled = true, children }) {
   const [ptState, setPtState] = useState('idle')
   const [pullPct, setPullPct] = useState(0)
   const startY = useRef(null)
+  const onRefreshRef = useRef(onRefresh)
   const THRESHOLD = 80
+
+  onRefreshRef.current = onRefresh
 
   useEffect(() => {
     if (!enabled) return
@@ -28,7 +36,7 @@ export function PullToRefresh({ onRefresh, enabled = true, children }) {
       if (didPull) {
         setPtState('refreshing')
         try {
-          await onRefresh()
+          await onRefreshRef.current()
         } finally {
           setPtState('idle')
         }
@@ -44,7 +52,7 @@ export function PullToRefresh({ onRefresh, enabled = true, children }) {
       document.removeEventListener('touchmove', onMove)
       document.removeEventListener('touchend', onEnd)
     }
-  }, [enabled, onRefresh])
+  }, [enabled])
 
   const visible = ptState === 'pulling' || ptState === 'refreshing'
   return (
