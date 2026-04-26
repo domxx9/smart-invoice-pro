@@ -272,7 +272,6 @@ describe('correctionStore', () => {
     })
 
     it('getStats uniqueMappings counts each normalized+product pair independently', () => {
-      // Same text → two different products = 2 unique mappings
       saveCorrection({
         originalText: 'widget',
         correctedProductId: 'p1',
@@ -283,7 +282,6 @@ describe('correctionStore', () => {
         correctedProductId: 'p2',
         correctedProductName: 'B',
       })
-      // Different text → same product = 1 more unique mapping
       saveCorrection({
         originalText: 'gadget',
         correctedProductId: 'p1',

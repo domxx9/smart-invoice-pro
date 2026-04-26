@@ -26,7 +26,6 @@ function saveEntries(entries) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(entries))
   } catch {
-    // Quota exceeded or storage unavailable — corrections will not persist this session
     console.warn('correctionStore: localStorage write failed, corrections not persisted')
   }
 }
