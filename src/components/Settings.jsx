@@ -753,9 +753,11 @@ export function Settings({ ai, onStartTour, contactsApi }) {
             {shopifyTestError}
           </p>
         ) : null}
-
-        <ContactsImportSection contactsApi={contactsApi} sqApiKey={s.sqApiKey} onToast={toast} />
       </SettingsSection>
+
+      {contactsApi && (
+        <ContactsImportSection contactsApi={contactsApi} sqApiKey={s.sqApiKey} onToast={toast} />
+      )}
 
       <SettingsSection title="AI" dataTour="settings-ai">
         {/* ── Mode selector ── */}
