@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
   saveCorrection,
   getCorrections,
@@ -298,6 +298,21 @@ describe('correctionStore', () => {
       clearCorrections()
       expect(localStorage.getItem('sip_correction_history_v1')).toBeNull()
       expect(getCorrections()).toEqual([])
+    })
+
+    it('saveCorrection does not throw when localStorage quota is exceeded', () => {
+      const original = localStorageMock.setItem
+      localStorageMock.setItem = vi.fn(() => {
+        throw new DOMException('QuotaExceededError')
+      })
+      expect(() =>
+        saveCorrection({
+          originalText: 'over quota',
+          correctedProductId: 'p1',
+          correctedProductName: 'P',
+        }),
+      ).not.toThrow()
+      localStorageMock.setItem = original
     })
   })
 })
