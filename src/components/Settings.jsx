@@ -13,6 +13,7 @@ import {
 import { useSettings } from '../contexts/SettingsContext.jsx'
 import { useToast } from '../contexts/ToastContext.jsx'
 import { SettingsSection } from './SettingsSection.jsx'
+import { ContactsImportSection } from './ContactsImportSection.jsx'
 import { PdfTemplateEditor } from './PdfTemplateEditor.jsx'
 import { FineTuneExportButton } from './FineTuneExportButton.jsx'
 import { Icon } from './Icon.jsx'
@@ -36,7 +37,7 @@ import {
 
 const LOG_LEVELS = ['debug', 'info', 'warn', 'error']
 
-export function Settings({ ai, onStartTour }) {
+export function Settings({ ai, onStartTour, contactsApi }) {
   const {
     aiModelId,
     aiDownloaded,
@@ -752,6 +753,8 @@ export function Settings({ ai, onStartTour }) {
             {shopifyTestError}
           </p>
         ) : null}
+
+        <ContactsImportSection contactsApi={contactsApi} sqApiKey={s.sqApiKey} onToast={toast} />
       </SettingsSection>
 
       <SettingsSection title="AI" dataTour="settings-ai">

@@ -39,6 +39,11 @@ function makeAiStub() {
   }
 }
 
+const contactsApiStub = {
+  contacts: [],
+  mergeContacts: vi.fn().mockReturnValue({ added: 0, skipped: 0 }),
+}
+
 function openIntegrations() {
   fireEvent.click(screen.getByRole('button', { expanded: false, name: /^Integrations/i }))
 }
@@ -47,7 +52,7 @@ function renderSettings() {
   const utils = render(
     <ToastProvider>
       <SettingsProvider>
-        <Settings ai={makeAiStub()} onStartTour={() => {}} />
+        <Settings ai={makeAiStub()} onStartTour={() => {}} contactsApi={contactsApiStub} />
       </SettingsProvider>
     </ToastProvider>,
   )
