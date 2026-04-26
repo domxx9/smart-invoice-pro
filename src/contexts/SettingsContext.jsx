@@ -2,6 +2,20 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 import { setCurrency, setInvoicePrefix, setInvoicePadding } from '../helpers.js'
 import { setSecret, getSecret, migrateKeysFromLocalStorage } from '../secure-storage.js'
 import { logger } from '../utils/logger.js'
+import { ToastContext } from './ToastContext.jsx'
+
+const NOOP_TOAST = () => {}
+
+function useToastOrNoop() {
+  let toast = NOOP_TOAST
+  try {
+    const ctx = useContext(ToastContext)
+    toast = ctx ? ctx.toast : NOOP_TOAST
+  } catch {
+    toast = NOOP_TOAST
+  }
+  return toast
+}
 
 const SettingsContext = createContext(null)
 
@@ -96,28 +110,35 @@ function loadSettings() {
 export function SettingsProvider({ children }) {
   const [settings, setSettings] = useState(loadSettings)
   const [hydrated, setHydrated] = useState(false)
+  const toast = useToastOrNoop()
 
   useEffect(() => {
     ;(async () => {
-      await migrateKeysFromLocalStorage()
-      const [sq, shop, bankAccount, bankIban, bankSwift] = await Promise.all([
-        getSecret('sip_sqApiKey'),
-        getSecret('sip_shopifyAccessToken'),
-        getSecret('sip_bankAccountNumber'),
-        getSecret('sip_bankIban'),
-        getSecret('sip_bankSwift'),
-      ])
-      setSettings((prev) => ({
-        ...prev,
-        ...(sq ? { sqApiKey: sq } : {}),
-        ...(shop ? { shopifyAccessToken: shop } : {}),
-        ...(bankAccount ? { bankAccountNumber: bankAccount } : {}),
-        ...(bankIban ? { bankIban } : {}),
-        ...(bankSwift ? { bankSwift } : {}),
-      }))
-      setHydrated(true)
+      try {
+        await migrateKeysFromLocalStorage()
+        const [sq, shop, bankAccount, bankIban, bankSwift] = await Promise.all([
+          getSecret('sip_sqApiKey'),
+          getSecret('sip_shopifyAccessToken'),
+          getSecret('sip_bankAccountNumber'),
+          getSecret('sip_bankIban'),
+          getSecret('sip_bankSwift'),
+        ])
+        setSettings((prev) => ({
+          ...prev,
+          ...(sq ? { sqApiKey: sq } : {}),
+          ...(shop ? { shopifyAccessToken: shop } : {}),
+          ...(bankAccount ? { bankAccountNumber: bankAccount } : {}),
+          ...(bankIban ? { bankIban } : {}),
+          ...(bankSwift ? { bankSwift } : {}),
+        }))
+      } catch (err) {
+        logger.error('SettingsContext: failed to load secure settings', err)
+        toast('Settings failed to load — some features may be unavailable', 'error', '⚠')
+      } finally {
+        setHydrated(true)
+      }
     })()
-  }, [])
+  }, [toast])
 
   const saveSettings = useCallback(
     async (s) => {

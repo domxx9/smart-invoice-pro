@@ -1,13 +1,26 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
-import { SettingsProvider } from '../SettingsContext.jsx'
+import { SettingsProvider, useSettings } from '../SettingsContext.jsx'
 import { ToastProvider } from '../ToastContext.jsx'
 import { logger } from '../../utils/logger.js'
+
+const { mockGetSecret, mockMigrateKeysFromLocalStorage } = vi.hoisted(() => ({
+  mockGetSecret: vi.fn(),
+  mockMigrateKeysFromLocalStorage: vi.fn(),
+}))
+
+vi.mock('../../secure-storage.js', () => ({
+  getSecret: mockGetSecret,
+  setSecret: vi.fn(),
+  migrateKeysFromLocalStorage: mockMigrateKeysFromLocalStorage,
+}))
 
 beforeEach(() => {
   localStorage.clear()
   logger.clear()
   logger.setMinLevel('error')
+  mockGetSecret.mockResolvedValue('')
+  mockMigrateKeysFromLocalStorage.mockResolvedValue(undefined)
 })
 
 function renderSettingsContext() {
@@ -18,6 +31,11 @@ function renderSettingsContext() {
       </SettingsProvider>
     </ToastProvider>,
   )
+}
+
+function GetHydrated() {
+  const { settings } = useSettings()
+  return <div data-testid="hydrated">{String(settings !== null)}</div>
 }
 
 describe('SettingsContext — localStorage corruption recovery', () => {
@@ -51,5 +69,24 @@ describe('SettingsContext — localStorage corruption recovery', () => {
   it('handles missing sip_settings key without crashing', async () => {
     renderSettingsContext()
     await waitFor(() => screen.getByText('loaded'))
+  })
+
+  it('still calls setHydrated(true) when getSecret throws', async () => {
+    mockGetSecret.mockRejectedValue(new Error('Capacitor storage unavailable'))
+    render(
+      <ToastProvider>
+        <SettingsProvider>
+          <GetHydrated />
+        </SettingsProvider>
+      </ToastProvider>,
+    )
+    await waitFor(() => expect(screen.getByTestId('hydrated')).toHaveTextContent('true'))
+  })
+
+  it('renders children after secure settings failure (degraded mode)', async () => {
+    mockGetSecret.mockRejectedValue(new Error('storage failure'))
+    renderSettingsContext()
+    await waitFor(() => screen.getByText('loaded'))
+    expect(screen.getByText('loaded')).toBeInTheDocument()
   })
 })
