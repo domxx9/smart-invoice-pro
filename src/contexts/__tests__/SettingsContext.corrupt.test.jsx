@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { SettingsProvider, useSettings } from '../SettingsContext.jsx'
-import { ToastProvider } from '../ToastContext.jsx'
+import { ToastProvider, useToast } from '../ToastContext.jsx'
 import { logger } from '../../utils/logger.js'
 
 const { mockGetSecret, mockMigrateKeysFromLocalStorage } = vi.hoisted(() => ({
@@ -23,11 +23,25 @@ beforeEach(() => {
   mockMigrateKeysFromLocalStorage.mockResolvedValue(undefined)
 })
 
+function ToastDisplay() {
+  const { toasts } = useToast()
+  return (
+    <>
+      {toasts.map((t) => (
+        <div key={t.id} data-testid="toast">
+          {t.message}
+        </div>
+      ))}
+    </>
+  )
+}
+
 function renderSettingsContext() {
   return render(
     <ToastProvider>
       <SettingsProvider>
         <div>loaded</div>
+        <ToastDisplay />
       </SettingsProvider>
     </ToastProvider>,
   )
@@ -81,6 +95,14 @@ describe('SettingsContext — localStorage corruption recovery', () => {
       </ToastProvider>,
     )
     await waitFor(() => expect(screen.getByTestId('hydrated')).toHaveTextContent('true'))
+  })
+
+  it('logs error and shows toast when migrateKeysFromLocalStorage throws', async () => {
+    mockMigrateKeysFromLocalStorage.mockRejectedValue(new Error('migration failed'))
+    renderSettingsContext()
+    await waitFor(() =>
+      expect(screen.getByTestId('toast')).toHaveTextContent(/settings failed to load/i),
+    )
   })
 
   it('renders children after secure settings failure (degraded mode)', async () => {

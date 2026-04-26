@@ -7,14 +7,8 @@ import { ToastContext } from './ToastContext.jsx'
 const NOOP_TOAST = () => {}
 
 function useToastOrNoop() {
-  let toast = NOOP_TOAST
-  try {
-    const ctx = useContext(ToastContext)
-    toast = ctx ? ctx.toast : NOOP_TOAST
-  } catch {
-    toast = NOOP_TOAST
-  }
-  return toast
+  const ctx = useContext(ToastContext)
+  return ctx ? ctx.toast : NOOP_TOAST
 }
 
 const SettingsContext = createContext(null)
