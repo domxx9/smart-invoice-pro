@@ -16,7 +16,12 @@ export function useCatalogSync({
 }) {
   const [products, setProducts] = useState(() => {
     const s = localStorage.getItem('sip_products')
-    return s ? JSON.parse(s) : SAMPLE_PRODUCTS
+    try {
+      return s ? JSON.parse(s) : SAMPLE_PRODUCTS
+    } catch {
+      console.warn('sip_products parse error — falling back to sample products')
+      return SAMPLE_PRODUCTS
+    }
   })
   const [lastSynced, setLastSynced] = useState(() => {
     const ts = localStorage.getItem('sip_products_synced_at')

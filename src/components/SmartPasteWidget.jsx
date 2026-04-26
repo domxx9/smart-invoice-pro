@@ -395,7 +395,6 @@ export function SmartPasteWidget({
       })
     })
 
-    // SMA-173: show feedback modal if user made corrections
     if (correctionList.length > 0) {
       setFeedbackModal({ corrections: correctionList, rawText: rawPasteRef.current })
     }

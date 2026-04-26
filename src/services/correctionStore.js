@@ -23,7 +23,11 @@ function loadEntries() {
 }
 
 function saveEntries(entries) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(entries))
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries))
+  } catch {
+    console.warn('correctionStore: localStorage write failed, corrections not persisted')
+  }
 }
 
 export function saveCorrection({ originalText, correctedProductId, correctedProductName }) {

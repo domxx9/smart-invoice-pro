@@ -1,8 +1,17 @@
 import { useState } from 'react'
 import { fmt, searchGroups, groupProducts, timeAgo } from '../helpers.js'
+import { useCatalog } from '../contexts/CatalogContext.jsx'
+import { useSettings } from '../contexts/SettingsContext.jsx'
 import { Icon } from './Icon.jsx'
 
-export function Inventory({ products, onSync, syncStatus, syncCount, hasApiKey, lastSynced }) {
+export function Inventory() {
+  const { catalog } = useCatalog()
+  const { settings } = useSettings()
+  const hasApiKey =
+    settings.activeIntegration === 'shopify'
+      ? !!(settings.shopifyShopDomain && settings.shopifyAccessToken)
+      : !!settings.sqApiKey
+  const { products, handleSyncCatalog, syncStatus, syncCount, lastSynced } = catalog
   const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState(new Set())
 
@@ -41,7 +50,7 @@ export function Inventory({ products, onSync, syncStatus, syncCount, hasApiKey, 
         </div>
         <button
           className="btn btn-ghost btn-sm"
-          onClick={onSync}
+          onClick={handleSyncCatalog}
           disabled={!hasApiKey || syncStatus === 'syncing'}
           title={!hasApiKey ? 'Add Squarespace API key in Settings first' : ''}
         >

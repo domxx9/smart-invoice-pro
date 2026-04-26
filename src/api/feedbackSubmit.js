@@ -1,6 +1,6 @@
 import { logger } from '../utils/logger.js'
 
-const PAPERCLIP_URL = 'http://100.106.180.104:3100'
+const PAPERCLIP_URL = import.meta.env.VITE_PAPERCLIP_URL || 'http://localhost:3100'
 const COMPANY_ID = 'c262e348-7044-4326-80ca-496a018bf1e4'
 
 export async function submitPasteFeedback({ rawText, corrections, timestamp }) {
