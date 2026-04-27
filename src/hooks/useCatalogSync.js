@@ -96,7 +96,9 @@ export function useCatalogSync({
         syncManagerRef.current = manager
 
         try {
-          const result = await manager.runInitialSync()
+          let stats = null
+          const captureStats = (s) => { stats = s }
+          const result = await manager.runInitialSync(null, captureStats)
           saveProducts(result)
           const syncedAt = await storage.get('products_synced_at')
           if (syncedAt) {
@@ -105,8 +107,7 @@ export function useCatalogSync({
             localStorage.setItem('sip_products_synced_at', String(ts))
           }
           setSyncStatus('ok')
-          const stats = { parentCount: result.length, variantCount: result.length }
-          if (typeof onSyncStats === 'function') {
+          if (stats && typeof onSyncStats === 'function') {
             try {
               onSyncStats(stats)
             } catch {
@@ -199,7 +200,7 @@ export function useCatalogSync({
       if (!sqApiKey) return setSyncStatus('idle')
 
       if (syncManagerRef.current) {
-        const result = await syncManagerRef.current.runInitialSync()
+        const result = await syncManagerRef.current.runInitialSync(null, captureStats)
         saveProducts(result)
         setSyncStatus('ok')
         if (stats && typeof onSyncStats === 'function') {
@@ -220,7 +221,7 @@ export function useCatalogSync({
           },
         })
         syncManagerRef.current = manager
-        const result = await manager.runInitialSync()
+        const result = await manager.runInitialSync(null, captureStats)
         saveProducts(result)
         setSyncStatus('ok')
         if (stats && typeof onSyncStats === 'function') {

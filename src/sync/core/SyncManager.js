@@ -5,8 +5,8 @@ export class SyncManager {
     this.onProgress = onProgress ?? (() => {})
   }
 
-  async runInitialSync() {
-    const products = await this.adapter.fetchInitial()
+  async runInitialSync(onProgress, onStats) {
+    const products = await this.adapter.fetchInitial(onProgress, onStats)
     const localProducts = (await this.storage.get('products')) ?? []
     const merged = this._merge(products, localProducts)
     await this.storage.set('products', merged)
