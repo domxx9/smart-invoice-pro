@@ -29,6 +29,7 @@ export function useCatalogSync({
   const [syncCount, setSyncCount] = useState(0)
   const syncManagerRef = useRef(null)
   const scheduledRef = useRef(false)
+  const fallbackCleanupRef = useRef(null)
 
   const saveProducts = useCallback((prods) => {
     setProducts(prods)
@@ -50,12 +51,14 @@ export function useCatalogSync({
         details: {},
       }).catch((err) => {
         console.warn('[useCatalogSync] BackgroundRunner dispatch failed', err)
-        fallbackEnrichmentInterval()
+        const cleanup = fallbackEnrichmentInterval()
+        fallbackCleanupRef.current = cleanup
       })
     } else {
-      fallbackEnrichmentInterval()
+      const cleanup = fallbackEnrichmentInterval()
+      fallbackCleanupRef.current = cleanup
     }
-  }, [])
+  }, [fallbackEnrichmentInterval])
 
   const fallbackEnrichmentInterval = useCallback(() => {
     const interval = setInterval(
@@ -143,6 +146,13 @@ export function useCatalogSync({
     }
 
     runPhase1()
+
+    return () => {
+      if (fallbackCleanupRef.current) {
+        fallbackCleanupRef.current()
+        fallbackCleanupRef.current = null
+      }
+    }
   }, [
     sqApiKey,
     shopifyAccessToken,

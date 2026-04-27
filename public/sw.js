@@ -45,7 +45,7 @@ self.addEventListener('message', e => {
     return
   }
   self.clients.matchAll({ type: 'window' }).then(clients => {
-    const url = `/api/sqsp/1.0/commerce/products`
+    const url = `https://api.squarespace.com/1.0/commerce/products`
     fetch(url, {
       headers: { Authorization: `Bearer ${apiKey}` },
     })
