@@ -188,7 +188,7 @@ describe('Settings — Smart Paste AI Context section', () => {
 
 describe('Settings — auto-save debounce (SMA-218)', () => {
   beforeEach(() => {
-    vi.useFakeTimers()
+    vi.useFakeTimers({ shouldAdvanceTime: true })
   })
 
   afterEach(() => {

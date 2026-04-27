@@ -99,6 +99,14 @@ export function Settings({ ai, onStartTour, contactsApi }) {
     return () => clearInterval(id)
   }, [showLogs])
 
+  // Debounced auto-save: flush settings to storage ~1 s after the user stops typing.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      saveSettings(s)
+    }, 1000)
+    return () => clearTimeout(timer)
+  }, [s, saveSettings])
+
   const downloadLogs = () => {
     const text = logger.toText()
     const blob = new Blob([text], { type: 'text/plain' })
