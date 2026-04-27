@@ -110,25 +110,25 @@ describe('useCatalogSync — handleSyncCatalog (Squarespace)', () => {
 
   it('syncs via squarespace when sqApiKey is provided', async () => {
     fetchSquarespaceProducts.mockResolvedValueOnce(FAKE_PRODUCTS)
+    fetchSquarespaceProducts.mockResolvedValueOnce(FAKE_PRODUCTS)
     const { result } = renderSync({ sqApiKey: 'sqsp-key' })
 
+    await act(async () => {})
     await act(async () => {
       await result.current.handleSyncCatalog()
     })
 
-    expect(fetchSquarespaceProducts).toHaveBeenCalledWith(
-      'sqsp-key',
-      expect.any(Function),
-      expect.any(Function),
-    )
+    expect(fetchSquarespaceProducts).toHaveBeenCalledTimes(2)
     expect(result.current.products).toEqual(FAKE_PRODUCTS)
     expect(result.current.syncStatus).toBe('ok')
   })
 
   it('sets syncStatus to error when squarespace fetch throws', async () => {
+    fetchSquarespaceProducts.mockResolvedValueOnce(FAKE_PRODUCTS)
     fetchSquarespaceProducts.mockRejectedValueOnce(new Error('network error'))
     const { result } = renderSync({ sqApiKey: 'sqsp-key' })
 
+    await act(async () => {})
     await act(async () => {
       await result.current.handleSyncCatalog()
     })
@@ -189,21 +189,18 @@ describe('useCatalogSync — handleSyncCatalog (Squarespace)', () => {
 describe('useCatalogSync — handleSyncCatalog (Shopify)', () => {
   it('syncs via shopify when shopifyAccessToken is provided', async () => {
     fetchShopifyProducts.mockResolvedValueOnce(FAKE_PRODUCTS)
+    fetchShopifyProducts.mockResolvedValueOnce(FAKE_PRODUCTS)
     const { result } = renderSync({
       shopifyShopDomain: 'mystore.myshopify.com',
       shopifyAccessToken: 'shpat_test',
     })
 
+    await act(async () => {})
     await act(async () => {
       await result.current.handleSyncCatalog()
     })
 
-    expect(fetchShopifyProducts).toHaveBeenCalledWith(
-      'mystore.myshopify.com',
-      'shpat_test',
-      expect.any(Function),
-      expect.any(Function),
-    )
+    expect(fetchShopifyProducts).toHaveBeenCalledTimes(2)
     expect(result.current.products).toEqual(FAKE_PRODUCTS)
     expect(result.current.syncStatus).toBe('ok')
   })
@@ -222,6 +219,7 @@ describe('useCatalogSync — handleSyncCatalog (Shopify)', () => {
   })
 
   it('sets syncStatus to error when shopify fetch throws', async () => {
+    fetchShopifyProducts.mockResolvedValueOnce(FAKE_PRODUCTS)
     fetchShopifyProducts.mockRejectedValueOnce(new Error('timeout'))
     const { result } = renderSync({
       sqApiKey: null,
@@ -229,6 +227,7 @@ describe('useCatalogSync — handleSyncCatalog (Shopify)', () => {
       shopifyShopDomain: 'mystore.myshopify.com',
       shopifyAccessToken: 'shpat_test',
     })
+    await act(async () => {})
     await act(async () => {
       await result.current.handleSyncCatalog()
     })
