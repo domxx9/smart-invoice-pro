@@ -39,10 +39,10 @@ export class SquarespaceAdapter extends BaseAdapter {
   }
 
   async getCheckpoint() {
-    return this.storage.get('sip_sync_checkpoint') ?? null
+    return this.storage.get('sync_checkpoint') ?? null
   }
 
   async saveCheckpoint(checkpoint) {
-    await this.storage.set('sip_sync_checkpoint', checkpoint)
+    await this.storage.set('sync_checkpoint', checkpoint)
   }
 }
