@@ -100,9 +100,15 @@ export function Settings({ ai, onStartTour, contactsApi }) {
   }, [showLogs])
 
   // Debounced auto-save: flush settings to storage ~1 s after the user stops typing.
+  const isFirstRender = useRef(true)
   useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false
+      return
+    }
     const timer = setTimeout(() => {
       saveSettings(s)
+      toast('Settings saved', 'success', '✓')
     }, 1000)
     return () => clearTimeout(timer)
   }, [s, saveSettings])
@@ -1844,17 +1850,6 @@ export function Settings({ ai, onStartTour, contactsApi }) {
           </button>
         </div>
       </SettingsSection>
-
-      <button
-        className="btn btn-primary btn-sm"
-        style={{ marginTop: 12, alignSelf: 'flex-start' }}
-        onClick={() => {
-          saveSettings(s)
-          toast('Settings saved', 'success', '✓')
-        }}
-      >
-        <Icon name="check" /> Save Settings
-      </button>
     </div>
   )
 }

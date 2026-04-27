@@ -64,6 +64,7 @@ describe('Settings — Billing Information', () => {
   })
 
   it('persists non-sensitive fields to localStorage without leaking bank account number', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
     renderSettings()
     openSection(/^Billing Information/)
 
@@ -71,7 +72,8 @@ describe('Settings — Billing Information', () => {
     fireEvent.change(screen.getByLabelText(/Sort Code/), { target: { value: '12-34-56' } })
     fireEvent.change(screen.getByLabelText(/Account Number/), { target: { value: '87654321' } })
 
-    fireEvent.click(screen.getByRole('button', { name: /Save Settings/ }))
+    vi.advanceTimersByTime(1100)
+    vi.useRealTimers()
 
     await waitFor(() => {
       const saved = JSON.parse(localStorage.getItem('sip_settings') || '{}')
@@ -92,6 +94,7 @@ describe('Settings — Tax & Compliance', () => {
   })
 
   it('persists tax label, number, and company number to localStorage', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
     renderSettings()
     openSection(/^Tax & Compliance/)
 
@@ -99,7 +102,8 @@ describe('Settings — Tax & Compliance', () => {
     fireEvent.change(screen.getByLabelText(/^Number/), { target: { value: '123-456-789' } })
     fireEvent.change(screen.getByLabelText(/Company Number/), { target: { value: '12345678' } })
 
-    fireEvent.click(screen.getByRole('button', { name: /Save Settings/ }))
+    vi.advanceTimersByTime(1100)
+    vi.useRealTimers()
 
     await waitFor(() => {
       const saved = JSON.parse(localStorage.getItem('sip_settings') || '{}')

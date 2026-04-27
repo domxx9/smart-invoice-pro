@@ -124,6 +124,7 @@ describe('Settings — Smart Paste AI Context section', () => {
   })
 
   it('round-trips preset selections through localStorage across remount', () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
     const values = {
       'Product type': 'artisan cheese',
       'Shop type': SHOP_TYPE_OPTIONS[0],
@@ -139,8 +140,9 @@ describe('Settings — Smart Paste AI Context section', () => {
         target: { value },
       })
     }
-    fireEvent.click(screen.getByRole('button', { name: /Save Settings/i }))
+    vi.advanceTimersByTime(1100)
     first.unmount()
+    vi.useRealTimers()
 
     const stored = JSON.parse(localStorage.getItem('sip_settings'))
     expect(stored.smartPasteContext).toEqual({
@@ -241,6 +243,17 @@ describe('Settings — auto-save debounce (SMA-218)', () => {
 
     const storedAfter = JSON.parse(localStorage.getItem('sip_settings') || '{}')
     expect(storedAfter.businessName).toBe('Second')
+  })
+
+  it('does not fire save on initial mount — isFirstRender guard prevents mount-fire', () => {
+    const initialSettings = { businessName: 'Mount Fire Test', smartPasteContext: {} }
+    localStorage.setItem('sip_settings', JSON.stringify(initialSettings))
+
+    renderSettings()
+    vi.advanceTimersByTime(2000)
+
+    const stored = JSON.parse(localStorage.getItem('sip_settings') || '{}')
+    expect(stored.businessName).toBe('Mount Fire Test')
   })
 })
 
