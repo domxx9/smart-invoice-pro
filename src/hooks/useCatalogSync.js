@@ -39,6 +39,21 @@ export function useCatalogSync({
     localStorage.setItem('sip_products_synced_at', String(ts))
   }, [])
 
+  const fallbackEnrichmentInterval = useCallback(() => {
+    const interval = setInterval(
+      async () => {
+        if (!syncManagerRef.current) return
+        try {
+          await syncManagerRef.current.runEnrichmentChunk()
+        } catch (err) {
+          console.warn('[useCatalogSync] enrichment interval error', err)
+        }
+      },
+      30 * 60 * 1000,
+    )
+    return () => clearInterval(interval)
+  }, [])
+
   const scheduleEnrichment = useCallback(() => {
     if (scheduledRef.current) return
     scheduledRef.current = true
@@ -59,21 +74,6 @@ export function useCatalogSync({
       fallbackCleanupRef.current = cleanup
     }
   }, [fallbackEnrichmentInterval])
-
-  const fallbackEnrichmentInterval = useCallback(() => {
-    const interval = setInterval(
-      async () => {
-        if (!syncManagerRef.current) return
-        try {
-          await syncManagerRef.current.runEnrichmentChunk()
-        } catch (err) {
-          console.warn('[useCatalogSync] enrichment interval error', err)
-        }
-      },
-      30 * 60 * 1000,
-    )
-    return () => clearInterval(interval)
-  }, [])
 
   useEffect(() => {
     const storage = new LocalStorageSync('sip')
@@ -97,7 +97,9 @@ export function useCatalogSync({
 
         try {
           let stats = null
-          const captureStats = (s) => { stats = s }
+          const captureStats = (s) => {
+            stats = s
+          }
           const result = await manager.runInitialSync(null, captureStats)
           saveProducts(result)
           const syncedAt = await storage.get('products_synced_at')
