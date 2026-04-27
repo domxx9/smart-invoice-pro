@@ -224,14 +224,14 @@ describe('useCatalogSync — handleSyncCatalog (Shopify)', () => {
   it('sets syncStatus to error when shopify fetch throws', async () => {
     fetchShopifyProducts.mockRejectedValueOnce(new Error('timeout'))
     const { result } = renderSync({
+      sqApiKey: null,
+      activeIntegration: 'shopify',
       shopifyShopDomain: 'mystore.myshopify.com',
       shopifyAccessToken: 'shpat_test',
     })
-
     await act(async () => {
       await result.current.handleSyncCatalog()
     })
-
     expect(result.current.syncStatus).toBe('error')
   })
 })

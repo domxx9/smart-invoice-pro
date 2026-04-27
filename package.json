@@ -31,6 +31,7 @@
     ]
   },
   "dependencies": {
+    "@capacitor/background-runner": "^3.0.0",
     "@capacitor-community/contacts": "^7.1.0",
     "@capacitor-community/file-opener": "^8.0.0",
     "@capacitor/android": "^8.3.0",

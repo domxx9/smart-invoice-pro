@@ -3,5 +3,15 @@
   "appName": "Smart Invoice Pro",
   "webDir": "dist",
   "android": { "allowMixedContent": false },
-  "server": { "androidScheme": "https" }
+  "server": { "androidScheme": "https" },
+  "plugins": {
+    "BackgroundRunner": {
+      "label": "com.smartinvoicepro.background.enrichment",
+      "src": "runners/background.js",
+      "event": "enrich_chunk",
+      "repeat": true,
+      "interval": 30,
+      "autoStart": false
+    }
+  }
 }

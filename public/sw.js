@@ -18,7 +18,6 @@ self.addEventListener('activate', e => {
 })
 
 self.addEventListener('fetch', e => {
-  // Only handle same-origin requests — let external API calls pass through
   if (!e.request.url.startsWith(self.location.origin)) return
 
   if (e.request.url.includes('/api/')) {
@@ -36,4 +35,37 @@ self.addEventListener('fetch', e => {
       )
     )
   }
+})
+
+self.addEventListener('message', e => {
+  if (!e.data || e.data.type !== 'ENRICH_CHUNK') return
+  const { apiKey, checkpoint } = e.data
+  if (!apiKey) {
+    e.source.postMessage({ type: 'ENRICH_RESULT', error: 'no api key' })
+    return
+  }
+  self.clients.matchAll({ type: 'window' }).then(clients => {
+    const url = `/api/sqsp/1.0/commerce/products`
+    fetch(url, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    })
+      .then(res => res.json())
+      .then(data => {
+        const products = Array.isArray(data.products) ? data.products : []
+        const pending = products.filter(p => !(checkpoint?.processedIds || []).includes(p.id))
+        const batch = pending.slice(0, 2).map(p => ({
+          ...p,
+          desc: p.description || '',
+          images: (p.images || []).slice(0, 2),
+        }))
+        const newProcessedIds = [...(checkpoint?.processedIds || []), ...batch.map(p => p.id)]
+        e.source.postMessage({
+          type: 'ENRICH_RESULT',
+          data: batch,
+          checkpoint: { cursor: String(pending.findIndex(x => x.id === batch[batch.length - 1]?.id) + 1), processedIds: newProcessedIds },
+          done: batch.length === 0 || pending.length <= 2,
+        })
+      })
+      .catch(err => e.source.postMessage({ type: 'ENRICH_RESULT', error: String(err) }))
+  })
 })
