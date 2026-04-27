@@ -28,7 +28,13 @@ describe('PickerCard', () => {
 
   it('renders the empty state when items is empty', () => {
     render(
-      <PickerCard items={[]} picks={{}} unavailable={{}} onPick={() => {}} onUnavailable={() => {}} />,
+      <PickerCard
+        items={[]}
+        picks={{}}
+        unavailable={{}}
+        onPick={() => {}}
+        onUnavailable={() => {}}
+      />,
     )
     expect(screen.getByText(/nothing to pick/i)).toBeInTheDocument()
   })
@@ -110,6 +116,73 @@ describe('PickerCard', () => {
 
     act(() => topHandlers().onSwipedRight())
     expect(screen.getByText(/all items reviewed/i)).toBeInTheDocument()
+  })
+
+  it('renders the first image as a full-width hero when images are present', () => {
+    const { container } = render(
+      <PickerCard
+        items={[
+          {
+            name: 'Widget',
+            qty: 1,
+            images: [
+              'https://cdn.example.com/hero.jpg',
+              'https://cdn.example.com/thumb1.jpg',
+              'https://cdn.example.com/thumb2.jpg',
+            ],
+          },
+        ]}
+        picks={{}}
+        unavailable={{}}
+        onPick={() => {}}
+        onUnavailable={() => {}}
+      />,
+    )
+    const imgs = container.querySelectorAll('img')
+    expect(imgs.length).toBe(3)
+    expect(imgs[0]).toHaveAttribute('src', 'https://cdn.example.com/hero.jpg')
+  })
+
+  it('renders a grey placeholder with camera icon when no images', () => {
+    const { container } = render(
+      <PickerCard
+        items={[{ name: 'Widget', qty: 1 }]}
+        picks={{}}
+        unavailable={{}}
+        onPick={() => {}}
+        onUnavailable={() => {}}
+      />,
+    )
+    const svg = container.querySelector('svg')
+    expect(svg).not.toBeNull()
+  })
+
+  it('renders thumbnails below the hero from slice(1, 4)', () => {
+    const { container } = render(
+      <PickerCard
+        items={[
+          {
+            name: 'Widget',
+            qty: 1,
+            images: [
+              'https://cdn.example.com/hero.jpg',
+              'https://cdn.example.com/t1.jpg',
+              'https://cdn.example.com/t2.jpg',
+              'https://cdn.example.com/t3.jpg',
+            ],
+          },
+        ]}
+        picks={{}}
+        unavailable={{}}
+        onPick={() => {}}
+        onUnavailable={() => {}}
+      />,
+    )
+    const imgs = container.querySelectorAll('img')
+    expect(imgs.length).toBe(4)
+    expect(imgs[1]).toHaveAttribute('src', 'https://cdn.example.com/t1.jpg')
+    expect(imgs[2]).toHaveAttribute('src', 'https://cdn.example.com/t2.jpg')
+    expect(imgs[3]).toHaveAttribute('src', 'https://cdn.example.com/t3.jpg')
   })
 
   it('renders images with loading="lazy" when provided', () => {

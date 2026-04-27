@@ -5,10 +5,13 @@ vi.mock('react-swipeable', () => ({
   useSwipeable: vi.fn(() => ({})),
 }))
 
-import { useSwipeable } from 'react-swipeable'
 import { ImageCarousel } from '../ImageCarousel.jsx'
 
-const images = ['https://cdn.example.com/1.jpg', 'https://cdn.example.com/2.jpg', 'https://cdn.example.com/3.jpg']
+const images = [
+  'https://cdn.example.com/1.jpg',
+  'https://cdn.example.com/2.jpg',
+  'https://cdn.example.com/3.jpg',
+]
 
 describe('ImageCarousel', () => {
   it('renders a modal dialog with correct aria attributes', () => {
@@ -26,7 +29,7 @@ describe('ImageCarousel', () => {
 
   it('renders the first image initially', () => {
     render(<ImageCarousel images={images} name="Widget" onClose={() => {}} />)
-    const img = screen.getByAltText('Widget image 1')
+    const img = screen.getByAltText('Widget 1')
     expect(img).toHaveAttribute('src', 'https://cdn.example.com/1.jpg')
   })
 
@@ -39,6 +42,7 @@ describe('ImageCarousel', () => {
 
   it('shows placeholder when images array is empty', () => {
     render(<ImageCarousel images={[]} name="Widget" onClose={() => {}} />)
-    expect(screen.getByText('1 / 0')).toBeInTheDocument()
+    expect(screen.getByText('No images')).toBeInTheDocument()
+    expect(screen.getByLabelText('Close image viewer')).toBeInTheDocument()
   })
 })

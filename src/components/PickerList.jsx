@@ -1,16 +1,22 @@
 import { useState, useCallback } from 'react'
 import { PickerQuantity } from './PickerQuantity.jsx'
+import { ImageCarousel } from './ImageCarousel.jsx'
 
-function PickerRow({ item, idx, picked, isUnavailable, onPick, onUnavailable }) {
+function PickerRow({ item, idx, picked, isUnavailable, onPick, onUnavailable, onImageTap }) {
   const [open, setOpen] = useState(false)
   const ordered = Math.max(0, Math.floor(Number(item?.qty) || 0))
   const done = ordered > 0 && picked >= ordered
-  const hasDetails =
-    Boolean(item?.description) || (Array.isArray(item?.images) && item.images.length > 0)
+  const hasImages = Array.isArray(item?.images) && item.images.length > 0
+  const hasDetails = Boolean(item?.description) || hasImages
 
   const toggle = useCallback(() => {
     if (hasDetails) setOpen((v) => !v)
   }, [hasDetails])
+
+  const handleImageTap = useCallback(() => {
+    if (hasImages) onImageTap(item)
+    else if (hasDetails) setOpen((v) => !v)
+  }, [hasImages, hasDetails, item, onImageTap])
 
   const toggleCheckbox = () => onPick(idx, done ? 0 : 1)
 
@@ -65,7 +71,9 @@ function PickerRow({ item, idx, picked, isUnavailable, onPick, onUnavailable }) 
           {ordered === 1 ? (
             <button
               type="button"
-              aria-label={done ? `Mark ${item?.name} as not picked` : `Mark ${item?.name} as picked`}
+              aria-label={
+                done ? `Mark ${item?.name} as not picked` : `Mark ${item?.name} as picked`
+              }
               aria-pressed={done}
               onClick={toggleCheckbox}
               style={{
@@ -143,7 +151,20 @@ function PickerRow({ item, idx, picked, isUnavailable, onPick, onUnavailable }) 
             </p>
           )}
           {Array.isArray(item?.images) && item.images.length > 0 && (
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={handleImageTap}
+              data-testid={`picker-row-${idx}-images`}
+              style={{
+                display: 'flex',
+                gap: 8,
+                flexWrap: 'wrap',
+                background: 'none',
+                border: 'none',
+                padding: 0,
+                cursor: 'pointer',
+              }}
+            >
               {item.images.map((src, i) => (
                 <img
                   key={i}
@@ -153,7 +174,7 @@ function PickerRow({ item, idx, picked, isUnavailable, onPick, onUnavailable }) 
                   style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8 }}
                 />
               ))}
-            </div>
+            </button>
           )}
         </div>
       )}
@@ -163,6 +184,11 @@ function PickerRow({ item, idx, picked, isUnavailable, onPick, onUnavailable }) 
 
 export function PickerList({ items, picks, unavailable, onPick, onUnavailable }) {
   const list = Array.isArray(items) ? items : []
+  const [carouselItem, setCarouselItem] = useState(null)
+
+  const openCarousel = useCallback((item) => setCarouselItem(item), [])
+  const closeCarousel = useCallback(() => setCarouselItem(null), [])
+
   if (list.length === 0) {
     return (
       <div
@@ -174,18 +200,28 @@ export function PickerList({ items, picks, unavailable, onPick, onUnavailable })
     )
   }
   return (
-    <div className="picker-list" data-testid="picker-list">
-      {list.map((item, i) => (
-        <PickerRow
-          key={i}
-          item={item}
-          idx={i}
-          picked={picks?.[i] ?? 0}
-          isUnavailable={!!unavailable?.[i]}
-          onPick={onPick}
-          onUnavailable={onUnavailable}
+    <>
+      <div className="picker-list" data-testid="picker-list">
+        {list.map((item, i) => (
+          <PickerRow
+            key={i}
+            item={item}
+            idx={i}
+            picked={picks?.[i] ?? 0}
+            isUnavailable={!!unavailable?.[i]}
+            onPick={onPick}
+            onUnavailable={onUnavailable}
+            onImageTap={openCarousel}
+          />
+        ))}
+      </div>
+      {carouselItem && (
+        <ImageCarousel
+          images={carouselItem.images}
+          name={carouselItem.name}
+          onClose={closeCarousel}
         />
-      ))}
-    </div>
+      )}
+    </>
   )
 }

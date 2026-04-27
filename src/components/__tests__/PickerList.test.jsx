@@ -30,7 +30,15 @@ function setup(overrides = {}) {
 
 describe('PickerList', () => {
   it('renders an empty state when items is empty', () => {
-    render(<PickerList items={[]} picks={{}} unavailable={{}} onPick={() => {}} onUnavailable={() => {}} />)
+    render(
+      <PickerList
+        items={[]}
+        picks={{}}
+        unavailable={{}}
+        onPick={() => {}}
+        onUnavailable={() => {}}
+      />,
+    )
     expect(screen.getByText(/nothing to pick/i)).toBeInTheDocument()
   })
 
@@ -88,5 +96,43 @@ describe('PickerList', () => {
     setup({ unavailable: { 2: true } })
     const btn = screen.getByRole('button', { name: /mark bauble available/i })
     expect(btn).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('opens ImageCarousel modal when image thumbnail row is tapped', () => {
+    const { container } = setup()
+    const imageRow = container.querySelector('[data-testid="picker-row-0-images"]')
+    expect(imageRow).not.toBeNull()
+    fireEvent.click(imageRow)
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toBeInTheDocument()
+    expect(within(dialog).getByText('Widget')).toBeInTheDocument()
+  })
+
+  it('closes ImageCarousel when close button is clicked', () => {
+    const { container } = setup()
+    fireEvent.click(container.querySelector('[data-testid="picker-row-0-images"]'))
+    const dialog = screen.getByRole('dialog')
+    fireEvent.click(screen.getByLabelText('Close image viewer'))
+    expect(dialog).not.toBeInTheDocument()
+  })
+
+  it('expands details panel for description-only items (no carousel)', () => {
+    const descriptionOnlyItems = [
+      { name: 'Gadget', qty: 1, description: 'A great gadget.', images: [] },
+    ]
+    const { container } = render(
+      <PickerList
+        items={descriptionOnlyItems}
+        picks={{}}
+        unavailable={{}}
+        onPick={() => {}}
+        onUnavailable={() => {}}
+      />,
+    )
+    const row = container.querySelector('[data-testid="picker-row-0"]')
+    const header = within(row).getByRole('button', { name: /toggle details for gadget/i })
+    expect(header).not.toBeDisabled()
+    fireEvent.click(header)
+    expect(screen.getByTestId('picker-row-0-details')).toHaveAttribute('aria-hidden', 'false')
   })
 })
