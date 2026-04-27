@@ -1,4 +1,4 @@
-import { Filesystem } from '@capacitor/filesystem'
+import { Filesystem, Encoding } from '@capacitor/filesystem'
 
 export class CapacitorSync {
   constructor(namespace = 'sip') {
@@ -15,6 +15,7 @@ export class CapacitorSync {
     try {
       const result = await Filesystem.readFile({
         path: this._filename(key),
+        encoding: Encoding.UTF8,
       })
       const parsed = JSON.parse(result.data)
       this._cache[key] = parsed
@@ -29,6 +30,7 @@ export class CapacitorSync {
     await Filesystem.writeFile({
       path: this._filename(key),
       data: JSON.stringify(value),
+      encoding: Encoding.UTF8,
     })
   }
 
