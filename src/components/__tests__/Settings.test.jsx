@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import { Settings } from '../Settings.jsx'
 import { SettingsProvider, isSmartPasteContextSet } from '../../contexts/SettingsContext.jsx'
@@ -183,6 +183,64 @@ describe('Settings — Smart Paste AI Context section', () => {
     expect(
       within(shop).getByRole('option', { name: 'freehand shop description' }),
     ).toBeInTheDocument()
+  })
+})
+
+describe('Settings — auto-save debounce (SMA-218)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  function openBusinessSection() {
+    fireEvent.click(screen.getByRole('button', { name: /^Business$/i }))
+  }
+
+  it('does not persist settings to localStorage before the debounce delay', () => {
+    const initialSettings = { businessName: 'Test Biz', smartPasteContext: {} }
+    localStorage.setItem('sip_settings', JSON.stringify(initialSettings))
+
+    renderSettings()
+    openBusinessSection()
+    const input = screen.getByLabelText(/Business Name/i)
+    fireEvent.change(input, { target: { value: 'New Biz' } })
+
+    vi.advanceTimersByTime(500)
+    const storedDuring = JSON.parse(localStorage.getItem('sip_settings') || '{}')
+    expect(storedDuring.businessName).toBe('Test Biz')
+  })
+
+  it('persists settings to localStorage after the debounce delay expires', () => {
+    const initialSettings = { businessName: 'Test Biz', smartPasteContext: {} }
+    localStorage.setItem('sip_settings', JSON.stringify(initialSettings))
+
+    renderSettings()
+    openBusinessSection()
+    const input = screen.getByLabelText(/Business Name/i)
+    fireEvent.change(input, { target: { value: 'Auto-saved Biz' } })
+
+    vi.advanceTimersByTime(1100)
+    const storedAfter = JSON.parse(localStorage.getItem('sip_settings') || '{}')
+    expect(storedAfter.businessName).toBe('Auto-saved Biz')
+  })
+
+  it('cancels the pending save when a new change arrives before the delay', () => {
+    const initialSettings = { businessName: 'Test Biz', smartPasteContext: {} }
+    localStorage.setItem('sip_settings', JSON.stringify(initialSettings))
+
+    renderSettings()
+    openBusinessSection()
+    const input = screen.getByLabelText(/Business Name/i)
+    fireEvent.change(input, { target: { value: 'First' } })
+    vi.advanceTimersByTime(600)
+    fireEvent.change(input, { target: { value: 'Second' } })
+    vi.advanceTimersByTime(1100)
+
+    const storedAfter = JSON.parse(localStorage.getItem('sip_settings') || '{}')
+    expect(storedAfter.businessName).toBe('Second')
   })
 })
 
