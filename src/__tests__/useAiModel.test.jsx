@@ -35,8 +35,16 @@ const secureStorageMocks = {
   deleteSecret: vi.fn(),
 }
 
+const embeddingsMocks = {
+  isEmbedderDownloaded: vi.fn().mockResolvedValue(false),
+  handleEmbedderDownload: vi.fn().mockResolvedValue(undefined),
+  handleEmbedderDelete: vi.fn().mockResolvedValue(undefined),
+  loadEmbedder: vi.fn().mockResolvedValue(true),
+}
+
 vi.mock('../byok.js', () => byokMocks)
 vi.mock('../secure-storage.js', () => secureStorageMocks)
+vi.mock('../ai/embeddings.js', () => embeddingsMocks)
 
 async function importHook() {
   const mod = await import('../hooks/useAiModel.js')

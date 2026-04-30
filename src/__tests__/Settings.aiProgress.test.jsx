@@ -24,6 +24,7 @@ vi.mock('../gemma.js', () => ({
   getLoadedModelId: () => null,
   getBackendInfo: () => null,
   cancelDownload: () => {},
+  isNativePlatform: () => false,
 }))
 
 function makeAiStub(progressValue) {

@@ -1,24 +1,32 @@
 import { useState } from 'react'
 import { fmt, timeAgo } from '../helpers.js'
+import { useOrders } from '../contexts/OrderContext.jsx'
+import { useSettings } from '../contexts/SettingsContext.jsx'
 import { Icon } from './Icon.jsx'
 import { PickSheet } from './PickSheet.jsx'
 
-export function Orders({
-  orders,
-  onSync,
-  syncStatus,
-  syncCount,
-  hasApiKey,
-  lastSynced,
-  picks,
-  onPickChange,
-}) {
+export function Orders() {
+  const { orderSync } = useOrders()
+  const { settings } = useSettings()
+  const hasApiKey =
+    settings.activeIntegration === 'shopify'
+      ? !!(settings.shopifyShopDomain && settings.shopifyAccessToken)
+      : !!settings.sqApiKey
+  const {
+    orders,
+    handleSyncOrders,
+    orderSyncStatus,
+    orderSyncCount,
+    lastOrderSync,
+    picks,
+    savePick,
+  } = orderSync
   const [expanded, setExpanded] = useState(null)
   const [picking, setPicking] = useState(null)
   const [filter, setFilter] = useState('all')
   const syncLabel = {
     idle: 'Sync',
-    syncing: syncCount > 0 ? `${syncCount} fetched…` : 'Syncing…',
+    syncing: orderSyncCount > 0 ? `${orderSyncCount} fetched…` : 'Syncing…',
     ok: 'Synced ✓',
     error: 'Retry',
   }
@@ -35,19 +43,19 @@ export function Orders({
               ({visible.length})
             </span>
           </h2>
-          {lastSynced && (
+          {lastOrderSync && (
             <p style={{ fontSize: '.7rem', color: 'var(--muted)', marginTop: 2 }}>
-              Last synced {timeAgo(lastSynced)}
+              Last synced {timeAgo(lastOrderSync)}
             </p>
           )}
         </div>
         <button
           className="btn btn-ghost btn-sm"
-          onClick={onSync}
-          disabled={!hasApiKey || syncStatus === 'syncing'}
+          onClick={handleSyncOrders}
+          disabled={!hasApiKey || orderSyncStatus === 'syncing'}
           title={!hasApiKey ? 'Add Squarespace API key in Settings first' : ''}
         >
-          <Icon name="refresh" /> {syncLabel[syncStatus] ?? 'Sync'}
+          <Icon name="refresh" /> {syncLabel[orderSyncStatus] ?? 'Sync'}
         </button>
       </div>
 
@@ -56,7 +64,7 @@ export function Orders({
           Add your Squarespace API key in Settings to sync orders.
         </p>
       )}
-      {syncStatus === 'error' && (
+      {orderSyncStatus === 'error' && (
         <p style={{ color: 'var(--danger)', fontSize: '.8rem', marginBottom: 12 }}>
           Sync failed — check API key.
         </p>
@@ -236,7 +244,7 @@ export function Orders({
         <PickSheet
           order={picking}
           picks={picks}
-          onPickChange={onPickChange}
+          onPickChange={savePick}
           onClose={() => setPicking(null)}
         />
       )}

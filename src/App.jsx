@@ -3,10 +3,9 @@ import { CSS } from './styles.js'
 import { SAMPLE_INVOICES } from './constants.js'
 import { ToastProvider, useToast } from './contexts/ToastContext.jsx'
 import { SettingsProvider, useSettings } from './contexts/SettingsContext.jsx'
-import { useInvoiceState } from './hooks/useInvoiceState.js'
-import { useCatalogSync } from './hooks/useCatalogSync.js'
-import { useOrderSync } from './hooks/useOrderSync.js'
-import { pickTier } from './catalog/tier.js'
+import { CatalogProvider, useCatalog } from './contexts/CatalogContext.jsx'
+import { OrderProvider, useOrders } from './contexts/OrderContext.jsx'
+import { InvoiceProvider, useInvoice } from './contexts/InvoiceContext.jsx'
 import { useAiModel } from './hooks/useAiModel.js'
 import { useEasterEgg, EasterEggToast } from './hooks/useEasterEgg.jsx'
 import { Confetti } from './components/Confetti.jsx'
@@ -29,12 +28,21 @@ import { BurgerMenu } from './components/BurgerMenu.jsx'
 import { useMenu } from './hooks/useMenu.js'
 
 export default function App() {
+  const [tab, setTab] = useState(() =>
+    localStorage.getItem('sip_draft_edit') ? 'invoices' : 'dashboard',
+  )
   return (
     <ErrorBoundary>
       <style>{CSS}</style>
       <SettingsProvider>
         <ToastProvider>
-          <AppShell />
+          <CatalogProvider>
+            <OrderProvider>
+              <InvoiceProvider onOpenEditor={() => setTab('invoices')}>
+                <AppShell tab={tab} setTab={setTab} />
+              </InvoiceProvider>
+            </OrderProvider>
+          </CatalogProvider>
         </ToastProvider>
       </SettingsProvider>
     </ErrorBoundary>
@@ -53,38 +61,14 @@ const MENU_ITEMS = [
   { id: 'settings', label: 'Settings', icon: 'settings' },
 ]
 
-function AppShell() {
+function AppShell({ tab, setTab }) {
   const { toasts, toast, dismissToast } = useToast()
   const { settings, saveSettings } = useSettings()
   const { showEgg, handleVersionTap } = useEasterEgg()
   const { menuOpen, openMenu, closeMenu } = useMenu()
   const [onboarded, setOnboarded] = useState(() => !!localStorage.getItem('sip_onboarded'))
   const [tourStep, setTourStep] = useState(null)
-  const [tab, setTab] = useState(() =>
-    localStorage.getItem('sip_draft_edit') ? 'invoices' : 'dashboard',
-  )
-  const [confettiTrigger, setConfettiTrigger] = useState(0)
-  const inv = useInvoiceState({
-    defaultTax: settings.defaultTax,
-    onPaid: () => setConfettiTrigger((t) => t + 1),
-    onOpenEditor: () => setTab('invoices'),
-  })
-  const handleCatalogSyncStats = (stats) => {
-    // SMA-123: re-tier on every full sync. `pickTier` is pure; settings are
-    // persisted via saveSettings so the new tier survives reload.
-    const nextTier = pickTier(stats)
-    if (nextTier !== settings.searchTier) {
-      saveSettings({ ...settings, searchTier: nextTier })
-    }
-  }
-  const syncArgs = {
-    activeIntegration: settings.activeIntegration,
-    sqApiKey: settings.sqApiKey,
-    shopifyShopDomain: settings.shopifyShopDomain,
-    shopifyAccessToken: settings.shopifyAccessToken,
-  }
-  const catalog = useCatalogSync({ ...syncArgs, onSyncStats: handleCatalogSyncStats })
-  const orderSync = useOrderSync(syncArgs)
+  const inv = useInvoice()
   const contactsApi = useContacts()
   const [quickAddContactOpen, setQuickAddContactOpen] = useState(false)
   const hasConnectedProvider =
@@ -92,21 +76,10 @@ function AppShell() {
       ? !!(settings.shopifyShopDomain && settings.shopifyAccessToken)
       : !!settings.sqApiKey
   const ai = useAiModel(toast, settings)
-  const handleSave = (invoice) => {
-    try {
-      const justPaid = inv.handleSave(invoice)
-      toast(
-        justPaid ? 'Payment received — invoice paid! 🎉' : 'Invoice saved',
-        'success',
-        justPaid ? null : '✓',
-      )
-    } catch (err) {
-      toast(err?.message || 'Could not save invoice', 'error')
-    }
-  }
+  const { catalog } = useCatalog()
+  const { orderSync } = useOrders()
+
   const handleOnboardConnect = (credentials, fetchedProducts, bizDetails, startTour = true) => {
-    // credentials shape for back-compat: if a string is passed, treat it as a Squarespace
-    // API key — that was the pre-Shopify signature. New callers pass an object.
     const creds =
       typeof credentials === 'string'
         ? { provider: 'squarespace', apiKey: credentials }
@@ -142,7 +115,7 @@ function AppShell() {
 
   return (
     <>
-      <Confetti trigger={confettiTrigger} />
+      <Confetti trigger={inv.confettiTrigger} />
       <Toast toasts={toasts} onDismiss={dismissToast} />
       <EasterEggToast show={showEgg} />
       {tourStep !== null && (
@@ -200,12 +173,7 @@ function AppShell() {
           >
             {tab === 'dashboard' && (
               <section aria-label="Dashboard">
-                <Dashboard
-                  invoices={inv.invoices}
-                  onNewInvoice={inv.handleNewInvoice}
-                  onOpenInvoice={inv.handleEdit}
-                  onQuickAddContact={() => setQuickAddContactOpen(true)}
-                />
+                <Dashboard onQuickAddContact={() => setQuickAddContactOpen(true)} />
               </section>
             )}
             {tab === 'contacts' && (
@@ -220,26 +188,15 @@ function AppShell() {
             )}
             {tab === 'invoices' && !inv.editorOpen && (
               <section aria-label="Invoices">
-                <Invoices
-                  invoices={inv.invoices}
-                  onNewInvoice={inv.handleNewInvoice}
-                  onEdit={(i) =>
-                    i.status === 'draft' ? inv.setEditorOpen(true) : inv.handleEdit(i)
-                  }
-                  onDuplicate={inv.handleDuplicateInvoice}
-                  editingDraft={inv.editing}
-                />
+                <Invoices />
               </section>
             )}
             {tab === 'invoices' && inv.editorOpen && inv.editing !== null && (
               <section aria-label="Invoice editor">
                 <InvoiceEditor
-                  invoice={inv.editing}
-                  products={catalog.products}
-                  onSave={handleSave}
-                  onClose={inv.handleCloseEditor}
-                  onDelete={inv.handleDeleteInvoice}
-                  onDraftChange={inv.handleDraftChange}
+                  contacts={contactsApi.contacts}
+                  onAddContact={contactsApi.addContact}
+                  onUpdateContact={contactsApi.updateContact}
                   aiMode={settings.aiMode}
                   aiReady={ai.aiReady}
                   runInference={ai.runInference}
@@ -251,30 +208,15 @@ function AppShell() {
                 />
               </section>
             )}
+
             {tab === 'orders' && (
               <section aria-label="Orders">
-                <Orders
-                  orders={orderSync.orders}
-                  onSync={orderSync.handleSyncOrders}
-                  syncStatus={orderSync.orderSyncStatus}
-                  syncCount={orderSync.orderSyncCount}
-                  hasApiKey={hasConnectedProvider}
-                  lastSynced={orderSync.lastOrderSync}
-                  picks={orderSync.picks}
-                  onPickChange={orderSync.savePick}
-                />
+                <Orders />
               </section>
             )}
             {tab === 'inventory' && (
               <section aria-label="Catalog">
-                <Inventory
-                  products={catalog.products}
-                  onSync={catalog.handleSyncCatalog}
-                  syncStatus={catalog.syncStatus}
-                  syncCount={catalog.syncCount}
-                  hasApiKey={hasConnectedProvider}
-                  lastSynced={catalog.lastSynced}
-                />
+                <Inventory />
               </section>
             )}
             {tab === 'settings' && (
