@@ -1,7 +1,8 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import { setCurrency, setInvoicePrefix, setInvoicePadding } from '../helpers.js'
 import { setSecret, getSecret, migrateKeysFromLocalStorage } from '../secure-storage.js'
 import { logger } from '../utils/logger.js'
+import { ToastContext } from './ToastContext.jsx'
 
 const SettingsContext = createContext(null)
 
@@ -96,31 +97,48 @@ function loadSettings() {
 export function SettingsProvider({ children }) {
   const [settings, setSettings] = useState(loadSettings)
   const [hydrated, setHydrated] = useState(false)
+  const toastCtx = useContext(ToastContext)
+  const toastRef = useRef(toastCtx)
+  toastRef.current = toastCtx
 
   useEffect(() => {
     ;(async () => {
-      await migrateKeysFromLocalStorage()
-      const [sq, shop, bankAccount, bankIban, bankSwift] = await Promise.all([
-        getSecret('sip_sqApiKey'),
-        getSecret('sip_shopifyAccessToken'),
-        getSecret('sip_bankAccountNumber'),
-        getSecret('sip_bankIban'),
-        getSecret('sip_bankSwift'),
-      ])
-      setSettings((prev) => ({
-        ...prev,
-        ...(sq ? { sqApiKey: sq } : {}),
-        ...(shop ? { shopifyAccessToken: shop } : {}),
-        ...(bankAccount ? { bankAccountNumber: bankAccount } : {}),
-        ...(bankIban ? { bankIban } : {}),
-        ...(bankSwift ? { bankSwift } : {}),
-      }))
-      setHydrated(true)
+      try {
+        await migrateKeysFromLocalStorage()
+        const [sq, shop, bankAccount, bankIban, bankSwift] = await Promise.all([
+          getSecret('sip_sqApiKey'),
+          getSecret('sip_shopifyAccessToken'),
+          getSecret('sip_bankAccountNumber'),
+          getSecret('sip_bankIban'),
+          getSecret('sip_bankSwift'),
+        ])
+        setSettings((prev) => ({
+          ...prev,
+          ...(sq ? { sqApiKey: sq } : {}),
+          ...(shop ? { shopifyAccessToken: shop } : {}),
+          ...(bankAccount ? { bankAccountNumber: bankAccount } : {}),
+          ...(bankIban ? { bankIban } : {}),
+          ...(bankSwift ? { bankSwift } : {}),
+        }))
+      } catch (err) {
+        logger.error('SettingsContext: secure storage hydration failed', err)
+        toastRef.current?.toast(
+          'Settings failed to load — some features may be unavailable',
+          'error',
+        )
+      } finally {
+        setHydrated(true)
+      }
     })()
   }, [])
 
   const saveSettings = useCallback(
     async (s) => {
+      if (!hydrated) {
+        console.warn(
+          'SettingsContext: saveSettings called before hydration complete — secrets will not persist to secure storage',
+        )
+      }
       setSettings(s)
       if (hydrated) {
         if (s.sqApiKey) await setSecret('sip_sqApiKey', s.sqApiKey)
@@ -145,7 +163,7 @@ export function SettingsProvider({ children }) {
   )
 
   return (
-    <SettingsContext.Provider value={{ settings, saveSettings }}>
+    <SettingsContext.Provider value={{ settings, saveSettings, hydrated }}>
       {children}
     </SettingsContext.Provider>
   )
