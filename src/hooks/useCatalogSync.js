@@ -2,11 +2,23 @@ import { useState, useCallback } from 'react'
 import { SAMPLE_PRODUCTS } from '../constants.js'
 import { fetchSquarespaceProducts } from '../api/squarespace.js'
 import { fetchShopifyProducts } from '../api/shopify.js'
+import { useToast } from '../contexts/ToastContext.jsx'
 
-// Full-sync completion is the single source of truth for post-sync side
-// effects like `searchTier` (SMA-123). `onSyncStats` fires with catalog
-// stats (e.g. `{ parentCount, variantCount }`) once the fetch resolves so
-// the caller can update settings without reaching into the hook's state.
+function classifyError(err) {
+  const msg = err?.message ?? ''
+  if (err instanceof TypeError || /failed to fetch|networkerror/i.test(msg)) return 'network'
+  if (/\b40[13]\b/.test(msg)) return 'auth'
+  if (/\b429\b/.test(msg)) return 'rateLimit'
+  return 'api'
+}
+
+const MESSAGES = {
+  network: 'Sync failed — check your connection.',
+  auth: 'Sync failed — API key invalid — check Settings.',
+  rateLimit: 'Sync rate limited — try again later.',
+  api: 'Sync failed — API error.',
+}
+
 export function useCatalogSync({
   activeIntegration,
   sqApiKey,
@@ -14,6 +26,7 @@ export function useCatalogSync({
   shopifyAccessToken,
   onSyncStats,
 }) {
+  const { toast } = useToast()
   const [products, setProducts] = useState(() => {
     const s = localStorage.getItem('sip_products')
     return s ? JSON.parse(s) : SAMPLE_PRODUCTS
@@ -67,7 +80,9 @@ export function useCatalogSync({
           // is advisory (tier routing) rather than load-bearing for the fetch.
         }
       }
-    } catch {
+    } catch (err) {
+      const kind = classifyError(err)
+      toast(MESSAGES[kind], kind === 'rateLimit' ? 'warning' : 'error')
       setSyncStatus('error')
     }
   }, [
@@ -77,6 +92,7 @@ export function useCatalogSync({
     shopifyAccessToken,
     saveProducts,
     onSyncStats,
+    toast,
   ])
 
   return {
