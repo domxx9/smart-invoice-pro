@@ -30,9 +30,6 @@ if command -v archon &>/dev/null; then
   ARCHON_CMD="archon"
 elif [ -f "$HOME/.archon-cli/packages/cli/src/cli.ts" ]; then
   ARCHON_CMD="bun $HOME/.archon-cli/packages/cli/src/cli.ts"
-elif command -v npx &>/dev/null; then
-  # Last resort: use npx bun (slower, downloads on first run)
-  ARCHON_CMD="npx bun $HOME/.archon-cli/packages/cli/src/cli.ts"
 else
   echo "ERROR: archon not found. Follow .archon/INSTALL.md to install." >&2
   exit 1

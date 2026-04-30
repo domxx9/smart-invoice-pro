@@ -6,7 +6,6 @@ triggers:
   - "fix this issue"
   - "implement issue"
   - "resolve this bug"
-  - "fix SMA-232"
 provider: claude
 nodes:
   - id: classify
