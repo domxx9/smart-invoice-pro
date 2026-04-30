@@ -62,6 +62,23 @@ describe('useCatalogSync — error surfacing', () => {
     expect(result.current.syncStatus).toBe('error')
   })
 
+  it('shows auth toast on 403 error', async () => {
+    fetchSquarespaceProducts.mockRejectedValueOnce(new Error('HTTP 403 Forbidden'))
+    const { result } = renderHook(() =>
+      useCatalogSync({ sqApiKey: 'key', activeIntegration: 'squarespace' }),
+    )
+
+    await act(async () => {
+      await result.current.handleSyncCatalog()
+    })
+
+    expect(mockToast).toHaveBeenCalledWith(
+      'Sync failed — API key invalid — check Settings.',
+      'error',
+    )
+    expect(result.current.syncStatus).toBe('error')
+  })
+
   it('shows rate-limit toast with warning type on 429', async () => {
     fetchSquarespaceProducts.mockRejectedValueOnce(new Error('HTTP 429 Too Many Requests'))
     const { result } = renderHook(() =>
