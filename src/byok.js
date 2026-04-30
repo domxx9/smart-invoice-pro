@@ -40,9 +40,22 @@ export const BYOK_PROVIDERS = {
   },
 }
 
+function validateBaseUrl(url) {
+  let parsed
+  try {
+    parsed = new URL(url)
+  } catch {
+    throw new Error(`Invalid base URL: ${url}`)
+  }
+  if (parsed.protocol !== 'https:') {
+    throw new Error(`Custom base URL must use HTTPS (got ${parsed.protocol})`)
+  }
+}
+
 export function resolveConfig({ provider, baseUrl, model }) {
   const preset = BYOK_PROVIDERS[provider]
   if (!preset) throw new Error(`Unknown provider: ${provider}`)
+  if (baseUrl) validateBaseUrl(baseUrl)
   return {
     provider,
     protocol: preset.protocol,
@@ -128,9 +141,7 @@ function buildListRequest(cfg, apiKey) {
 function extractModelList(protocol, body) {
   if (!body) return []
   if (protocol === 'openai') {
-    return (body.data || [])
-      .map((m) => (typeof m === 'string' ? m : m?.id))
-      .filter(Boolean)
+    return (body.data || []).map((m) => (typeof m === 'string' ? m : m?.id)).filter(Boolean)
   }
   if (protocol === 'gemini') {
     return (body.models || [])
@@ -139,9 +150,7 @@ function extractModelList(protocol, body) {
       .filter(Boolean)
   }
   if (protocol === 'anthropic') {
-    return (body.data || [])
-      .map((m) => (typeof m === 'string' ? m : m?.id))
-      .filter(Boolean)
+    return (body.data || []).map((m) => (typeof m === 'string' ? m : m?.id)).filter(Boolean)
   }
   return []
 }
