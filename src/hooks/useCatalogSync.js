@@ -2,6 +2,8 @@ import { useState, useCallback } from 'react'
 import { SAMPLE_PRODUCTS } from '../constants.js'
 import { fetchSquarespaceProducts } from '../api/squarespace.js'
 import { fetchShopifyProducts } from '../api/shopify.js'
+import { useToast } from '../contexts/ToastContext.jsx'
+import { classifySyncError } from './syncError.js'
 
 // Full-sync completion is the single source of truth for post-sync side
 // effects like `searchTier` (SMA-123). `onSyncStats` fires with catalog
@@ -14,6 +16,7 @@ export function useCatalogSync({
   shopifyAccessToken,
   onSyncStats,
 }) {
+  const { toast } = useToast()
   const [products, setProducts] = useState(() => {
     const s = localStorage.getItem('sip_products')
     try {
@@ -72,8 +75,10 @@ export function useCatalogSync({
           // is advisory (tier routing) rather than load-bearing for the fetch.
         }
       }
-    } catch {
+    } catch (err) {
       setSyncStatus('error')
+      const { message, type } = classifySyncError(err)
+      toast(message, type)
     }
   }, [
     activeIntegration,
@@ -82,6 +87,7 @@ export function useCatalogSync({
     shopifyAccessToken,
     saveProducts,
     onSyncStats,
+    toast,
   ])
 
   return {

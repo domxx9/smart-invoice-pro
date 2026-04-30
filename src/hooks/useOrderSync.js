@@ -1,6 +1,8 @@
 import { useState, useCallback } from 'react'
 import { fetchSquarespaceOrders } from '../api/squarespace.js'
 import { fetchShopifyOrders } from '../api/shopify.js'
+import { useToast } from '../contexts/ToastContext.jsx'
+import { classifySyncError } from './syncError.js'
 
 export function useOrderSync({
   activeIntegration,
@@ -8,6 +10,7 @@ export function useOrderSync({
   shopifyShopDomain,
   shopifyAccessToken,
 }) {
+  const { toast } = useToast()
   const [orders, setOrders] = useState(() => {
     const s = localStorage.getItem('sip_orders')
     try {
@@ -71,10 +74,12 @@ export function useOrderSync({
       localStorage.setItem('sip_orders', JSON.stringify(fetched))
       localStorage.setItem('sip_orders_synced_at', String(ts))
       setOrderSyncStatus('ok')
-    } catch {
+    } catch (err) {
       setOrderSyncStatus('error')
+      const { message, type } = classifySyncError(err)
+      toast(message, type)
     }
-  }, [activeIntegration, sqApiKey, shopifyShopDomain, shopifyAccessToken])
+  }, [activeIntegration, sqApiKey, shopifyShopDomain, shopifyAccessToken, toast])
 
   return {
     orders,
