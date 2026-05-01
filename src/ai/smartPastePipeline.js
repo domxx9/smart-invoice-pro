@@ -10,6 +10,14 @@
  * backend (BYOK vs. on-device Gemma vs. test stub). All stages are pure async
  * functions; the orchestrator wires them together and reports per-stage events
  * via `onStage` for the widget's spinners.
+ *
+ * @typedef {Object} InferenceResult
+ * @property {string} text       The model's raw text response.
+ * @property {string|null} stopReason
+ *   The provider's finish/stop reason ('stop', 'length', 'max_tokens',
+ *   'MAX_TOKENS', …) when available, `null` otherwise. Used to detect
+ *   mid-generation truncation (SMA-71). The `useAiModel` adapter normalizes
+ *   every backend (small/byok/executorch/off) to this shape.
  */
 
 import { getTopCandidates } from '../matcher.js'
@@ -200,6 +208,9 @@ function normalizeExtracted(items) {
   }))
 }
 
+/**
+ * @param {{prompt: string, maxTokens: number, runInference: (args: {prompt: string, maxTokens: number}) => Promise<InferenceResult>}} args
+ */
 async function invokeExtract({ prompt, maxTokens, runInference }) {
   let result
   try {
@@ -219,9 +230,8 @@ async function invokeExtract({ prompt, maxTokens, runInference }) {
     logger.warn('smartPaste.stage1_runtime_error', { message })
     return { kind: 'runtime', message }
   }
-  const raw = typeof result === 'string' ? result : result?.text
-  const stopReason =
-    result && typeof result === 'object' && 'stopReason' in result ? result.stopReason : null
+  const raw = result.text
+  const stopReason = result.stopReason
   const parsed = safeParseJsonArray(raw, { schema: isExtractedLine })
   if (!parsed.ok) return { kind: 'parse_failed', reason: parsed.error, raw, stopReason }
   return {
@@ -363,14 +373,16 @@ export async function matchBatch({
   if (!lines.length) return []
   const prompt = buildMatchPrompt({ batch: lines, context })
   const result = await runInference({ prompt, maxTokens })
-  const raw = typeof result === 'string' ? result : result?.text
-  const parsed = safeParseJsonArray(raw, { schema: isMatchResult })
+  const parsed = safeParseJsonArray(result.text, { schema: isMatchResult })
   if (!parsed.ok) {
     throw new Error(`matchBatch: ${parsed.error}`)
   }
   return parsed.value
 }
 
+/**
+ * @param {{prompt: string, maxTokens: number, runInference: (args: {prompt: string, maxTokens: number}) => Promise<InferenceResult>}} args
+ */
 async function invokeMatch({ prompt, maxTokens, runInference }) {
   let result
   try {
@@ -379,9 +391,8 @@ async function invokeMatch({ prompt, maxTokens, runInference }) {
     const message = String(err?.message ?? err)
     return { kind: 'runtime', message }
   }
-  const raw = typeof result === 'string' ? result : result?.text
-  const stopReason =
-    result && typeof result === 'object' && 'stopReason' in result ? result.stopReason : null
+  const raw = result.text
+  const stopReason = result.stopReason
   const parsed = safeParseJsonArray(raw, { schema: isMatchResult })
   if (!parsed.ok) return { kind: 'parse_failed', reason: parsed.error, raw, stopReason }
   return { kind: 'parsed', value: parsed.value, raw, stopReason }

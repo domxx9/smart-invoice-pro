@@ -302,11 +302,19 @@ export function useAiModel(toast, settings) {
     setAiDownloaded((p) => ({ ...p, [modelId]: false }))
   }, [])
 
-  const runInference = useCallback(
-    ({ prompt, maxTokens = 512 } = {}) =>
-      pipelineRunInference({ prompt, maxTokens, settings: settingsRef.current }),
-    [],
-  )
+  // Stable contract: always resolves to { text: string, stopReason: string | null }.
+  // Wraps any legacy bare-string sub-paths and the `aiMode: 'off'` null so callers
+  // (smartPastePipeline et al.) can read result.text / result.stopReason directly.
+  const runInference = useCallback(async ({ prompt, maxTokens = 512 } = {}) => {
+    const result = await pipelineRunInference({
+      prompt,
+      maxTokens,
+      settings: settingsRef.current,
+    })
+    if (result == null) return { text: '', stopReason: null }
+    if (typeof result === 'string') return { text: result, stopReason: null }
+    return { text: result.text ?? '', stopReason: result.stopReason ?? null }
+  }, [])
 
   return {
     aiModelId,
