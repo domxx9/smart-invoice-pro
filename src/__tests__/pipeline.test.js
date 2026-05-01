@@ -191,8 +191,15 @@ describe('runInference — routing', () => {
       settings: { aiMode: 'executorch' },
     })
     expect(executorchMocks.isAvailable).toHaveBeenCalled()
-    expect(executorchMocks.infer).toHaveBeenCalledWith({ prompt: 'hello executorch', maxTokens: 512 })
-    expect(result).toEqual({ text: 'native inference result', source: 'executorch', stopReason: null })
+    expect(executorchMocks.infer).toHaveBeenCalledWith({
+      prompt: 'hello executorch',
+      maxTokens: 512,
+    })
+    expect(result).toEqual({
+      text: 'native inference result',
+      source: 'executorch',
+      stopReason: null,
+    })
   })
 
   it("'executorch' throws descriptive error when isAvailable() is false", async () => {
