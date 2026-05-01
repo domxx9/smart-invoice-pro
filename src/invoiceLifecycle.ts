@@ -1,6 +1,3 @@
-// TEST: deliberate type error — revert this line to restore
-const _ciTest: number = 'this-will-break-typecheck'
-
 export const STATUSES = [
   'new',
   'pending',
