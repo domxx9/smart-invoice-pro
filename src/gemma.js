@@ -437,64 +437,6 @@ function gemmaPrompt(text) {
   return `<start_of_turn>user\n${text}\n<end_of_turn>\n<start_of_turn>model\n`
 }
 
-// ─── Full-text order parsing ──────────────────────────────────────────────────
-
-/**
- * Send raw order text (WhatsApp, email, etc.) to the LLM along with the
- * known product catalog so the model can match items directly.
- *
- * @param {string}   text      - Raw pasted text (WhatsApp, email, list…)
- * @param {Array}    products  - Full product catalog [{name, price, …}]
- * @param {Function} onToken   - Optional streaming callback (partialOutput, done)
- * @returns {Promise<Array<{name:string, qty:number}>>}
- *          name is the matched product name from the catalog (or best attempt).
- */
-/**
- * Stage 1 — LLM pre-processor.
- * Strips WhatsApp timestamps, contact names, greetings, questions.
- * Splits combined lines ("scissors and probe") into one item per line.
- * Returns plain text — no catalog needed, tiny prompt, fast.
- */
-export async function cleanOrderText(text, onToken) {
-  if (!_llm) throw new Error('Model not loaded')
-
-  const prompt = gemmaPrompt(
-    `Clean up this order message. Your job:
-- Remove timestamps (e.g. [12:00, 11/04/2026]), contact names, phone numbers
-- Remove greetings, questions, delivery instructions, anything not an item order
-- If a line mentions multiple items, split them onto separate lines
-- Keep any quantities (numbers) next to their item
-- Return ONLY the cleaned order lines, one item per line, nothing else
-
-Message:
-${text.slice(0, 800)}
-
-Cleaned lines:`,
-  )
-
-  return new Promise((resolve) => {
-    let out = ''
-    try {
-      _llm.generateResponse(prompt, (chunk, done) => {
-        out += chunk
-        onToken?.(out, done)
-        if (done) {
-          logger.debug('ai', 'cleanOrderText raw:', JSON.stringify(out))
-          resolve(out.trim() || text)
-        }
-      })
-    } catch (e) {
-      logger.error('ai', 'cleanOrderText error:', e)
-      try {
-        _llm?.cancelProcessing?.()
-      } catch {
-        /* ignore */
-      }
-      resolve(text) // fallback: use original text unchanged
-    }
-  })
-}
-
 // ─── General inference ────────────────────────────────────────────────────────
 
 export async function generate(userPrompt, onToken) {
