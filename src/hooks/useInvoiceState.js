@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { blankInvoice, nextId, today } from '../helpers.js'
 import { assertTransition } from '../invoiceLifecycle'
 import { useToast } from '../contexts/ToastContext'
+import { STORAGE_KEYS } from '../constants/storageKeys.js'
 
 export function useInvoiceState({ defaultTax, onPaid, onOpenEditor }) {
   const { toast } = useToast()
@@ -9,10 +10,10 @@ export function useInvoiceState({ defaultTax, onPaid, onOpenEditor }) {
   const [invoices, setInvoices] = useState([])
   const [editing, setEditing] = useState(() => {
     try {
-      const d = localStorage.getItem('sip_draft_edit')
+      const d = localStorage.getItem(STORAGE_KEYS.SIP_DRAFT_EDIT)
       return d ? JSON.parse(d) : null
     } catch {
-      localStorage.removeItem('sip_draft_edit')
+      localStorage.removeItem(STORAGE_KEYS.SIP_DRAFT_EDIT)
       toast('Invoice draft corrupted — starting fresh', 'error')
       return null
     }
@@ -27,7 +28,9 @@ export function useInvoiceState({ defaultTax, onPaid, onOpenEditor }) {
       return null
     }
   })
-  const [editorOpen, setEditorOpen] = useState(() => !!localStorage.getItem('sip_draft_edit'))
+  const [editorOpen, setEditorOpen] = useState(
+    () => !!localStorage.getItem(STORAGE_KEYS.SIP_DRAFT_EDIT),
+  )
 
   useEffect(() => {
     try {
@@ -45,7 +48,7 @@ export function useInvoiceState({ defaultTax, onPaid, onOpenEditor }) {
   }, [])
 
   const clearDraft = () => {
-    localStorage.removeItem('sip_draft_edit')
+    localStorage.removeItem(STORAGE_KEYS.SIP_DRAFT_EDIT)
     localStorage.removeItem('sip_draft_original')
   }
 
@@ -61,7 +64,7 @@ export function useInvoiceState({ defaultTax, onPaid, onOpenEditor }) {
   const handleEdit = (inv) => openEditor({ ...inv })
   const handleDraftChange = useCallback((inv) => {
     setEditing(inv)
-    localStorage.setItem('sip_draft_edit', JSON.stringify(inv))
+    localStorage.setItem(STORAGE_KEYS.SIP_DRAFT_EDIT, JSON.stringify(inv))
   }, [])
 
   const handleSave = (inv) => {
@@ -88,7 +91,7 @@ export function useInvoiceState({ defaultTax, onPaid, onOpenEditor }) {
 
   const handleCloseEditor = (inv) => {
     setEditing(inv)
-    localStorage.setItem('sip_draft_edit', JSON.stringify(inv))
+    localStorage.setItem(STORAGE_KEYS.SIP_DRAFT_EDIT, JSON.stringify(inv))
     setEditorOpen(false)
   }
 
