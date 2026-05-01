@@ -433,7 +433,7 @@ export function getBackendInfo() {
 
 // ─── Prompt formatting ────────────────────────────────────────────────────────
 
-function gemmaPrompt(text) {
+export function formatGemmaPrompt(text) {
   return `<start_of_turn>user\n${text}\n<end_of_turn>\n<start_of_turn>model\n`
 }
 
@@ -444,7 +444,7 @@ export async function generate(userPrompt, onToken) {
   return new Promise((resolve, reject) => {
     let out = ''
     try {
-      _llm.generateResponse(gemmaPrompt(userPrompt), (chunk, done) => {
+      _llm.generateResponse(formatGemmaPrompt(userPrompt), (chunk, done) => {
         out += chunk
         onToken?.(out, done)
         if (done) resolve(out)

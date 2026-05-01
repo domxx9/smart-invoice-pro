@@ -20,6 +20,7 @@
  */
 
 import { buildCleanPrompt } from './prompts/cleanPrompt.js'
+import { formatGemmaPrompt } from '../gemma.js'
 import { logger } from '../utils/logger.js'
 
 const DEFAULT_MAX_TOKENS = 256
@@ -61,7 +62,7 @@ async function _cleanViaLlm(prompt, originalText, onToken) {
   return new Promise((resolve) => {
     let out = ''
     try {
-      _llm.generateResponse(prompt, (chunk, done) => {
+      _llm.generateResponse(formatGemmaPrompt(prompt), (chunk, done) => {
         out += chunk
         onToken?.(out, done)
         if (done) {

@@ -85,6 +85,7 @@ describe('cleanOrderText', () => {
       _setLlmForTest(mockLlm)
       const onToken = vi.fn()
       const p = cleanOrderText(RAW_ORDER, onToken)
+      expect(capturedPrompt).toContain('<start_of_turn>user')
       expect(capturedPrompt).toContain('Clean up this order message')
       capturedCallback('2 front shocks\noil filter', true)
       expect(onToken).toHaveBeenCalledTimes(1)
