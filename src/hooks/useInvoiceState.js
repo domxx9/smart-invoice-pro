@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { blankInvoice, nextId, today } from '../helpers.js'
 import { assertTransition } from '../invoiceLifecycle'
 import { useToast } from '../contexts/ToastContext'
+import { STORAGE_KEYS } from '../constants/storageKeys.js'
 
 export function useInvoiceState({ defaultTax, onPaid, onOpenEditor }) {
   const { toast } = useToast()
@@ -9,48 +10,50 @@ export function useInvoiceState({ defaultTax, onPaid, onOpenEditor }) {
   const [invoices, setInvoices] = useState([])
   const [editing, setEditing] = useState(() => {
     try {
-      const d = localStorage.getItem('sip_draft_edit')
+      const d = localStorage.getItem(STORAGE_KEYS.DRAFT_EDIT)
       return d ? JSON.parse(d) : null
     } catch {
-      localStorage.removeItem('sip_draft_edit')
+      localStorage.removeItem(STORAGE_KEYS.DRAFT_EDIT)
       toast('Invoice draft corrupted — starting fresh', 'error')
       return null
     }
   })
   const [editingOriginal, setEditingOriginal] = useState(() => {
     try {
-      const o = localStorage.getItem('sip_draft_original')
+      const o = localStorage.getItem(STORAGE_KEYS.DRAFT_ORIGINAL)
       return o ? JSON.parse(o) : null
     } catch {
-      localStorage.removeItem('sip_draft_original')
+      localStorage.removeItem(STORAGE_KEYS.DRAFT_ORIGINAL)
       toast('Invoice draft corrupted — starting fresh', 'error')
       return null
     }
   })
-  const [editorOpen, setEditorOpen] = useState(() => !!localStorage.getItem('sip_draft_edit'))
+  const [editorOpen, setEditorOpen] = useState(
+    () => !!localStorage.getItem(STORAGE_KEYS.DRAFT_EDIT),
+  )
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('sip_invoices')
+      const saved = localStorage.getItem(STORAGE_KEYS.INVOICES)
       if (saved) setInvoices(JSON.parse(saved))
     } catch {
-      localStorage.removeItem('sip_invoices')
+      localStorage.removeItem(STORAGE_KEYS.INVOICES)
       toast('Invoice data corrupted — starting fresh', 'error')
     }
   }, [toastRef])
 
   const saveInvoices = useCallback((invs) => {
     setInvoices(invs)
-    localStorage.setItem('sip_invoices', JSON.stringify(invs))
+    localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(invs))
   }, [])
 
   const clearDraft = () => {
-    localStorage.removeItem('sip_draft_edit')
-    localStorage.removeItem('sip_draft_original')
+    localStorage.removeItem(STORAGE_KEYS.DRAFT_EDIT)
+    localStorage.removeItem(STORAGE_KEYS.DRAFT_ORIGINAL)
   }
 
   const openEditor = (inv) => {
-    localStorage.setItem('sip_draft_original', JSON.stringify(inv))
+    localStorage.setItem(STORAGE_KEYS.DRAFT_ORIGINAL, JSON.stringify(inv))
     setEditingOriginal(inv)
     setEditing(inv)
     setEditorOpen(true)
@@ -61,7 +64,7 @@ export function useInvoiceState({ defaultTax, onPaid, onOpenEditor }) {
   const handleEdit = (inv) => openEditor({ ...inv })
   const handleDraftChange = useCallback((inv) => {
     setEditing(inv)
-    localStorage.setItem('sip_draft_edit', JSON.stringify(inv))
+    localStorage.setItem(STORAGE_KEYS.DRAFT_EDIT, JSON.stringify(inv))
   }, [])
 
   const handleSave = (inv) => {
@@ -88,7 +91,7 @@ export function useInvoiceState({ defaultTax, onPaid, onOpenEditor }) {
 
   const handleCloseEditor = (inv) => {
     setEditing(inv)
-    localStorage.setItem('sip_draft_edit', JSON.stringify(inv))
+    localStorage.setItem(STORAGE_KEYS.DRAFT_EDIT, JSON.stringify(inv))
     setEditorOpen(false)
   }
 

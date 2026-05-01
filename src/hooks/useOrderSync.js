@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { fetchSquarespaceOrders } from '../api/squarespace.js'
 import { fetchShopifyOrders } from '../api/shopify.js'
+import { STORAGE_KEYS } from '../constants/storageKeys.js'
 
 export function useOrderSync({
   activeIntegration,
@@ -9,24 +10,24 @@ export function useOrderSync({
   shopifyAccessToken,
 }) {
   const [orders, setOrders] = useState(() => {
-    const s = localStorage.getItem('sip_orders')
+    const s = localStorage.getItem(STORAGE_KEYS.ORDERS)
     return s ? JSON.parse(s) : []
   })
   const [lastOrderSync, setLastOrderSync] = useState(() => {
-    const ts = localStorage.getItem('sip_orders_synced_at')
+    const ts = localStorage.getItem(STORAGE_KEYS.ORDERS_SYNCED_AT)
     return ts ? parseInt(ts, 10) : null
   })
   const [orderSyncStatus, setOrderSyncStatus] = useState('idle')
   const [orderSyncCount, setOrderSyncCount] = useState(0)
   const [picks, setPicks] = useState(() => {
-    const s = localStorage.getItem('sip_picks')
+    const s = localStorage.getItem(STORAGE_KEYS.PICKS)
     return s ? JSON.parse(s) : {}
   })
 
   const savePick = useCallback((orderId, itemIndex, qty) => {
     setPicks((prev) => {
       const next = { ...prev, [orderId]: { ...(prev[orderId] ?? {}), [itemIndex]: qty } }
-      localStorage.setItem('sip_picks', JSON.stringify(next))
+      localStorage.setItem(STORAGE_KEYS.PICKS, JSON.stringify(next))
       return next
     })
   }, [])
@@ -53,13 +54,13 @@ export function useOrderSync({
         for (const id of Object.keys(prev)) {
           if (pendingIds.has(id)) next[id] = prev[id]
         }
-        localStorage.setItem('sip_picks', JSON.stringify(next))
+        localStorage.setItem(STORAGE_KEYS.PICKS, JSON.stringify(next))
         return next
       })
       const ts = Date.now()
       setLastOrderSync(ts)
-      localStorage.setItem('sip_orders', JSON.stringify(fetched))
-      localStorage.setItem('sip_orders_synced_at', String(ts))
+      localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(fetched))
+      localStorage.setItem(STORAGE_KEYS.ORDERS_SYNCED_AT, String(ts))
       setOrderSyncStatus('ok')
     } catch {
       setOrderSyncStatus('error')

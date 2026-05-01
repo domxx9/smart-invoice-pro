@@ -1,7 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { logger } from '../utils/logger.js'
-
-const STORAGE_KEY = 'sip_contacts'
+import { STORAGE_KEYS } from '../constants/storageKeys.js'
 
 export function makeContactId() {
   return `contact_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
@@ -28,18 +27,18 @@ export function normaliseContact(input = {}) {
 
 function load() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(STORAGE_KEYS.CONTACTS)
     if (!raw) return []
     const parsed = JSON.parse(raw)
     return Array.isArray(parsed) ? parsed.map(normaliseContact) : []
   } catch (err) {
-    logger.warn('contacts', `failed to read ${STORAGE_KEY}: ${err?.message ?? err}`)
+    logger.warn('contacts', `failed to read ${STORAGE_KEYS.CONTACTS}: ${err?.message ?? err}`)
     return []
   }
 }
 
 function persist(contacts) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(contacts))
+  localStorage.setItem(STORAGE_KEYS.CONTACTS, JSON.stringify(contacts))
 }
 
 function dedupeKey(c) {
