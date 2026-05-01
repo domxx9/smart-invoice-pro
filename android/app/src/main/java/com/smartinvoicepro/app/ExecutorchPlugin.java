@@ -38,7 +38,7 @@ public class ExecutorchPlugin extends Plugin {
         mExecutor.execute(() -> {
             try {
                 if (mModule != null) {
-                    mModule.close();
+                    mModule.stop();
                 }
                 mModule = new LlmModule(modelPath, tokenizerPath, temperature);
                 mModule.load();
@@ -123,9 +123,6 @@ public class ExecutorchPlugin extends Plugin {
                 try {
                     mModule.stop();
                 } catch (Exception ignored) {}
-                try {
-                    mModule.close();
-                } catch (Exception ignored) {}
                 mModule = null;
             }
             call.resolve();
@@ -138,9 +135,6 @@ public class ExecutorchPlugin extends Plugin {
         if (mModule != null) {
             try {
                 mModule.stop();
-            } catch (Exception ignored) {}
-            try {
-                mModule.close();
             } catch (Exception ignored) {}
             mModule = null;
         }

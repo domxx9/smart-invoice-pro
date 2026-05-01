@@ -88,9 +88,6 @@ public class LlmRunner {
             try {
                 mModule.stop();
             } catch (Exception ignored) {}
-            try {
-                mModule.close();
-            } catch (Exception ignored) {}
             mModule = null;
             Log.i(TAG, "Model unloaded");
         }
