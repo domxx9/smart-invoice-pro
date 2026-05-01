@@ -12,10 +12,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 const workerMocks = { inferGemma: vi.fn(), cancelGemma: vi.fn() }
 const byokMocks = { generate: vi.fn() }
 const storageMocks = { getSecret: vi.fn() }
+const executorchMocks = { isAvailable: vi.fn(), infer: vi.fn() }
 
 vi.mock('../gemmaWorker.js', () => workerMocks)
 vi.mock('../byok.js', () => byokMocks)
 vi.mock('../secure-storage.js', () => storageMocks)
+vi.mock('../plugins/executorch.js', () => executorchMocks)
 
 async function importPipeline() {
   const mod = await import('../ai/pipeline.js')
@@ -28,6 +30,8 @@ beforeEach(() => {
   workerMocks.cancelGemma.mockReset()
   byokMocks.generate.mockReset()
   storageMocks.getSecret.mockReset()
+  executorchMocks.isAvailable.mockReset()
+  executorchMocks.infer.mockReset()
 })
 
 describe('runInference — routing', () => {
@@ -175,6 +179,45 @@ describe('runInference — routing', () => {
       }),
     ).rejects.toThrow(/API key/i)
     expect(byokMocks.generate).not.toHaveBeenCalled()
+  })
+
+  it("routes 'executorch' to the plugin, tags source, and returns null stopReason", async () => {
+    executorchMocks.isAvailable.mockReturnValue(true)
+    executorchMocks.infer.mockResolvedValue({ text: 'native inference result' })
+    const runInference = await importPipeline()
+    const result = await runInference({
+      prompt: 'hello executorch',
+      maxTokens: 512,
+      settings: { aiMode: 'executorch' },
+    })
+    expect(executorchMocks.isAvailable).toHaveBeenCalled()
+    expect(executorchMocks.infer).toHaveBeenCalledWith({
+      prompt: 'hello executorch',
+      maxTokens: 512,
+    })
+    expect(result).toEqual({
+      text: 'native inference result',
+      source: 'executorch',
+      stopReason: null,
+    })
+  })
+
+  it("'executorch' throws descriptive error when isAvailable() is false", async () => {
+    executorchMocks.isAvailable.mockReturnValue(false)
+    const runInference = await importPipeline()
+    await expect(
+      runInference({ prompt: 'hi', settings: { aiMode: 'executorch' } }),
+    ).rejects.toThrow(/not available/i)
+    expect(executorchMocks.infer).not.toHaveBeenCalled()
+  })
+
+  it("'executorch' throws when the plugin call fails", async () => {
+    executorchMocks.isAvailable.mockReturnValue(true)
+    executorchMocks.infer.mockRejectedValue(new Error('plugin error'))
+    const runInference = await importPipeline()
+    await expect(
+      runInference({ prompt: 'hi', settings: { aiMode: 'executorch' } }),
+    ).rejects.toThrow('plugin error')
   })
 
   it('throws on unknown aiMode', async () => {

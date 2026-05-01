@@ -20,7 +20,7 @@ async function getPlugin() {
 export async function setSecret(key, value) {
   if (isNative()) {
     const plugin = await getPlugin()
-    await plugin.set({ key, value })
+    await Promise.resolve(plugin.set({ key, value }))
   } else {
     sessionStorage.setItem(key, value)
   }
@@ -30,7 +30,7 @@ export async function getSecret(key) {
   if (isNative()) {
     const plugin = await getPlugin()
     try {
-      const { value } = await plugin.get({ key })
+      const { value } = await Promise.resolve(plugin.get({ key }))
       return value ?? ''
     } catch {
       // key not found in secure storage
@@ -45,9 +45,9 @@ export async function deleteSecret(key) {
   if (isNative()) {
     const plugin = await getPlugin()
     try {
-      await plugin.remove({ key })
+      await Promise.resolve(plugin.remove({ key }))
     } catch {
-      // key didn't exist — ignore
+      // key didn't exist — nothing to remove
     }
   } else {
     sessionStorage.removeItem(key)
@@ -61,22 +61,22 @@ export async function deleteSecret(key) {
  * again.
  */
 export async function migrateKeysFromLocalStorage() {
-  // Migrate sqApiKey from sip_settings blob
   const raw = localStorage.getItem('sip_settings')
   if (raw) {
     try {
       const parsed = JSON.parse(raw)
-      if (parsed.sqApiKey) {
-        await setSecret('sip_sqApiKey', parsed.sqApiKey)
-        delete parsed.sqApiKey
-        localStorage.setItem('sip_settings', JSON.stringify(parsed))
+      const sqKey = parsed.sqApiKey
+      if (sqKey) {
+        await setSecret('sip_sqApiKey', sqKey)
+        const cleaned = { ...parsed }
+        delete cleaned.sqApiKey
+        localStorage.setItem('sip_settings', JSON.stringify(cleaned))
       }
     } catch {
       // corrupted settings — skip migration
     }
   }
 
-  // Migrate BYOK provider keys
   const providers = ['openrouter', 'gemini', 'openai', 'anthropic']
   for (const p of providers) {
     const lsKey = `sip_byok_${p}`

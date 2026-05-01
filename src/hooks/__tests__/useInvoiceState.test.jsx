@@ -1,13 +1,16 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
 import { useInvoiceState } from '../useInvoiceState.js'
+import { ToastProvider } from '../../contexts/ToastContext.jsx'
 
 beforeEach(() => {
   localStorage.clear()
 })
 
 function setup() {
-  return renderHook(() => useInvoiceState({ defaultTax: 20 }))
+  return renderHook(() => useInvoiceState({ defaultTax: 20 }), {
+    wrapper: ({ children }) => <ToastProvider>{children}</ToastProvider>,
+  })
 }
 
 describe('useInvoiceState.handleSave — lifecycle guard', () => {

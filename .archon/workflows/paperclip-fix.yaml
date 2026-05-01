@@ -1,0 +1,72 @@
+name: paperclip-fix
+description: |
+  Custom Paperclip fix workflow with status updates.
+  Classify → plan → implement (loop until tests pass) → validate → create PR → in_review.
+triggers:
+  - "fix this issue"
+  - "implement issue"
+  - "resolve this bug"
+provider: claude
+nodes:
+  - id: classify
+    prompt: "Classify issue type (bug/feature/enhancement). Output: bug|feature|enhancement"
+    post-tools:
+      - name: Update issue to in_progress
+        bash: |
+          curl -s -X PATCH \
+            -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+            -H "X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID" \
+            -H "Content-Type: application/json" \
+            "$PAPERCLIP_API_URL/api/issues/$PAPERCLIP_TASK_ID" \
+            -d '{"status": "in_progress", "comment": "Classification complete. Beginning implementation."}'
+
+  - id: plan
+    depends_on: [classify]
+    prompt: "Create implementation plan. Read codebase context. Output plan to $ARTIFACTS_DIR/plan.md"
+
+  - id: implement
+    depends_on: [plan]
+    loop:
+      prompt: "Read the plan. Implement the next task. Run npm test to validate. Continue until all tasks complete and tests pass."
+      until: ALL_TASKS_COMPLETE
+      max_iterations: 10
+      fresh_context: true
+    post-tools:
+      - name: Run tests
+        bash: npm test
+        continue-on-failure: true
+
+  - id: validate
+    depends_on: [implement]
+    prompt: "Run lint, typecheck, and build to validate implementation quality."
+    post-tools:
+      - name: Run full validation
+        bash: |
+          npm run lint && npm run typecheck && npm test && npm run build
+
+  - id: create-pr
+    depends_on: [validate]
+    prompt: "Create a pull request using gh cli. Use the repo PR template."
+
+  - id: mark-in-review
+    depends_on: [create-pr]
+    prompt: "Update issue status to in_review via Paperclip API."
+    post-tools:
+      - name: Update to in_review
+        bash: |
+          curl -s -X PATCH \
+            -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+            -H "X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID" \
+            -H "Content-Type: application/json" \
+            "$PAPERCLIP_API_URL/api/issues/$PAPERCLIP_TASK_ID" \
+            -d '{"status": "in_review", "comment": "Implementation complete. Ready for CTO review."}'
+
+env:
+  preserve:
+    - PAPERCLIP_API_KEY
+    - PAPERCLIP_API_URL
+    - PAPERCLIP_TASK_ID
+    - PAPERCLIP_RUN_ID
+    - PAPERCLIP_AGENT_ID
+    - PAPERCLIP_COMPANY_ID
+    - GITHUB_TOKEN

@@ -27,7 +27,12 @@ export function useOrderSync({
   const { toast } = useToast()
   const [orders, setOrders] = useState(() => {
     const s = localStorage.getItem('sip_orders')
-    return s ? JSON.parse(s) : []
+    try {
+      return s ? JSON.parse(s) : []
+    } catch {
+      console.warn('sip_orders parse error — falling back to empty list')
+      return []
+    }
   })
   const [lastOrderSync, setLastOrderSync] = useState(() => {
     const ts = localStorage.getItem('sip_orders_synced_at')
@@ -37,7 +42,12 @@ export function useOrderSync({
   const [orderSyncCount, setOrderSyncCount] = useState(0)
   const [picks, setPicks] = useState(() => {
     const s = localStorage.getItem('sip_picks')
-    return s ? JSON.parse(s) : {}
+    try {
+      return s ? JSON.parse(s) : {}
+    } catch {
+      console.warn('sip_picks parse error — falling back to empty picks')
+      return {}
+    }
   })
 
   const savePick = useCallback((orderId, itemIndex, qty) => {
