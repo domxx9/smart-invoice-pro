@@ -14,10 +14,10 @@ import { useToast } from '../contexts/ToastContext.jsx'
 import { SettingsSection } from './SettingsSection.jsx'
 import { ContactsImportSection } from './ContactsImportSection.jsx'
 import { PdfTemplateEditor } from './PdfTemplateEditor.jsx'
+import { DebugLogsSection } from './DebugLogsSection.jsx'
 import { Icon } from './Icon.jsx'
 import { RestoreBackupModal } from './RestoreBackupModal.jsx'
 import { TOUR_SECTIONS } from './TourOverlay.jsx'
-import { logger } from '../utils/logger.js'
 import { shareOrDownload } from '../utils/shareBackup.js'
 import {
   buildExportSnapshot,
@@ -32,8 +32,6 @@ import {
   VOCABULARY_OPTIONS,
   LOCALE_OPTIONS,
 } from '../constants/smartPasteContextPresets.js'
-
-const LOG_LEVELS = ['debug', 'info', 'warn', 'error']
 
 function renderPresetOptions(value, options) {
   const known = options.includes(value)
@@ -83,47 +81,13 @@ export function Settings({ ai, onStartTour, contactsApi }) {
   // SMA-96: cached model list per provider+baseUrl. Shape per key:
   // { status: 'idle' | 'loading' | 'ok' | 'error', models: string[], error: string }
   const [byokModelList, setByokModelList] = useState({})
-  const [showLogs, setShowLogs] = useState(false)
-  const [logTick, setLogTick] = useState(0)
   const [showRestore, setShowRestore] = useState(false)
   const [backupBusy, setBackupBusy] = useState(null)
   const [backupError, setBackupError] = useState('')
   const [includeSecrets, setIncludeSecrets] = useState(false)
   const set = (k, v) => setS((p) => ({ ...p, [k]: v }))
-  const setDebug = (k, v) => setS((p) => ({ ...p, debug: { ...(p.debug || {}), [k]: v } }))
   const setSmartPasteContext = (k, v) =>
     setS((p) => ({ ...p, smartPasteContext: { ...(p.smartPasteContext || {}), [k]: v } }))
-
-  // Refresh the modal log view ~5x/sec while open so the buffer stays "live".
-  useEffect(() => {
-    if (!showLogs) return
-    const id = setInterval(() => setLogTick((t) => t + 1), 200)
-    return () => clearInterval(id)
-  }, [showLogs])
-
-  const downloadLogs = () => {
-    const text = logger.toText()
-    const blob = new Blob([text], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `sip-logs-${new Date().toISOString()}.txt`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  const clearLogs = () => {
-    logger.clear()
-    setLogTick((t) => t + 1)
-    toast('Logs cleared', 'success', '🧹')
-  }
-
-  const enableInfoLogging = () => {
-    const next = { ...s, debug: { ...(s.debug || {}), logLevel: 'info' } }
-    setS(next)
-    saveSettings(next)
-    toast('Log level set to info — pipeline traces now captured', 'success', '🔎')
-  }
 
   // Load BYOK key from secure storage when provider changes.
   // Guard against the async resolution overwriting keystrokes typed
@@ -250,100 +214,6 @@ export function Settings({ ai, onStartTour, contactsApi }) {
   return (
     <div>
       <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: 20 }}>Settings</h2>
-
-      {showLogs && (
-        <div
-          role="dialog"
-          aria-label="Log viewer"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,.85)',
-            display: 'flex',
-            flexDirection: 'column',
-            zIndex: 40,
-            // Respect device safe-area insets so the header row (Download/Clear/Close)
-            // isn't hidden under the Android status bar when viewport-fit=cover.
-            paddingTop: 'calc(env(safe-area-inset-top) + 16px)',
-            paddingRight: 'calc(env(safe-area-inset-right) + 16px)',
-            paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)',
-            paddingLeft: 'calc(env(safe-area-inset-left) + 16px)',
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 8,
-              gap: 8,
-            }}
-          >
-            <strong style={{ color: 'var(--text)' }}>
-              Logs ({logger.getSnapshot().length}/1000)
-              {/* logTick keeps this re-rendering on the interval */}
-              <span hidden>{logTick}</span>
-            </strong>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button className="btn btn-ghost btn-sm" onClick={downloadLogs}>
-                Download
-              </button>
-              <button className="btn btn-ghost btn-sm" onClick={clearLogs}>
-                Clear
-              </button>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowLogs(false)}>
-                Close
-              </button>
-            </div>
-          </div>
-          {(s.debug?.logLevel || 'error') !== 'debug' &&
-            (s.debug?.logLevel || 'error') !== 'info' && (
-              <div
-                data-testid="log-viewer-info-hint"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 8,
-                  marginBottom: 8,
-                  padding: '8px 10px',
-                  borderRadius: 8,
-                  background: 'rgba(90,140,255,.1)',
-                  border: '1px solid rgba(90,140,255,.3)',
-                  color: 'var(--text)',
-                  fontSize: '.75rem',
-                  lineHeight: 1.4,
-                }}
-              >
-                <span>
-                  Bump log level to <code>info</code> to capture Smart Paste pipeline traces.
-                </span>
-                <button className="btn btn-ghost btn-sm" onClick={enableInfoLogging}>
-                  Enable info logs
-                </button>
-              </div>
-            )}
-          <pre
-            data-testid="log-viewer-body"
-            style={{
-              flex: 1,
-              overflow: 'auto',
-              background: 'var(--card)',
-              color: 'var(--text)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius)',
-              padding: 12,
-              margin: 0,
-              fontSize: '.72rem',
-              lineHeight: 1.4,
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-all',
-            }}
-          >
-            {logger.toText() || '(buffer empty)'}
-          </pre>
-        </div>
-      )}
 
       <SettingsSection title="Business">
         <div className="field">
@@ -1649,44 +1519,7 @@ export function Settings({ ai, onStartTour, contactsApi }) {
       </SettingsSection>
 
       <SettingsSection title="Debugging">
-        <p style={{ fontSize: '.78rem', color: 'var(--muted)', marginBottom: 12, lineHeight: 1.5 }}>
-          Capture in-app diagnostic logs. Stays in memory only — nothing is uploaded.
-        </p>
-        <div className="field">
-          <label htmlFor="debug-log-level">
-            Log level
-            <select
-              id="debug-log-level"
-              value={s.debug?.logLevel || 'error'}
-              onChange={(e) => setDebug('logLevel', e.target.value)}
-            >
-              {LOG_LEVELS.map((lvl) => (
-                <option key={lvl} value={lvl}>
-                  {lvl}
-                </option>
-              ))}
-            </select>
-          </label>
-          <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
-            Lower = more entries captured. Default is <code>error</code>. Press Save Settings to
-            apply.
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button className="btn btn-ghost btn-sm" onClick={() => setShowLogs(true)}>
-            View logs
-          </button>
-          <button className="btn btn-ghost btn-sm" onClick={downloadLogs}>
-            Download logs
-          </button>
-          <button
-            className="btn btn-ghost btn-sm"
-            style={{ color: 'var(--danger)' }}
-            onClick={clearLogs}
-          >
-            Clear logs
-          </button>
-        </div>
+        <DebugLogsSection settings={s} saveSettings={setS} toast={toast} />
       </SettingsSection>
 
       <button
