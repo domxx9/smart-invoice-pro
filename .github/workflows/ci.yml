@@ -43,10 +43,10 @@ jobs:
           PAPERCLIP_CTO_AGENT_ID: ${{ secrets.PAPERCLIP_CTO_AGENT_ID }}
           PAPERCLIP_PROJECT_ID: ${{ secrets.PAPERCLIP_PROJECT_ID }}
         run: |
-          curl -s -X POST \
+          curl -s --fail -X POST \
             -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
             -H "Content-Type: application/json" \
-            "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/issues" \
+            "${PAPERCLIP_API_URL%/}/api/companies/$PAPERCLIP_COMPANY_ID/issues" \
             -d "$(jq -n \
               --arg title "CI failure: ${{ github.ref_name }} — build" \
               --arg desc "**CI run failed.**\n\n- **Branch:** ${{ github.ref_name }}\n- **Commit:** ${{ github.sha }}\n- **Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
