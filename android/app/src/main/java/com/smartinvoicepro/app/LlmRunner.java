@@ -56,12 +56,6 @@ public class LlmRunner {
                 public void onStats(String stats) {
                     Log.d(TAG, "Stats: " + stats);
                 }
-
-                @Override
-                public void onError(int code, String message) {
-                    Log.e(TAG, "Inference error: " + message);
-                    cb.onError(message);
-                }
             });
             cb.onDone(sb.toString());
         } catch (Exception e) {

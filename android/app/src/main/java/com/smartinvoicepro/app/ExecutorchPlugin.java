@@ -28,7 +28,7 @@ public class ExecutorchPlugin extends Plugin {
     public void loadModel(PluginCall call) {
         String modelPath = call.getString("modelPath");
         String tokenizerPath = call.getString("tokenizerPath");
-        float temperature = (float) call.getDouble("temperature", 0.7f);
+        float temperature = (float) call.getDouble("temperature", 0.7);
 
         if (modelPath == null || tokenizerPath == null) {
             call.reject("modelPath and tokenizerPath are required");
@@ -86,11 +86,6 @@ public class ExecutorchPlugin extends Plugin {
                     public void onStats(String stats) {
                         Log.d(TAG, "Stats: " + stats);
                     }
-
-                    @Override
-                    public void onError(int code, String message) {
-                        Log.e(TAG, "Inference error: " + message);
-                    }
                 });
                 JSObject result = new JSObject();
                 result.put("text", fullText.toString());
@@ -130,7 +125,7 @@ public class ExecutorchPlugin extends Plugin {
     }
 
     @Override
-    protected void handleDestroy() {
+    protected void handleOnDestroy() {
         mExecutor.shutdown();
         if (mModule != null) {
             try {
@@ -138,6 +133,6 @@ public class ExecutorchPlugin extends Plugin {
             } catch (Exception ignored) {}
             mModule = null;
         }
-        super.handleDestroy();
+        super.handleOnDestroy();
     }
 }
