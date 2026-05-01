@@ -1,7 +1,8 @@
 import { useCallback, useRef, useState } from 'react'
+import { STORAGE_KEYS } from '../constants/storageKeys.js'
 import { logger } from '../utils/logger.js'
 
-const STORAGE_KEY = 'sip_contacts'
+const STORAGE_KEY = STORAGE_KEYS.SIP_CONTACTS
 
 export function makeContactId() {
   return `contact_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`

@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { STORAGE_KEYS } from '../constants/storageKeys.js'
 import { SAMPLE_PRODUCTS } from '../constants.js'
 import { fetchSquarespaceProducts } from '../api/squarespace.js'
 import { fetchShopifyProducts } from '../api/shopify.js'
@@ -32,7 +33,7 @@ export function useCatalogSync({
 }) {
   const { toast } = useToast()
   const [products, setProducts] = useState(() => {
-    const s = localStorage.getItem('sip_products')
+    const s = localStorage.getItem(STORAGE_KEYS.SIP_PRODUCTS)
     try {
       return s ? JSON.parse(s) : SAMPLE_PRODUCTS
     } catch {
@@ -41,7 +42,7 @@ export function useCatalogSync({
     }
   })
   const [lastSynced, setLastSynced] = useState(() => {
-    const ts = localStorage.getItem('sip_products_synced_at')
+    const ts = localStorage.getItem(STORAGE_KEYS.SIP_PRODUCTS_SYNCED_AT)
     return ts ? parseInt(ts, 10) : null
   })
   const [syncStatus, setSyncStatus] = useState('idle')
@@ -51,8 +52,8 @@ export function useCatalogSync({
     setProducts(prods)
     const ts = Date.now()
     setLastSynced(ts)
-    localStorage.setItem('sip_products', JSON.stringify(prods))
-    localStorage.setItem('sip_products_synced_at', String(ts))
+    localStorage.setItem(STORAGE_KEYS.SIP_PRODUCTS, JSON.stringify(prods))
+    localStorage.setItem(STORAGE_KEYS.SIP_PRODUCTS_SYNCED_AT, String(ts))
   }, [])
 
   const handleSyncCatalog = useCallback(async () => {

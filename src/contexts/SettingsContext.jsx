@@ -3,6 +3,7 @@ import { setCurrency, setInvoicePrefix, setInvoicePadding } from '../helpers.js'
 import { setSecret, getSecret, migrateKeysFromLocalStorage } from '../secure-storage.js'
 import { logger } from '../utils/logger.js'
 import { ToastContext } from './ToastContext.jsx'
+import { STORAGE_KEYS } from '../constants/storageKeys.js'
 
 const SettingsContext = createContext(null)
 
@@ -73,13 +74,13 @@ export function isSmartPasteContextSet(settings) {
 function loadSettings() {
   let s = {}
   try {
-    const saved = localStorage.getItem('sip_settings')
+    const saved = localStorage.getItem(STORAGE_KEYS.SIP_SETTINGS)
     if (saved) {
       const parsed = JSON.parse(saved)
       if (parsed && typeof parsed === 'object') s = parsed
     }
   } catch {
-    localStorage.removeItem('sip_settings')
+    localStorage.removeItem(STORAGE_KEYS.SIP_SETTINGS)
   }
   const merged = {
     ...DEFAULTS,
@@ -153,7 +154,7 @@ export function SettingsProvider({ children }) {
       delete toStore.bankAccountNumber
       delete toStore.bankIban
       delete toStore.bankSwift
-      localStorage.setItem('sip_settings', JSON.stringify(toStore))
+      localStorage.setItem(STORAGE_KEYS.SIP_SETTINGS, JSON.stringify(toStore))
       setCurrency(s.currency)
       setInvoicePrefix(s.invoicePrefix || 'INV')
       setInvoicePadding(s.invoicePadding || 4)

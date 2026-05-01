@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { submitPasteFeedback } from '../api/feedbackSubmit.js'
+import { STORAGE_KEYS } from '../constants/storageKeys.js'
 
-const FINETUNE_STORAGE_KEY = 'sip_finetune_export_v1'
+const FINETUNE_STORAGE_KEY = STORAGE_KEYS.SIP_FINETUNE_EXPORT_V1
 
 function buildJsonlEntry(correction) {
   const promptPart = `Match: '${correction.originalText}'`

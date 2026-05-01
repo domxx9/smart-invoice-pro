@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { STORAGE_KEYS } from '../constants/storageKeys.js'
 import {
   isEmbedderDownloaded,
   handleEmbedderDownload,
@@ -49,7 +50,9 @@ async function loadModelViaFacade(id) {
 }
 
 export function useAiModel(toast, settings) {
-  const [aiModelId, setAiModelId] = useState(() => localStorage.getItem('sip_ai_model') || 'small')
+  const [aiModelId, setAiModelId] = useState(
+    () => localStorage.getItem(STORAGE_KEYS.SIP_AI_MODEL) || 'small',
+  )
   const [aiDownloaded, setAiDownloaded] = useState({})
   const [aiDownloadProgress, setAiDownloadProgress] = useState({})
   const [aiDownloading, setAiDownloading] = useState(null)
@@ -95,7 +98,7 @@ export function useAiModel(toast, settings) {
         }
       }
 
-      const modelToLoad = localStorage.getItem('sip_ai_model') || 'small'
+      const modelToLoad = localStorage.getItem(STORAGE_KEYS.SIP_AI_MODEL) || 'small'
       if (results[modelToLoad]) {
         setAiLoading(true)
         try {
@@ -118,7 +121,7 @@ export function useAiModel(toast, settings) {
 
   const handleAiSelect = (id) => {
     setAiModelId(id)
-    localStorage.setItem('sip_ai_model', id)
+    localStorage.setItem(STORAGE_KEYS.SIP_AI_MODEL, id)
   }
 
   const handleAiDownload = async (id) => {

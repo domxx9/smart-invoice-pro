@@ -15,6 +15,7 @@
 
 import { getSecret } from '../secure-storage.js'
 import pkg from '../../package.json'
+import { STORAGE_KEYS } from '../constants/storageKeys.js'
 
 export const SCHEMA_VERSION = 1
 export const EXPORT_KIND = 'smart-invoice-pro-backup'
@@ -46,15 +47,19 @@ function readString(key) {
 // iterates it — adding a row here is the ONLY way to surface a new key in the
 // export, so the constant and the snapshot body cannot drift.
 const SNAPSHOT_READERS = [
-  { storageKey: 'sip_invoices', dataField: 'invoices', read: (k) => readJson(k, []) },
-  { storageKey: 'sip_products', dataField: 'products', read: (k) => readJson(k, []) },
-  { storageKey: 'sip_products_synced_at', dataField: 'productsSyncedAt', read: readNumber },
-  { storageKey: 'sip_orders', dataField: 'orders', read: (k) => readJson(k, []) },
-  { storageKey: 'sip_orders_synced_at', dataField: 'ordersSyncedAt', read: readNumber },
-  { storageKey: 'sip_picks', dataField: 'picks', read: (k) => readJson(k, {}) },
-  { storageKey: 'sip_settings', dataField: 'settings', read: (k) => readJson(k, {}) },
-  { storageKey: 'sip_onboarded', dataField: 'onboarded', read: readString },
-  { storageKey: 'sip_ai_model', dataField: 'aiModelId', read: readString },
+  { storageKey: STORAGE_KEYS.SIP_INVOICES, dataField: 'invoices', read: (k) => readJson(k, []) },
+  { storageKey: STORAGE_KEYS.SIP_PRODUCTS, dataField: 'products', read: (k) => readJson(k, []) },
+  {
+    storageKey: STORAGE_KEYS.SIP_PRODUCTS_SYNCED_AT,
+    dataField: 'productsSyncedAt',
+    read: readNumber,
+  },
+  { storageKey: STORAGE_KEYS.SIP_ORDERS, dataField: 'orders', read: (k) => readJson(k, []) },
+  { storageKey: STORAGE_KEYS.SIP_ORDERS_SYNCED_AT, dataField: 'ordersSyncedAt', read: readNumber },
+  { storageKey: STORAGE_KEYS.SIP_PICKS, dataField: 'picks', read: (k) => readJson(k, {}) },
+  { storageKey: STORAGE_KEYS.SIP_SETTINGS, dataField: 'settings', read: (k) => readJson(k, {}) },
+  { storageKey: STORAGE_KEYS.SIP_ONBOARDED, dataField: 'onboarded', read: readString },
+  { storageKey: STORAGE_KEYS.SIP_AI_MODEL, dataField: 'aiModelId', read: readString },
 ]
 
 export const KNOWN_STORAGE_KEYS = SNAPSHOT_READERS.map((r) => r.storageKey)

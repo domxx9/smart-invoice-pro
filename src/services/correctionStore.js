@@ -1,10 +1,6 @@
-/**
- * Correction persistence layer.
- * Uses localStorage (web/native via Capacitor Preferences fallback).
- * Storage key: sip_correction_history_v1
- */
+import { STORAGE_KEYS } from '../constants/storageKeys.js'
 
-const STORAGE_KEY = 'sip_correction_history_v1'
+const STORAGE_KEY = STORAGE_KEYS.SIP_CORRECTION_HISTORY_V1
 
 export function normalizeText(s) {
   if (s == null) return ''
