@@ -111,7 +111,6 @@ export function InvoiceEditor({
   }, [contactIds])
 
   useEffect(() => {
-    localStorage.setItem('sip_draft_edit', JSON.stringify(inv))
     handleDraftChange?.(inv)
   }, [inv]) // eslint-disable-line react-hooks/exhaustive-deps
 

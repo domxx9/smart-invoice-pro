@@ -7,6 +7,8 @@
  *   → keys cleared on tab close (acceptable trade-off)
  */
 
+import { BYOK_PROVIDERS } from './byok.js'
+
 const isNative = () => !!window.Capacitor?.isNativePlatform?.()
 
 let _plugin = null
@@ -77,9 +79,8 @@ export async function migrateKeysFromLocalStorage() {
     }
   }
 
-  const providers = ['openrouter', 'gemini', 'openai', 'anthropic']
-  for (const p of providers) {
-    const lsKey = `sip_byok_${p}`
+  for (const provider of Object.keys(BYOK_PROVIDERS)) {
+    const lsKey = `sip_byok_${provider}`
     const val = localStorage.getItem(lsKey)
     if (val) {
       await setSecret(lsKey, val)

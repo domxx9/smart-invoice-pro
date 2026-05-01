@@ -26,10 +26,11 @@ import { PullToRefresh } from './components/PullToRefresh.jsx'
 import { Icon } from './components/Icon.jsx'
 import { BurgerMenu } from './components/BurgerMenu.jsx'
 import { useMenu } from './hooks/useMenu.js'
+import { STORAGE_KEYS } from './constants/storageKeys.js'
 
 export default function App() {
   const [tab, setTab] = useState(() =>
-    localStorage.getItem('sip_draft_edit') ? 'invoices' : 'dashboard',
+    localStorage.getItem(STORAGE_KEYS.SIP_DRAFT_EDIT) ? 'invoices' : 'dashboard',
   )
   return (
     <ErrorBoundary>
