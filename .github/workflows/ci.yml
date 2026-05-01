@@ -17,6 +17,9 @@ jobs:
           authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
           tags: tag:ci
 
+      - name: TEST ONLY — deliberate failure (revert to verify notification)
+        run: exit 1
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
