@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf'
 import { Share } from '@capacitor/share'
 import { calcTotals } from './helpers.js'
 import { logger } from './utils/logger.js'
+import { isNative } from './api/platformFetch.js'
 
 function hexToRgb(hex) {
   const r = parseInt(hex.slice(1, 3), 16)
@@ -431,8 +432,7 @@ export async function pdfFileExists(filename) {
 export async function savePDFToPhone(inv, settings, filenameOverride) {
   const doc = buildInvoicePDF(inv, settings)
   const filename = filenameOverride ?? getPDFFilename(inv)
-  const isNative = window.Capacitor?.isNativePlatform?.()
-  if (isNative) {
+  if (isNative()) {
     try {
       const pdfBase64 = doc.output('datauristring').split(',')[1]
       const { Filesystem, Directory } = await import('@capacitor/filesystem')
@@ -467,8 +467,7 @@ export async function openPDF(uri) {
 export async function sharePDF(inv, settings) {
   const doc = buildInvoicePDF(inv, settings)
   const filename = `${inv.id}_${(inv.customer || 'invoice').replace(/\s+/g, '_')}.pdf`
-  const isNative = window.Capacitor?.isNativePlatform?.()
-  if (isNative) {
+  if (isNative()) {
     const pdfBase64 = doc.output('datauristring').split(',')[1]
     const { Filesystem, Directory } = await import('@capacitor/filesystem')
     await Filesystem.writeFile({ path: filename, data: pdfBase64, directory: Directory.Cache })

@@ -96,4 +96,77 @@ describe('platformFetch', () => {
       )
     })
   })
+
+  describe('native environment (isNative = true)', () => {
+    let mockCapacitorHttp
+
+    beforeEach(() => {
+      mockCapacitorHttp = {
+        request: vi.fn(),
+      }
+      vi.stubGlobal('window', {
+        Capacitor: {
+          isNativePlatform: () => true,
+          Plugins: { CapacitorHttp: mockCapacitorHttp },
+        },
+      })
+    })
+
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    it('returns { data, raw } on 2xx from CapacitorHttp', async () => {
+      const mockData = { ok: true, items: [1, 2, 3] }
+      mockCapacitorHttp.request.mockResolvedValue({
+        status: 200,
+        data: mockData,
+        headers: {},
+      })
+
+      const result = await platformFetch(API_URL, { Authorization: `Bearer ${API_KEY}` })
+
+      expect(result.data).toEqual(mockData)
+      expect(result.raw.status).toBe(200)
+    })
+
+    it('truncates error message to ≤200 chars on non-2xx', async () => {
+      mockCapacitorHttp.request.mockResolvedValue({
+        status: 422,
+        data: { error: 'A'.repeat(500) },
+        headers: {},
+      })
+
+      let thrownError
+      try {
+        await platformFetch(API_URL, {})
+      } catch (e) {
+        thrownError = e
+      }
+      expect(thrownError).toBeDefined()
+      expect(thrownError.message.length).toBeLessThanOrEqual(200)
+      expect(thrownError.message).toContain('422')
+    })
+
+    it('passes method and body (as data field) to CapacitorHttp.request', async () => {
+      mockCapacitorHttp.request.mockResolvedValue({
+        status: 200,
+        data: {},
+        headers: {},
+      })
+
+      await platformFetch(
+        API_URL,
+        { 'Content-Type': 'application/json' },
+        { method: 'POST', body: '{"key":"value"}' },
+      )
+
+      expect(mockCapacitorHttp.request).toHaveBeenCalledWith({
+        url: API_URL,
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        data: '{"key":"value"}',
+      })
+    })
+  })
 })
