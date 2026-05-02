@@ -4,6 +4,11 @@ const PAPERCLIP_URL = import.meta.env.VITE_PAPERCLIP_URL || 'http://localhost:31
 const COMPANY_ID = 'c262e348-7044-4326-80ca-496a018bf1e4'
 
 export async function submitPasteFeedback({ rawText, corrections, timestamp }) {
+  if (!import.meta.env.VITE_PAPERCLIP_URL) {
+    logger.info('feedback.skip', { reason: 'VITE_PAPERCLIP_URL not configured' })
+    return
+  }
+
   const rows = corrections.map((c) => {
     const line = [`- **"${c.originalText}"**`]
     if (c.aiMatch) line.push(`  - AI matched: ${c.aiMatch} (${c.confidence}%)`)

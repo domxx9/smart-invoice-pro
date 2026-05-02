@@ -1,7 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
 import { CURRENCY_TAX } from '../constants.js'
-import { fetchSquarespaceProducts } from '../api/squarespace.js'
-import { fetchShopifyProducts } from '../api/shopify.js'
 import { getSecret, setSecret } from '../secure-storage.js'
 import { BYOK_PROVIDERS as BYOK_PRESETS } from '../byok.js'
 import {
@@ -16,7 +14,7 @@ import { SettingsSection } from './SettingsSection.jsx'
 import { ContactsImportSection } from './ContactsImportSection.jsx'
 import { PdfTemplateEditor } from './PdfTemplateEditor.jsx'
 import { DebugLogsSection } from './DebugLogsSection.jsx'
-import { FineTuneExportButton } from './FineTuneExportButton.jsx'
+import { IntegrationsSection } from './settings/IntegrationsSection.jsx'
 import { Icon } from './Icon.jsx'
 import { RestoreBackupModal } from './RestoreBackupModal.jsx'
 import { TOUR_SECTIONS } from './TourOverlay.jsx'
@@ -28,12 +26,7 @@ import {
   backupFilename,
   EXPORT_KIND,
 } from '../utils/dataExport.js'
-import {
-  SHOP_TYPE_OPTIONS,
-  CUSTOMER_TYPE_OPTIONS,
-  VOCABULARY_OPTIONS,
-  LOCALE_OPTIONS,
-} from '../constants/smartPasteContextPresets.js'
+import { SmartPasteContextSection } from './settings/SmartPasteContextSection.jsx'
 
 export function Settings({ ai, onStartTour, contactsApi }) {
   const {
@@ -69,10 +62,7 @@ export function Settings({ ai, onStartTour, contactsApi }) {
   const { settings, saveSettings } = useSettings()
   const { toast } = useToast()
   const [s, setS] = useState(settings)
-  const [testStatus, setTestStatus] = useState('idle')
-  const [testError, setTestError] = useState('')
-  const [shopifyTestStatus, setShopifyTestStatus] = useState('idle')
-  const [shopifyTestError, setShopifyTestError] = useState('')
+
   const [byokKey, setByokKey] = useState('')
   // SMA-96: cached model list per provider+baseUrl. Shape per key:
   // { status: 'idle' | 'loading' | 'ok' | 'error', models: string[], error: string }
@@ -92,8 +82,6 @@ export function Settings({ ai, onStartTour, contactsApi }) {
   const [backupError, setBackupError] = useState('')
   const [includeSecrets, setIncludeSecrets] = useState(false)
   const set = (k, v) => setS((p) => ({ ...p, [k]: v }))
-  const setSmartPasteContext = (k, v) =>
-    setS((p) => ({ ...p, smartPasteContext: { ...(p.smartPasteContext || {}), [k]: v } }))
   // Load BYOK key from secure storage when provider changes.
   // Guard against the async resolution overwriting keystrokes typed
   // before getSecret resolves (see SMA-34 test).
@@ -179,32 +167,6 @@ export function Settings({ ai, onStartTour, contactsApi }) {
       setBackupError(e?.message || 'Export failed')
     } finally {
       setBackupBusy(null)
-    }
-  }
-
-  const handleTest = async () => {
-    if (!s.sqApiKey) return
-    setTestStatus('testing')
-    try {
-      await fetchSquarespaceProducts(s.sqApiKey)
-      setTestStatus('ok')
-      setTestError('')
-    } catch (e) {
-      setTestStatus('error')
-      setTestError(e.message)
-    }
-  }
-
-  const handleShopifyTest = async () => {
-    if (!s.shopifyShopDomain || !s.shopifyAccessToken) return
-    setShopifyTestStatus('testing')
-    try {
-      await fetchShopifyProducts(s.shopifyShopDomain, s.shopifyAccessToken)
-      setShopifyTestStatus('ok')
-      setShopifyTestError('')
-    } catch (e) {
-      setShopifyTestStatus('error')
-      setShopifyTestError(e.message)
     }
   }
 
@@ -496,144 +458,7 @@ export function Settings({ ai, onStartTour, contactsApi }) {
       </SettingsSection>
 
       <SettingsSection title="Integrations">
-        <fieldset
-          style={{
-            border: '1px solid var(--border)',
-            borderRadius: 8,
-            padding: '10px 12px',
-            marginBottom: 12,
-          }}
-        >
-          <legend style={{ fontSize: '.78rem', padding: '0 6px', color: 'var(--muted)' }}>
-            Active integration
-          </legend>
-          <div
-            role="radiogroup"
-            aria-label="Active integration"
-            style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}
-          >
-            {[
-              { id: 'squarespace', label: 'Squarespace' },
-              { id: 'shopify', label: 'Shopify' },
-              { id: null, label: 'None' },
-            ].map((opt) => {
-              const checked = (s.activeIntegration ?? null) === opt.id
-              return (
-                <label
-                  key={opt.label}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    fontSize: '.82rem',
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="activeIntegration"
-                    checked={checked}
-                    onChange={() => set('activeIntegration', opt.id)}
-                  />
-                  {opt.label}
-                </label>
-              )
-            })}
-          </div>
-          <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 8, marginBottom: 0 }}>
-            Only one provider syncs at a time. Switching triggers a fresh sync that overwrites the
-            catalog.
-          </p>
-        </fieldset>
-
-        <h3 style={{ fontSize: '.92rem', fontWeight: 700, margin: '10px 0 8px' }}>Squarespace</h3>
-        <div className="field">
-          <label>
-            API Key
-            <input
-              value={s.sqApiKey}
-              onChange={(e) => set('sqApiKey', e.target.value)}
-              type="password"
-              placeholder="sq_…"
-            />
-          </label>
-        </div>
-        <div className="field">
-          <label>
-            Store Domain
-            <input
-              value={s.sqDomain}
-              onChange={(e) => set('sqDomain', e.target.value)}
-              placeholder="yourstore.squarespace.com"
-            />
-          </label>
-        </div>
-        <button
-          className="btn btn-ghost btn-sm mb-8"
-          onClick={handleTest}
-          disabled={!s.sqApiKey || testStatus === 'testing'}
-        >
-          {
-            {
-              idle: 'Test Connection',
-              testing: 'Testing…',
-              ok: '✓ Connected',
-              error: '✗ Failed — check key',
-            }[testStatus]
-          }
-        </button>
-        {testError ? (
-          <p
-            style={{ fontSize: '0.75rem', color: '#f87171', marginTop: 6, wordBreak: 'break-all' }}
-          >
-            {testError}
-          </p>
-        ) : null}
-
-        <h3 style={{ fontSize: '.92rem', fontWeight: 700, margin: '20px 0 8px' }}>Shopify</h3>
-        <div className="field">
-          <label>
-            Shop Domain
-            <input
-              value={s.shopifyShopDomain || ''}
-              onChange={(e) => set('shopifyShopDomain', e.target.value.trim())}
-              placeholder="yourstore.myshopify.com"
-            />
-          </label>
-        </div>
-        <div className="field">
-          <label>
-            Admin API Access Token
-            <input
-              value={s.shopifyAccessToken || ''}
-              onChange={(e) => set('shopifyAccessToken', e.target.value)}
-              type="password"
-              placeholder="shpat_…"
-            />
-          </label>
-        </div>
-        <button
-          className="btn btn-ghost btn-sm mb-8"
-          onClick={handleShopifyTest}
-          disabled={
-            !s.shopifyShopDomain || !s.shopifyAccessToken || shopifyTestStatus === 'testing'
-          }
-        >
-          {
-            {
-              idle: 'Test Connection',
-              testing: 'Testing…',
-              ok: '✓ Connected',
-              error: '✗ Failed — check credentials',
-            }[shopifyTestStatus]
-          }
-        </button>
-        {shopifyTestError ? (
-          <p
-            style={{ fontSize: '0.75rem', color: '#f87171', marginTop: 6, wordBreak: 'break-all' }}
-          >
-            {shopifyTestError}
-          </p>
-        ) : null}
+        <IntegrationsSection settings={s} onChange={(k, v) => setS((p) => ({ ...p, [k]: v }))} />
       </SettingsSection>
 
       {contactsApi && (
@@ -1442,123 +1267,10 @@ export function Settings({ ai, onStartTour, contactsApi }) {
       </SettingsSection>
 
       <SettingsSection id="smart-paste-ai-context" title="Smart Paste AI Context">
-        <p style={{ fontSize: '.78rem', color: 'var(--muted)', marginBottom: 12, lineHeight: 1.5 }}>
-          Five short phrases about your business. Smart Paste prepends these to every AI call so the
-          model maps messy customer messages onto your real catalog.
-        </p>
-        <FineTuneExportButton />
-        <div className="field">
-          <label>
-            Product type
-            <textarea
-              rows={2}
-              value={s.smartPasteContext?.productType || ''}
-              onChange={(e) => setSmartPasteContext('productType', e.target.value)}
-              placeholder="e.g. artisan cheese, industrial fasteners, vinyl records, skincare"
-            />
-          </label>
-          <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
-            What you sell, in 3–4 examples the AI can pattern-match against.
-          </p>
-        </div>
-        <div className="field">
-          <label>
-            Shop type
-            <select
-              value={s.smartPasteContext?.shopType || ''}
-              onChange={(e) => setSmartPasteContext('shopType', e.target.value)}
-            >
-              <option value="">— select —</option>
-              {SHOP_TYPE_OPTIONS.map((o) => (
-                <option key={o} value={o}>
-                  {o}
-                </option>
-              ))}
-              {s.smartPasteContext?.shopType &&
-                !SHOP_TYPE_OPTIONS.includes(s.smartPasteContext.shopType) && (
-                  <option value={s.smartPasteContext.shopType}>
-                    {s.smartPasteContext.shopType}
-                  </option>
-                )}
-            </select>
-          </label>
-          <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
-            How you trade — helps the AI weight wholesale vs retail phrasing.
-          </p>
-        </div>
-        <div className="field">
-          <label>
-            Customer type
-            <select
-              value={s.smartPasteContext?.customerType || ''}
-              onChange={(e) => setSmartPasteContext('customerType', e.target.value)}
-            >
-              <option value="">— select —</option>
-              {CUSTOMER_TYPE_OPTIONS.map((o) => (
-                <option key={o} value={o}>
-                  {o}
-                </option>
-              ))}
-              {s.smartPasteContext?.customerType &&
-                !CUSTOMER_TYPE_OPTIONS.includes(s.smartPasteContext.customerType) && (
-                  <option value={s.smartPasteContext.customerType}>
-                    {s.smartPasteContext.customerType}
-                  </option>
-                )}
-            </select>
-          </label>
-          <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
-            Who you sell to — sets expectations for quantities and vocabulary.
-          </p>
-        </div>
-        <div className="field">
-          <label>
-            Customer vocabulary
-            <select
-              value={s.smartPasteContext?.vocabulary || ''}
-              onChange={(e) => setSmartPasteContext('vocabulary', e.target.value)}
-            >
-              <option value="">None / skip</option>
-              {VOCABULARY_OPTIONS.map((o) => (
-                <option key={o} value={o}>
-                  {o}
-                </option>
-              ))}
-              {s.smartPasteContext?.vocabulary &&
-                !VOCABULARY_OPTIONS.includes(s.smartPasteContext.vocabulary) && (
-                  <option value={s.smartPasteContext.vocabulary}>
-                    {s.smartPasteContext.vocabulary}
-                  </option>
-                )}
-            </select>
-          </label>
-          <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
-            Trade shorthand the AI would otherwise fail on.
-          </p>
-        </div>
-        <div className="field">
-          <label>
-            Language / locale
-            <select
-              value={s.smartPasteContext?.locale || ''}
-              onChange={(e) => setSmartPasteContext('locale', e.target.value)}
-            >
-              <option value="">— select —</option>
-              {LOCALE_OPTIONS.map((o) => (
-                <option key={o} value={o}>
-                  {o}
-                </option>
-              ))}
-              {s.smartPasteContext?.locale &&
-                !LOCALE_OPTIONS.includes(s.smartPasteContext.locale) && (
-                  <option value={s.smartPasteContext.locale}>{s.smartPasteContext.locale}</option>
-                )}
-            </select>
-          </label>
-          <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
-            Languages customers write in — covers codeswitching and regional spellings.
-          </p>
-        </div>
+        <SmartPasteContextSection
+          settings={s}
+          onChange={(k, v) => setS((p) => ({ ...p, [k]: v }))}
+        />
       </SettingsSection>
 
       <SettingsSection title="Backup & restore">

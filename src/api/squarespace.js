@@ -1,29 +1,21 @@
 import { logger } from '../utils/logger.js'
+import { platformFetch } from './platformFetch.js'
 
 export async function fetchSquarespaceProducts(apiKey, onProgress, onStats) {
-  const winCap = window.Capacitor
-  const isNative = winCap?.isNativePlatform?.()
   const allProducts = []
   let cursor = null
 
   do {
     const url = `https://api.squarespace.com/1.0/commerce/products${cursor ? `?cursor=${cursor}` : ''}`
     const devUrl = `/api/sqsp/1.0/commerce/products${cursor ? `?cursor=${cursor}` : ''}`
-    let data
-
-    if (isNative) {
-      const res = await winCap.Plugins.CapacitorHttp.get({
-        url,
-        headers: { Authorization: `Bearer ${apiKey}` },
-      })
-      if (res.status < 200 || res.status >= 300)
-        throw new Error(`Squarespace API ${res.status} — ${JSON.stringify(res.data)}`)
-      data = res.data
-    } else {
-      const res = await fetch(devUrl, { headers: { Authorization: `Bearer ${apiKey}` } })
-      if (!res.ok) throw new Error(`Squarespace API ${res.status}: ${res.statusText}`)
-      data = await res.json()
-    }
+    const { data } = await platformFetch(
+      url,
+      { Authorization: `Bearer ${apiKey}` },
+      { devUrl },
+    ).catch((err) => {
+      const msg = err.message.replace(/^API /, '')
+      throw new Error(`Squarespace API ${msg}`)
+    })
 
     if (!Array.isArray(data.products))
       throw new Error(
@@ -73,29 +65,20 @@ export async function fetchSquarespaceProducts(apiKey, onProgress, onStats) {
 }
 
 export async function fetchSquarespaceOrders(apiKey, onProgress) {
-  const winCap = window.Capacitor
-  const isNative = winCap?.isNativePlatform?.()
   const all = []
   let cursor = null
 
   do {
     const url = `https://api.squarespace.com/1.0/commerce/orders${cursor ? `?cursor=${cursor}` : ''}`
-    const dUrl = `/api/sqsp/1.0/commerce/orders${cursor ? `?cursor=${cursor}` : ''}`
-    let data
-
-    if (isNative) {
-      const res = await winCap.Plugins.CapacitorHttp.get({
-        url,
-        headers: { Authorization: `Bearer ${apiKey}` },
-      })
-      if (res.status < 200 || res.status >= 300)
-        throw new Error(`Squarespace Orders API ${res.status} — ${JSON.stringify(res.data)}`)
-      data = res.data
-    } else {
-      const res = await fetch(dUrl, { headers: { Authorization: `Bearer ${apiKey}` } })
-      if (!res.ok) throw new Error(`Squarespace Orders API ${res.status}: ${res.statusText}`)
-      data = await res.json()
-    }
+    const devUrl = `/api/sqsp/1.0/commerce/orders${cursor ? `?cursor=${cursor}` : ''}`
+    const { data } = await platformFetch(
+      url,
+      { Authorization: `Bearer ${apiKey}` },
+      { devUrl },
+    ).catch((err) => {
+      const msg = err.message.replace(/^API /, '')
+      throw new Error(`Squarespace Orders API ${msg}`)
+    })
 
     const batch = data.result ?? data.orders ?? []
     if (!Array.isArray(batch))

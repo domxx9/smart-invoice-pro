@@ -1,8 +1,13 @@
-import { describe, it, expect, afterEach, vi } from 'vitest'
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import { submitPasteFeedback } from '../feedbackSubmit.js'
+
+beforeEach(() => {
+  vi.stubEnv('VITE_PAPERCLIP_URL', 'http://localhost:3100')
+})
 
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.unstubAllEnvs()
 })
 
 function makeFetch(spec) {
@@ -77,5 +82,12 @@ describe('submitPasteFeedback', () => {
   it('throws with status code when the API returns non-OK', async () => {
     globalThis.fetch = makeFetch({ ok: false, status: 422, errorText: 'Validation error' })
     await expect(submitPasteFeedback(BASE_ARGS)).rejects.toThrow('Feedback submit failed: 422')
+  })
+
+  it('skips silently when VITE_PAPERCLIP_URL is not set', async () => {
+    vi.stubEnv('VITE_PAPERCLIP_URL', '')
+    globalThis.fetch = vi.fn()
+    await submitPasteFeedback(BASE_ARGS)
+    expect(globalThis.fetch).not.toHaveBeenCalled()
   })
 })
