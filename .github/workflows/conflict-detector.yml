@@ -1,0 +1,110 @@
+name: Conflict Detector
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  detect-conflicts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check mergeability (with retry)
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          MERGEABLE="null"
+          for i in 1 2 3 4 5 6; do
+            MERGEABLE=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}" --jq '.mergeable')
+            [ "$MERGEABLE" != "null" ] && break
+            sleep 10
+          done
+          echo "mergeable=$MERGEABLE" >> "$GITHUB_OUTPUT"
+
+      - name: Create Paperclip conflict sub-issue
+        if: steps.check.outputs.mergeable == 'false'
+        env:
+          PAPERCLIP_API_URL: ${{ secrets.PAPERCLIP_API_URL }}
+          PAPERCLIP_API_KEY: ${{ secrets.PAPERCLIP_API_KEY }}
+          PAPERCLIP_COMPANY_ID: ${{ secrets.PAPERCLIP_COMPANY_ID }}
+          PAPERCLIP_CTO_AGENT_ID: ${{ secrets.PAPERCLIP_CTO_AGENT_ID }}
+          PAPERCLIP_PROJECT_ID: ${{ secrets.PAPERCLIP_PROJECT_ID }}
+        run: |
+          PR_NUM="${{ github.event.pull_request.number }}"
+          BRANCH="${{ github.head_ref }}"
+          BASE="${{ github.base_ref }}"
+          PR_URL="${{ github.event.pull_request.html_url }}"
+
+          # Dedup: skip if open conflict issue for this PR already exists
+          EXISTING=$(curl -s \
+            -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+            "${PAPERCLIP_API_URL%/}/api/companies/$PAPERCLIP_COMPANY_ID/issues?q=Merge+conflict+PR+%23${PR_NUM}&status=todo,in_progress,blocked" \
+            | jq --arg pr "PR #${PR_NUM}" '[.issues[] | select(.title | contains($pr))] | length')
+          if [ "${EXISTING:-0}" -gt 0 ]; then
+            echo "Conflict issue for PR #$PR_NUM already exists — skipping."
+            exit 0
+          fi
+
+          # Extract Paperclip identifier from branch name (e.g. fix/sma-288-slug → SMA-288)
+          ISSUE_ID=$(echo "$BRANCH" | grep -oiE 'sma-[0-9]+' | head -1 | tr '[:lower:]' '[:upper:]')
+
+          # Resolve Paperclip parent issue UUID
+          PARENT_ID=""
+          if [ -n "$ISSUE_ID" ]; then
+            PARENT_ID=$(curl -s \
+              -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+              "${PAPERCLIP_API_URL%/}/api/companies/$PAPERCLIP_COMPANY_ID/issues?q=${ISSUE_ID}" \
+              | jq -r --arg id "$ISSUE_ID" '.issues[] | select(.identifier == $id) | .id' | head -1)
+          fi
+
+          TITLE="Merge conflict: PR #${PR_NUM} — ${BRANCH} → ${BASE}"
+          DESC=$(printf '**Merge conflict detected on PR [#%s](%s).**\n\n- **Branch:** `%s`\n- **Target:** `%s`\n- **PR:** [#%s](%s)\n\nResolve the conflict and re-push to clear this issue.' \
+            "$PR_NUM" "$PR_URL" "$BRANCH" "$BASE" "$PR_NUM" "$PR_URL")
+
+          curl -s --fail -X POST \
+            -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+            -H "Content-Type: application/json" \
+            "${PAPERCLIP_API_URL%/}/api/companies/$PAPERCLIP_COMPANY_ID/issues" \
+            -d "$(jq -n \
+              --arg title "$TITLE" \
+              --arg desc "$DESC" \
+              --arg agent "$PAPERCLIP_CTO_AGENT_ID" \
+              --arg project "$PAPERCLIP_PROJECT_ID" \
+              --arg parentId "$PARENT_ID" \
+              '{
+                title: $title,
+                description: $desc,
+                status: "todo",
+                priority: "high",
+                assigneeAgentId: $agent,
+                projectId: $project
+              } + if $parentId != "" then {parentId: $parentId} else {} end')"
+
+      - name: Close resolved conflict issues
+        if: steps.check.outputs.mergeable == 'true'
+        env:
+          PAPERCLIP_API_URL: ${{ secrets.PAPERCLIP_API_URL }}
+          PAPERCLIP_API_KEY: ${{ secrets.PAPERCLIP_API_KEY }}
+          PAPERCLIP_COMPANY_ID: ${{ secrets.PAPERCLIP_COMPANY_ID }}
+        run: |
+          PR_NUM="${{ github.event.pull_request.number }}"
+
+          # Find open conflict issues for this PR and mark done
+          ISSUE_IDS=$(curl -s \
+            -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+            "${PAPERCLIP_API_URL%/}/api/companies/$PAPERCLIP_COMPANY_ID/issues?q=Merge+conflict+PR+%23${PR_NUM}&status=todo,in_progress,blocked" \
+            | jq -r --arg pr "PR #${PR_NUM}" '.issues[] | select(.title | contains($pr)) | .id')
+
+          for ISSUE_ID in $ISSUE_IDS; do
+            echo "Closing conflict issue $ISSUE_ID (conflict resolved on PR #$PR_NUM)"
+            curl -s --fail -X PATCH \
+              -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+              -H "Content-Type: application/json" \
+              "${PAPERCLIP_API_URL%/}/api/issues/${ISSUE_ID}" \
+              -d "$(jq -n \
+                --arg pr "$PR_NUM" \
+                '{status: "done", comment: "Conflict resolved — PR #\($pr) is now mergeable."}')"
+          done
