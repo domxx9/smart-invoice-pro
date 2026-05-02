@@ -8,7 +8,8 @@
  *     Native: raw.headers for Link header
  *     Browser: raw.headers.get() for Link header
  */
-const isNative = () => typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()
+export const isNative = () =>
+  typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()
 
 export async function platformFetch(url, headers = {}, opts = {}) {
   const { method = 'GET', body, devUrl } = opts

@@ -9,6 +9,8 @@
  * surface a toast rather than failing silently.
  */
 
+import { isNative } from '../api/platformFetch.js'
+
 export async function shareOrDownload({ filename, content, mimeType }) {
   if (!filename) throw new Error('shareOrDownload: filename is required')
   if (content === undefined || content === null) {
@@ -16,19 +18,10 @@ export async function shareOrDownload({ filename, content, mimeType }) {
   }
   if (!mimeType) throw new Error('shareOrDownload: mimeType is required')
 
-  if (await isNativePlatform()) {
+  if (isNative()) {
     return shareNative({ filename, content, mimeType })
   }
   return downloadWeb({ filename, content, mimeType })
-}
-
-async function isNativePlatform() {
-  try {
-    const mod = await import('@capacitor/core')
-    return !!mod?.Capacitor?.isNativePlatform?.()
-  } catch {
-    return false
-  }
 }
 
 function downloadWeb({ filename, content, mimeType }) {
