@@ -8,15 +8,21 @@
  *     Native: raw.headers for Link header
  *     Browser: raw.headers.get() for Link header
  */
-const isNative = () => typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()
+export const isNative = () =>
+  typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()
 
 export async function platformFetch(url, headers = {}, opts = {}) {
   const { method = 'GET', body, devUrl } = opts
 
   if (isNative()) {
-    const res = await window.Capacitor.Plugins.CapacitorHttp.get({ url, headers, method, body })
+    const res = await window.Capacitor.Plugins.CapacitorHttp.request({
+      url,
+      headers,
+      method,
+      data: body,
+    })
     if (res.status < 200 || res.status >= 300)
-      throw new Error(`API ${res.status} — ${JSON.stringify(res.data)}`)
+      throw new Error(`API ${res.status} — ${JSON.stringify(res.data).slice(0, 180)}`)
     return { data: res.data, raw: res }
   }
 
@@ -25,10 +31,4 @@ export async function platformFetch(url, headers = {}, opts = {}) {
   if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`)
   const data = await res.json()
   return { data, raw: res }
-}
-
-export async function platformFetchJson(url, headers = {}, opts = {}) {
-  const res = await platformFetch(url, headers, opts)
-  if (isNative()) return res.data
-  return res.json()
 }

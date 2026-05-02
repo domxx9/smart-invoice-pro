@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
 const capacitorMock = { Capacitor: { isNativePlatform: vi.fn(() => false) } }
 const filesystemMock = {
@@ -85,22 +85,26 @@ describe('shareOrDownload (web)', () => {
     await expect(shareOrDownload({ content: 'x', mimeType: 'text/plain' })).rejects.toThrow(
       /filename/,
     )
-    await expect(
-      shareOrDownload({ filename: 'a.txt', mimeType: 'text/plain' }),
-    ).rejects.toThrow(/content/)
-    await expect(
-      shareOrDownload({ filename: 'a.txt', content: 'x' }),
-    ).rejects.toThrow(/mimeType/)
+    await expect(shareOrDownload({ filename: 'a.txt', mimeType: 'text/plain' })).rejects.toThrow(
+      /content/,
+    )
+    await expect(shareOrDownload({ filename: 'a.txt', content: 'x' })).rejects.toThrow(/mimeType/)
   })
 })
 
 describe('shareOrDownload (native)', () => {
   beforeEach(() => {
+    // platformFetch.isNative reads window.Capacitor directly, not @capacitor/core
+    window.Capacitor = { isNativePlatform: () => true }
     capacitorMock.Capacitor.isNativePlatform.mockReturnValue(true)
     filesystemMock.Filesystem.writeFile.mockClear()
     filesystemMock.Filesystem.getUri.mockClear()
     filesystemMock.Filesystem.getUri.mockResolvedValue({ uri: 'file:///cache/backup.json' })
     shareMock.Share.share.mockClear()
+  })
+
+  afterEach(() => {
+    delete window.Capacitor
   })
 
   it('writes to the cache dir and opens the share sheet with the resolved URI', async () => {

@@ -17,6 +17,7 @@
  */
 
 import { logger } from './utils/logger.js'
+import { isNative } from './api/platformFetch.js'
 
 // Session-wide KV-cache budget for LlmInference.createFromOptions. Mirrors the
 // constant used by the worker entry (`src/workers/mediapipeWorker.js`). See
@@ -86,10 +87,6 @@ export const MODELS = {
 const WASM_CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai/wasm'
 
 // ─── Platform detection ───────────────────────────────────────────────────────
-
-function isNative() {
-  return typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.()
-}
 
 export function isNativePlatform() {
   return isNative()

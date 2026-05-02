@@ -14,12 +14,10 @@
  */
 
 import { logger } from '../utils/logger.js'
-import { platformFetch } from './platformFetch.js'
+import { platformFetch, isNative } from './platformFetch.js'
 
 const API_VERSION = '2024-01'
 const PAGE_LIMIT = 250
-
-const isNative = () => typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()
 
 function normalizeShopDomain(shopDomain) {
   if (!shopDomain) throw new Error('Shopify shop domain is required')
@@ -47,10 +45,9 @@ function extractNextPageInfo(linkHeader) {
   return null
 }
 
-function buildUrl(host, resource, { pageInfo, query }) {
-  const base = `${host}/admin/api/${API_VERSION}/${resource}.json`
-  // When paginating, Shopify explicitly rejects any filter params other than `limit` and
-  // `page_info`. Drop filters on subsequent pages.
+function buildUrlParams({ pageInfo, query }) {
+  // When paginating, Shopify explicitly rejects page_info alongside any query filters —
+  // it only accepts the cursor itself. So we set one or the other, never both.
   const params = new URLSearchParams()
   params.set('limit', String(PAGE_LIMIT))
   if (pageInfo) {
@@ -60,22 +57,17 @@ function buildUrl(host, resource, { pageInfo, query }) {
       if (v !== undefined && v !== null && v !== '') params.set(k, String(v))
     }
   }
-  return `${base}?${params.toString()}`
+  return params
+}
+
+function buildUrl(host, resource, params) {
+  return `${host}/admin/api/${API_VERSION}/${resource}.json?${params.toString()}`
 }
 
 async function shopifyFetch(shopDomain, accessToken, { resource, pageInfo, query }) {
   const host = `https://${normalizeShopDomain(shopDomain)}`
-  const url = buildUrl(host, resource, { pageInfo, query })
-
-  const params = new URLSearchParams()
-  params.set('limit', String(PAGE_LIMIT))
-  if (pageInfo) {
-    params.set('page_info', pageInfo)
-  } else if (query) {
-    for (const [k, v] of Object.entries(query)) {
-      if (v !== undefined && v !== null && v !== '') params.set(k, String(v))
-    }
-  }
+  const params = buildUrlParams({ pageInfo, query })
+  const url = buildUrl(host, resource, params)
   const devUrl = `/api/shopify/admin/api/${API_VERSION}/${resource}.json?${params.toString()}`
 
   const { data, raw } = await platformFetch(
@@ -257,4 +249,10 @@ export async function fetchShopifyOrders(shopDomain, accessToken, onProgress) {
 }
 
 // Exported for tests — lets us verify the Link-header parser without mocking fetch.
-export const __test = { extractNextPageInfo, flattenProduct, projectOrder, shopifyOrderStatus }
+export const __test = {
+  extractNextPageInfo,
+  flattenProduct,
+  projectOrder,
+  shopifyOrderStatus,
+  buildUrlParams,
+}
