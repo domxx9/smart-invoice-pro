@@ -1,7 +1,6 @@
 import { Component } from 'react'
-import { logger } from '../utils/logger.js'
-import { reportError } from '../services/errorReporter.js'
-import { captureAppState } from '../services/errorReporter.js'
+import { logger } from '../utils/logger'
+import { reportError, captureAppState } from '../services/errorReporter'
 
 export class ErrorBoundary extends Component {
   constructor(props) {
