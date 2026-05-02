@@ -26,9 +26,3 @@ export async function platformFetch(url, headers = {}, opts = {}) {
   const data = await res.json()
   return { data, raw: res }
 }
-
-export async function platformFetchJson(url, headers = {}, opts = {}) {
-  const res = await platformFetch(url, headers, opts)
-  if (isNative()) return res.data
-  return res.json()
-}
