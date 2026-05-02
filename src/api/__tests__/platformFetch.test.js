@@ -96,4 +96,79 @@ describe('platformFetch', () => {
       )
     })
   })
+
+  describe('native environment', () => {
+    let mockCapacitorHttp
+
+    beforeEach(() => {
+      mockCapacitorHttp = {
+        get: vi.fn(),
+        post: vi.fn(),
+      }
+      vi.stubGlobal('window', {
+        Capacitor: {
+          isNativePlatform: () => true,
+          Plugins: { CapacitorHttp: mockCapacitorHttp },
+        },
+      })
+    })
+
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    it('uses CapacitorHttp.get and returns { data, raw }', async () => {
+      const jsonBody = { products: [{ id: 1 }] }
+      mockCapacitorHttp.get.mockResolvedValue({
+        status: 200,
+        data: jsonBody,
+        headers: { 'x-page': '1' },
+      })
+
+      const result = await platformFetch(API_URL, { Authorization: `Bearer ${API_KEY}` })
+
+      expect(mockCapacitorHttp.get).toHaveBeenCalledWith({
+        url: API_URL,
+        headers: { Authorization: `Bearer ${API_KEY}` },
+        method: 'GET',
+        body: undefined,
+      })
+      expect(result.data).toEqual(jsonBody)
+      expect(result.raw).toBeDefined()
+      expect(result.raw.headers).toEqual({ 'x-page': '1' })
+    })
+
+    it('truncates error message to 200 chars on non-OK response', async () => {
+      const largeData = { items: Array(100).fill({ id: 'x'.repeat(100) }) }
+      mockCapacitorHttp.get.mockResolvedValue({
+        status: 422,
+        data: largeData,
+      })
+
+      await expect(platformFetch(API_URL, {}, {})).rejects.toThrow(/API 422 — /)
+      try {
+        await platformFetch(API_URL, {}, {})
+      } catch (e) {
+        expect(e.message.length).toBeLessThanOrEqual(210)
+        expect(e.message).toContain('API 422 — ')
+      }
+    })
+
+    it('passes POST method and body to CapacitorHttp.get', async () => {
+      mockCapacitorHttp.get.mockResolvedValue({
+        status: 201,
+        data: { id: 'new-item' },
+      })
+
+      const body = JSON.stringify({ name: 'Test Product' })
+      await platformFetch(API_URL, { 'Content-Type': 'application/json' }, { method: 'POST', body })
+
+      expect(mockCapacitorHttp.get).toHaveBeenCalledWith({
+        url: API_URL,
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        body,
+      })
+    })
+  })
 })
