@@ -18,12 +18,9 @@
  * already has.
  */
 
-import {
-  SCHEMA_VERSION,
-  EXPORT_KIND,
-  KNOWN_STORAGE_KEYS,
-} from './dataExport.js'
+import { SCHEMA_VERSION, EXPORT_KIND, KNOWN_STORAGE_KEYS } from './dataExport.js'
 import { setSecret } from '../secure-storage.js'
+import { STORAGE_KEYS } from '../constants/storageKeys.js'
 
 const EXPECTED_TYPES = {
   invoices: 'array',
@@ -38,15 +35,15 @@ const EXPECTED_TYPES = {
 }
 
 const WRITERS = [
-  { dataKey: 'invoices', storageKey: 'sip_invoices', shape: 'listById' },
-  { dataKey: 'products', storageKey: 'sip_products', shape: 'listById' },
-  { dataKey: 'productsSyncedAt', storageKey: 'sip_products_synced_at', shape: 'scalar' },
-  { dataKey: 'orders', storageKey: 'sip_orders', shape: 'listById' },
-  { dataKey: 'ordersSyncedAt', storageKey: 'sip_orders_synced_at', shape: 'scalar' },
-  { dataKey: 'picks', storageKey: 'sip_picks', shape: 'mapMerge' },
-  { dataKey: 'settings', storageKey: 'sip_settings', shape: 'mapMerge' },
-  { dataKey: 'onboarded', storageKey: 'sip_onboarded', shape: 'scalar' },
-  { dataKey: 'aiModelId', storageKey: 'sip_ai_model', shape: 'scalar' },
+  { dataKey: 'invoices', storageKey: STORAGE_KEYS.SIP_INVOICES, shape: 'listById' },
+  { dataKey: 'products', storageKey: STORAGE_KEYS.SIP_PRODUCTS, shape: 'listById' },
+  { dataKey: 'productsSyncedAt', storageKey: STORAGE_KEYS.SIP_PRODUCTS_SYNCED_AT, shape: 'scalar' },
+  { dataKey: 'orders', storageKey: STORAGE_KEYS.SIP_ORDERS, shape: 'listById' },
+  { dataKey: 'ordersSyncedAt', storageKey: STORAGE_KEYS.SIP_ORDERS_SYNCED_AT, shape: 'scalar' },
+  { dataKey: 'picks', storageKey: STORAGE_KEYS.SIP_PICKS, shape: 'mapMerge' },
+  { dataKey: 'settings', storageKey: STORAGE_KEYS.SIP_SETTINGS, shape: 'mapMerge' },
+  { dataKey: 'onboarded', storageKey: STORAGE_KEYS.SIP_ONBOARDED, shape: 'scalar' },
+  { dataKey: 'aiModelId', storageKey: STORAGE_KEYS.SIP_AI_MODEL, shape: 'scalar' },
 ]
 
 export function parseSnapshot(text) {

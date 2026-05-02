@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { getStats, clearCorrections, getCorrections } from '../services/correctionStore.js'
+import { STORAGE_KEYS } from '../constants/storageKeys.js'
 
-const FINETUNE_STORAGE_KEY = 'sip_finetune_export_v1'
+const FINETUNE_STORAGE_KEY = STORAGE_KEYS.SIP_FINETUNE_EXPORT_V1
 
 function buildJsonl(corrections) {
   return corrections

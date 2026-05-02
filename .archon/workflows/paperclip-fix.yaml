@@ -60,6 +60,14 @@ nodes:
             -H "Content-Type: application/json" \
             "$PAPERCLIP_API_URL/api/issues/$PAPERCLIP_TASK_ID" \
             -d '{"status": "in_review", "comment": "Implementation complete. Ready for CTO review."}'
+      - name: Notify HAL via routine
+        bash: |
+          PR_JSON=$(gh pr view --json url,number,title,headRefName 2>/dev/null || echo '{}')
+          curl -s -X POST \
+            -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+            -H "Content-Type: application/json" \
+            "$PAPERCLIP_API_URL/api/routines/0f0b65e6-0e6b-48a6-a859-ab4b5afec94a/run" \
+            -d "{\"triggerPayload\": {\"pr\": $PR_JSON, \"issueId\": \"$PAPERCLIP_TASK_ID\"}}"
 
 env:
   preserve:

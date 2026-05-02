@@ -67,7 +67,9 @@ function AppShell({ tab, setTab }) {
   const { settings, saveSettings } = useSettings()
   const { showEgg, handleVersionTap } = useEasterEgg()
   const { menuOpen, openMenu, closeMenu } = useMenu()
-  const [onboarded, setOnboarded] = useState(() => !!localStorage.getItem('sip_onboarded'))
+  const [onboarded, setOnboarded] = useState(
+    () => !!localStorage.getItem(STORAGE_KEYS.SIP_ONBOARDED),
+  )
   const [tourStep, setTourStep] = useState(null)
   const inv = useInvoice()
   const contactsApi = useContacts()
@@ -102,13 +104,13 @@ function AppShell({ tab, setTab }) {
       defaultTax: parseFloat(bizDetails.defaultTax) || 20,
     })
     if (fetchedProducts?.length) catalog.saveProducts(fetchedProducts)
-    localStorage.setItem('sip_onboarded', 'real')
+    localStorage.setItem(STORAGE_KEYS.SIP_ONBOARDED, 'real')
     setOnboarded(true)
     if (startTour) setTourStep(0)
   }
   const handleOnboardDemo = () => {
     inv.saveInvoices(SAMPLE_INVOICES)
-    localStorage.setItem('sip_onboarded', 'demo')
+    localStorage.setItem(STORAGE_KEYS.SIP_ONBOARDED, 'demo')
     setOnboarded(true)
     setTourStep(0)
   }

@@ -8,6 +8,7 @@
  */
 
 import { BYOK_PROVIDERS } from './byok.js'
+import { STORAGE_KEYS } from './constants/storageKeys.js'
 
 const isNative = () => !!window.Capacitor?.isNativePlatform?.()
 
@@ -63,7 +64,7 @@ export async function deleteSecret(key) {
  * again.
  */
 export async function migrateKeysFromLocalStorage() {
-  const raw = localStorage.getItem('sip_settings')
+  const raw = localStorage.getItem(STORAGE_KEYS.SIP_SETTINGS)
   if (raw) {
     try {
       const parsed = JSON.parse(raw)
@@ -72,7 +73,7 @@ export async function migrateKeysFromLocalStorage() {
         await setSecret('sip_sqApiKey', sqKey)
         const cleaned = { ...parsed }
         delete cleaned.sqApiKey
-        localStorage.setItem('sip_settings', JSON.stringify(cleaned))
+        localStorage.setItem(STORAGE_KEYS.SIP_SETTINGS, JSON.stringify(cleaned))
       }
     } catch {
       // corrupted settings — skip migration

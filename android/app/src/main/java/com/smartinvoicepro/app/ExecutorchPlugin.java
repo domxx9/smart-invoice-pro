@@ -28,7 +28,7 @@ public class ExecutorchPlugin extends Plugin {
     public void loadModel(PluginCall call) {
         String modelPath = call.getString("modelPath");
         String tokenizerPath = call.getString("tokenizerPath");
-        float temperature = (float) call.getDouble("temperature", 0.7);
+        float temperature = call.getDouble("temperature", 0.7).floatValue();
 
         if (modelPath == null || tokenizerPath == null) {
             call.reject("modelPath and tokenizerPath are required");
