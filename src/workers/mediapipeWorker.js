@@ -11,21 +11,56 @@
  *   (anything)        → ERROR { id?, message }
  */
 
-// MediaPipe's genai bundle calls `self.import(url)` in module workers as a
-// fallback for `importScripts` (which module workers don't expose). The wasm
-// glue script it loads (`genai_wasm_internal.js`) declares
-// `var ModuleFactory = (() => {...})` and then asserts `self.ModuleFactory`
-// is defined. That contract only holds under classic-script semantics, where
-// top-level `var` becomes a global property. Native dynamic `import()` parses
-// the response as an ES module, so `ModuleFactory` stays module-scoped and
 // MediaPipe throws "ModuleFactory not set." (SMA-67 — SMA-47 polyfill
 // regression). Fetch the script as text and run it via indirect eval
 // (`(0, eval)`) so it evaluates in the worker's global scope.
+//
+// SECURITY (SMA-210): Running fetched code via indirect eval is risky if the
+// CDN is compromised. We validate content-type and require SRI (Subresource
+// Integrity) before execution. Update WASM_GLUE_SRI when upgrading MediaPipe.
+const WASM_GLUE_SRI = '' // e.g. 'sha256-abc123...'; empty = opt-out (dev only)
+// SECURITY (SMA-210): Allowlist of origins permitted to have their scripts
+// executed via indirect eval. Only jsDelivr CDN for MediaPipe is trusted.
+const TRUSTED_ORIGINS = new Set(['https://cdn.jsdelivr.net'])
+
 if (typeof self !== 'undefined' && typeof self.import !== 'function') {
   self.import = async (url) => {
+    let parsed
+    try {
+      parsed = new URL(url)
+    } catch {
+      throw new Error(`self.import received invalid URL: ${url}`)
+    }
+    if (!TRUSTED_ORIGINS.has(parsed.origin)) {
+      throw new Error(
+        `self.import blocked: origin '${parsed.origin}' is not in the trusted CDN allowlist (SMA-210)`,
+      )
+    }
     const res = await fetch(url, { credentials: 'omit' })
     if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`)
+    const ct = res.headers.get('content-type') ?? ''
+    if (!/^(application|text)\/(java|ecma)script/.test(ct)) {
+      throw new Error(
+        `self.import blocked: unexpected content-type '${ct}' from ${url} (expected JavaScript MIME)`,
+      )
+    }
     const code = await res.text()
+    if (WASM_GLUE_SRI) {
+      let hash
+      try {
+        hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(code))
+      } catch {
+        throw new Error(
+          'self.import SRI verification requires crypto.subtle (secure context needed)',
+        )
+      }
+      const computed = 'sha256-' + btoa(String.fromCharCode(...new Uint8Array(hash)))
+      if (computed !== WASM_GLUE_SRI) {
+        throw new Error(
+          `self.import SRI mismatch for ${url}: expected ${WASM_GLUE_SRI}, got ${computed}`,
+        )
+      }
+    }
     ;(0, eval)(code)
   }
 }

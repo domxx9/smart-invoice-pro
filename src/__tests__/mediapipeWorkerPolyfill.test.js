@@ -86,23 +86,31 @@ describe('mediapipeWorker — self.import polyfill (SMA-67)', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url) => {
-        expect(url).toBe('https://example.test/glue.js')
-        return new Response(stubScript, { status: 200 })
+        expect(url).toBe(
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai/wasm/genai_wasm_internal.js',
+        )
+        return new Response(stubScript, {
+          status: 200,
+          headers: { 'content-type': 'application/javascript' },
+        })
       }),
     )
 
     // Run the real polyfill block (not a stub) against a sandbox `self`.
-    // Inside indirect eval we want `self` to be the sandbox, so alias it to
-    // globalThis — that's how a real worker realm exposes it.
+    // Include WASM_GLUE_SRI and TRUSTED_ORIGINS so the polyfill block has access.
     const polyfillBlock = extractPolyfillBlock(WORKER_SRC)
     const wrapped = `
       globalThis.self = self;
+      const WASM_GLUE_SRI = '';
+      const TRUSTED_ORIGINS = new Set(['https://cdn.jsdelivr.net']);
       ${polyfillBlock}
       return self.import;
     `
     const polyfillImport = new Function('self', wrapped)(globalThis)
 
-    await polyfillImport('https://example.test/glue.js')
+    await polyfillImport(
+      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai/wasm/genai_wasm_internal.js',
+    )
 
     expect(typeof globalThis.ModuleFactory).toBe('function')
     expect(globalThis.ModuleFactory()).toBe(42)
@@ -124,12 +132,14 @@ describe('mediapipeWorker — self.import polyfill (SMA-67)', () => {
     const polyfillBlock = extractPolyfillBlock(WORKER_SRC)
     const wrapped = `
       globalThis.self = self;
+      const WASM_GLUE_SRI = '';
+      const TRUSTED_ORIGINS = new Set(['https://cdn.jsdelivr.net']);
       ${polyfillBlock}
       return self.import;
     `
     const polyfillImport = new Function('self', wrapped)(globalThis)
 
-    await expect(polyfillImport('https://example.test/missing.js')).rejects.toThrow(/404/)
+    await expect(polyfillImport('https://cdn.jsdelivr.net/missing.js')).rejects.toThrow(/404/)
 
     delete globalThis.self
   })
