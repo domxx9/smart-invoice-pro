@@ -1,5 +1,6 @@
 import { Component } from 'react'
 import { logger } from '../utils/logger.js'
+import { reportError } from '../utils/errorReporter.js'
 
 export class ErrorBoundary extends Component {
   constructor(props) {
@@ -11,6 +12,7 @@ export class ErrorBoundary extends Component {
   }
   componentDidCatch(err, info) {
     logger.error('error-boundary', 'Render crash:', err, info.componentStack)
+    reportError(err, { componentStack: info.componentStack, source: 'render' })
   }
   render() {
     if (this.state.err)
