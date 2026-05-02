@@ -1,7 +1,9 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import { setCurrency, setInvoicePrefix, setInvoicePadding } from '../helpers.js'
 import { setSecret, getSecret, migrateKeysFromLocalStorage } from '../secure-storage.js'
 import { logger } from '../utils/logger.js'
+import { ToastContext } from './ToastContext.jsx'
+import { STORAGE_KEYS } from '../constants/storageKeys.js'
 
 const SettingsContext = createContext(null)
 
@@ -70,8 +72,16 @@ export function isSmartPasteContextSet(settings) {
 }
 
 function loadSettings() {
-  const saved = localStorage.getItem('sip_settings')
-  const s = saved ? JSON.parse(saved) : {}
+  let s = {}
+  try {
+    const saved = localStorage.getItem(STORAGE_KEYS.SIP_SETTINGS)
+    if (saved) {
+      const parsed = JSON.parse(saved)
+      if (parsed && typeof parsed === 'object') s = parsed
+    }
+  } catch {
+    localStorage.removeItem(STORAGE_KEYS.SIP_SETTINGS)
+  }
   const merged = {
     ...DEFAULTS,
     ...s,
@@ -87,51 +97,74 @@ function loadSettings() {
 
 export function SettingsProvider({ children }) {
   const [settings, setSettings] = useState(loadSettings)
+  const [hydrated, setHydrated] = useState(false)
+  const toastCtx = useContext(ToastContext)
+  const toastRef = useRef(toastCtx)
+  toastRef.current = toastCtx
 
-  // One-time migration + hydrate secrets from secure storage.
   useEffect(() => {
     ;(async () => {
-      await migrateKeysFromLocalStorage()
-      const [sq, shop, bankAccount, bankIban, bankSwift] = await Promise.all([
-        getSecret('sip_sqApiKey'),
-        getSecret('sip_shopifyAccessToken'),
-        getSecret('sip_bankAccountNumber'),
-        getSecret('sip_bankIban'),
-        getSecret('sip_bankSwift'),
-      ])
-      setSettings((prev) => ({
-        ...prev,
-        ...(sq ? { sqApiKey: sq } : {}),
-        ...(shop ? { shopifyAccessToken: shop } : {}),
-        ...(bankAccount ? { bankAccountNumber: bankAccount } : {}),
-        ...(bankIban ? { bankIban } : {}),
-        ...(bankSwift ? { bankSwift } : {}),
-      }))
+      try {
+        await migrateKeysFromLocalStorage()
+        const [sq, shop, bankAccount, bankIban, bankSwift] = await Promise.all([
+          getSecret('sip_sqApiKey'),
+          getSecret('sip_shopifyAccessToken'),
+          getSecret('sip_bankAccountNumber'),
+          getSecret('sip_bankIban'),
+          getSecret('sip_bankSwift'),
+        ])
+        setSettings((prev) => ({
+          ...prev,
+          ...(sq ? { sqApiKey: sq } : {}),
+          ...(shop ? { shopifyAccessToken: shop } : {}),
+          ...(bankAccount ? { bankAccountNumber: bankAccount } : {}),
+          ...(bankIban ? { bankIban } : {}),
+          ...(bankSwift ? { bankSwift } : {}),
+        }))
+      } catch (err) {
+        logger.error('SettingsContext: secure storage hydration failed', err)
+        toastRef.current?.toast(
+          'Settings failed to load — some features may be unavailable',
+          'error',
+        )
+      } finally {
+        setHydrated(true)
+      }
     })()
   }, [])
 
-  const saveSettings = useCallback(async (s) => {
-    setSettings(s)
-    if (s.sqApiKey) await setSecret('sip_sqApiKey', s.sqApiKey)
-    if (s.shopifyAccessToken) await setSecret('sip_shopifyAccessToken', s.shopifyAccessToken)
-    if (s.bankAccountNumber) await setSecret('sip_bankAccountNumber', s.bankAccountNumber)
-    if (s.bankIban) await setSecret('sip_bankIban', s.bankIban)
-    if (s.bankSwift) await setSecret('sip_bankSwift', s.bankSwift)
-    const toStore = { ...s }
-    delete toStore.sqApiKey
-    delete toStore.shopifyAccessToken
-    delete toStore.bankAccountNumber
-    delete toStore.bankIban
-    delete toStore.bankSwift
-    localStorage.setItem('sip_settings', JSON.stringify(toStore))
-    setCurrency(s.currency)
-    setInvoicePrefix(s.invoicePrefix || 'INV')
-    setInvoicePadding(s.invoicePadding || 4)
-    logger.setMinLevel(s.debug?.logLevel || DEFAULT_DEBUG.logLevel)
-  }, [])
+  const saveSettings = useCallback(
+    async (s) => {
+      if (!hydrated) {
+        console.warn(
+          'SettingsContext: saveSettings called before hydration complete — secrets will not persist to secure storage',
+        )
+      }
+      setSettings(s)
+      if (hydrated) {
+        if (s.sqApiKey) await setSecret('sip_sqApiKey', s.sqApiKey)
+        if (s.shopifyAccessToken) await setSecret('sip_shopifyAccessToken', s.shopifyAccessToken)
+        if (s.bankAccountNumber) await setSecret('sip_bankAccountNumber', s.bankAccountNumber)
+        if (s.bankIban) await setSecret('sip_bankIban', s.bankIban)
+        if (s.bankSwift) await setSecret('sip_bankSwift', s.bankSwift)
+      }
+      const toStore = { ...s }
+      delete toStore.sqApiKey
+      delete toStore.shopifyAccessToken
+      delete toStore.bankAccountNumber
+      delete toStore.bankIban
+      delete toStore.bankSwift
+      localStorage.setItem(STORAGE_KEYS.SIP_SETTINGS, JSON.stringify(toStore))
+      setCurrency(s.currency)
+      setInvoicePrefix(s.invoicePrefix || 'INV')
+      setInvoicePadding(s.invoicePadding || 4)
+      logger.setMinLevel(s.debug?.logLevel || DEFAULT_DEBUG.logLevel)
+    },
+    [hydrated],
+  )
 
   return (
-    <SettingsContext.Provider value={{ settings, saveSettings }}>
+    <SettingsContext.Provider value={{ settings, saveSettings, hydrated }}>
       {children}
     </SettingsContext.Provider>
   )

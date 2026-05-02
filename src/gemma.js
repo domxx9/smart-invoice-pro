@@ -39,8 +39,6 @@ export const MODELS = {
     label: 'Gemma 3 1B (int4)',
     description: 'Recommended · 4-bit quantised · web optimised',
     size: '~670 MB',
-    // Served through Vercel edge proxy (adds CORS headers) for web.
-    // Native uses CapacitorHttp directly to GitHub, so no CORS needed there.
     url: 'https://smart-invoice-pro-six.vercel.app/api/model-proxy?id=small',
     nativeUrl:
       'https://github.com/domxx9/smart-invoice-pro/releases/download/v1.0-models/gemma3-1b-int4-web.task',
@@ -55,6 +53,15 @@ export const MODELS = {
     url: 'https://huggingface.co/litert-community/gemma-2-2b-it-litert-lm/resolve/main/gemma-2-2b-it-litert-lm.task',
     filename: 'sip_gemma_pro.task',
   },
+  embedder: {
+    id: 'embedder',
+    label: 'Universal Sentence Encoder',
+    description: 'Lightweight semantic search model',
+    size: '~30 MB',
+    url: 'https://storage.googleapis.com/mediapipe-models/text_embedder/universal_sentence_encoder/float32/1/universal_sentence_encoder.tflite',
+    filename: 'sip_embedder.tflite',
+    public: true,
+  },
   alt: {
     id: 'alt',
     label: 'Llama 3.2 1B',
@@ -62,6 +69,17 @@ export const MODELS = {
     size: '~1 GB',
     url: 'https://huggingface.co/litert-community/Llama-3.2-1B-Instruct-it-litert-lm/resolve/main/Llama-3.2-1B-Instruct-it-litert-lm.task',
     filename: 'sip_gemma_alt.task',
+  },
+  llama_et: {
+    id: 'llama_et',
+    label: 'Llama 3.2 1B (ExecuTorch)',
+    description: 'Native Android · ExecuTorch backend · no WebGPU required',
+    size: '~1.2 GB',
+    url: 'https://huggingface.co/executorch-community/Llama-3.2-1B-Instruct-QLORA_INT4_EO8-ET/resolve/main/Llama-3.2-1B-Instruct-QLORA_INT4_EO8.pte',
+    tokenizerUrl:
+      'https://huggingface.co/executorch-community/Llama-3.2-1B-Instruct-QLORA_INT4_EO8-ET/resolve/main/tokenizer.model',
+    filename: 'sip_llama_et.pte',
+    executorch: true,
   },
 }
 
@@ -415,66 +433,8 @@ export function getBackendInfo() {
 
 // ─── Prompt formatting ────────────────────────────────────────────────────────
 
-function gemmaPrompt(text) {
+export function formatGemmaPrompt(text) {
   return `<start_of_turn>user\n${text}\n<end_of_turn>\n<start_of_turn>model\n`
-}
-
-// ─── Full-text order parsing ──────────────────────────────────────────────────
-
-/**
- * Send raw order text (WhatsApp, email, etc.) to the LLM along with the
- * known product catalog so the model can match items directly.
- *
- * @param {string}   text      - Raw pasted text (WhatsApp, email, list…)
- * @param {Array}    products  - Full product catalog [{name, price, …}]
- * @param {Function} onToken   - Optional streaming callback (partialOutput, done)
- * @returns {Promise<Array<{name:string, qty:number}>>}
- *          name is the matched product name from the catalog (or best attempt).
- */
-/**
- * Stage 1 — LLM pre-processor.
- * Strips WhatsApp timestamps, contact names, greetings, questions.
- * Splits combined lines ("scissors and probe") into one item per line.
- * Returns plain text — no catalog needed, tiny prompt, fast.
- */
-export async function cleanOrderText(text, onToken) {
-  if (!_llm) throw new Error('Model not loaded')
-
-  const prompt = gemmaPrompt(
-    `Clean up this order message. Your job:
-- Remove timestamps (e.g. [12:00, 11/04/2026]), contact names, phone numbers
-- Remove greetings, questions, delivery instructions, anything not an item order
-- If a line mentions multiple items, split them onto separate lines
-- Keep any quantities (numbers) next to their item
-- Return ONLY the cleaned order lines, one item per line, nothing else
-
-Message:
-${text.slice(0, 800)}
-
-Cleaned lines:`,
-  )
-
-  return new Promise((resolve) => {
-    let out = ''
-    try {
-      _llm.generateResponse(prompt, (chunk, done) => {
-        out += chunk
-        onToken?.(out, done)
-        if (done) {
-          logger.debug('ai', 'cleanOrderText raw:', JSON.stringify(out))
-          resolve(out.trim() || text)
-        }
-      })
-    } catch (e) {
-      logger.error('ai', 'cleanOrderText error:', e)
-      try {
-        _llm?.cancelProcessing?.()
-      } catch {
-        /* ignore */
-      }
-      resolve(text) // fallback: use original text unchanged
-    }
-  })
 }
 
 // ─── General inference ────────────────────────────────────────────────────────
@@ -484,7 +444,7 @@ export async function generate(userPrompt, onToken) {
   return new Promise((resolve, reject) => {
     let out = ''
     try {
-      _llm.generateResponse(gemmaPrompt(userPrompt), (chunk, done) => {
+      _llm.generateResponse(formatGemmaPrompt(userPrompt), (chunk, done) => {
         out += chunk
         onToken?.(out, done)
         if (done) resolve(out)

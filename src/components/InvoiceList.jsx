@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { calcTotals, fmt } from '../helpers.js'
 import { Icon } from './Icon.jsx'
+import { useInvoice } from '../contexts/InvoiceContext.jsx'
 
 function daysOverdue(inv) {
   if (!inv.due) return 0
@@ -23,7 +24,8 @@ function onActivateKey(handler) {
   }
 }
 
-export function Invoices({ invoices, onNewInvoice, onEdit, onDuplicate, editingDraft }) {
+export function Invoices() {
+  const { invoices, handleNewInvoice, handleEdit, handleDuplicateInvoice, editing } = useInvoice()
   const [filter, setFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [copiedId, setCopiedId] = useState(null)
@@ -34,10 +36,10 @@ export function Invoices({ invoices, onNewInvoice, onEdit, onDuplicate, editingD
     setTimeout(() => setCopiedId(null), 1600)
   }
 
-  const displayInvoices = editingDraft
-    ? invoices.some((i) => i.id === editingDraft.id)
-      ? invoices.map((i) => (i.id === editingDraft.id ? { ...editingDraft, status: 'draft' } : i))
-      : [{ ...editingDraft, status: 'draft' }, ...invoices]
+  const displayInvoices = editing
+    ? invoices.some((i) => i.id === editing.id)
+      ? invoices.map((i) => (i.id === editing.id ? { ...editing, status: 'draft' } : i))
+      : [{ ...editing, status: 'draft' }, ...invoices]
     : invoices
 
   const isOverdueFn = (inv) => inv.status === 'pending' && inv.due && new Date(inv.due) < new Date()
@@ -68,7 +70,7 @@ export function Invoices({ invoices, onNewInvoice, onEdit, onDuplicate, editingD
     <div>
       <div className="flex-between mb-16">
         <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Invoices</h2>
-        <button className="btn btn-primary btn-sm" onClick={onNewInvoice}>
+        <button className="btn btn-primary btn-sm" onClick={handleNewInvoice}>
           <Icon name="plus" /> New
         </button>
       </div>
@@ -152,7 +154,7 @@ export function Invoices({ invoices, onNewInvoice, onEdit, onDuplicate, editingD
           const isOverdue = isOverdueFn(inv)
           const days = isOverdue ? daysOverdue(inv) : 0
           const heatColor = isOverdue ? overdueColor(days) : null
-          const openEdit = () => onEdit(inv)
+          const openEdit = () => handleEdit(inv)
 
           return (
             <li
@@ -236,14 +238,14 @@ export function Invoices({ invoices, onNewInvoice, onEdit, onDuplicate, editingD
                     <span className={`badge badge-${isOverdue ? 'overdue' : inv.status}`}>
                       {isOverdue ? 'overdue' : inv.status}
                     </span>
-                    {!isDraft && onDuplicate && (
+                    {!isDraft && handleDuplicateInvoice && (
                       <button
                         type="button"
                         title="Duplicate invoice"
                         aria-label={`Duplicate invoice ${inv.id}`}
                         onClick={(e) => {
                           e.stopPropagation()
-                          onDuplicate(inv)
+                          handleDuplicateInvoice(inv)
                         }}
                         style={{
                           background: 'none',

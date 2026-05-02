@@ -17,6 +17,7 @@ vi.mock('../gemma.js', () => ({
   getLoadedModelId: () => null,
   getBackendInfo: () => null,
   cancelDownload: () => {},
+  isNativePlatform: () => false,
 }))
 
 function makeAiStub(overrides = {}) {
@@ -254,9 +255,7 @@ describe('Settings — BYOK model dropdown (SMA-96)', () => {
 
   it('refreshing the list re-calls handleByokListModels', async () => {
     const ai = makeAiStub({
-      handleByokListModels: vi
-        .fn()
-        .mockResolvedValue({ ok: true, models: ['gpt-4o'] }),
+      handleByokListModels: vi.fn().mockResolvedValue({ ok: true, models: ['gpt-4o'] }),
     })
     renderSettings(ai)
     await enterProviderAndKey('openai', 'sk-test-xyz')

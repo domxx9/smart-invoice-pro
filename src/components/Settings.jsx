@@ -1,23 +1,23 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { CURRENCY_TAX } from '../constants.js'
-import { fetchSquarespaceProducts } from '../api/squarespace.js'
-import { fetchShopifyProducts } from '../api/shopify.js'
 import { getSecret, setSecret } from '../secure-storage.js'
 import { BYOK_PROVIDERS as BYOK_PRESETS } from '../byok.js'
 import {
   MODELS as AI_MODELS,
   getBackendInfo,
   cancelDownload as gemmaCancelDownload,
+  isNativePlatform,
 } from '../gemma.js'
 import { useSettings } from '../contexts/SettingsContext.jsx'
 import { useToast } from '../contexts/ToastContext.jsx'
 import { SettingsSection } from './SettingsSection.jsx'
 import { ContactsImportSection } from './ContactsImportSection.jsx'
 import { PdfTemplateEditor } from './PdfTemplateEditor.jsx'
+import { DebugLogsSection } from './DebugLogsSection.jsx'
+import { IntegrationsSection } from './settings/IntegrationsSection.jsx'
 import { Icon } from './Icon.jsx'
 import { RestoreBackupModal } from './RestoreBackupModal.jsx'
 import { TOUR_SECTIONS } from './TourOverlay.jsx'
-import { logger } from '../utils/logger.js'
 import { shareOrDownload } from '../utils/shareBackup.js'
 import {
   buildExportSnapshot,
@@ -26,32 +26,7 @@ import {
   backupFilename,
   EXPORT_KIND,
 } from '../utils/dataExport.js'
-import {
-  SHOP_TYPE_OPTIONS,
-  CUSTOMER_TYPE_OPTIONS,
-  VOCABULARY_OPTIONS,
-  LOCALE_OPTIONS,
-} from '../constants/smartPasteContextPresets.js'
-
-const LOG_LEVELS = ['debug', 'info', 'warn', 'error']
-
-function renderPresetOptions(value, options) {
-  const known = options.includes(value)
-  return (
-    <>
-      {!known && value ? (
-        <option key="__legacy" value={value}>
-          {value}
-        </option>
-      ) : null}
-      {options.map((opt) => (
-        <option key={opt} value={opt}>
-          {opt}
-        </option>
-      ))}
-    </>
-  )
-}
+import { SmartPasteContextSection } from './settings/SmartPasteContextSection.jsx'
 
 export function Settings({ ai, onStartTour, contactsApi }) {
   const {
@@ -66,69 +41,50 @@ export function Settings({ ai, onStartTour, contactsApi }) {
     handleAiDownload: onAiDownload,
     handleAiDelete: onAiDelete,
     handleAiLoad: onAiLoad,
+    embedderDownloaded,
+    embedderDownloading,
+    embedderProgress,
+    embedderLoading,
+    embedderReady,
+    handleEmbedderDownload: onEmbedderDownload,
+    handleEmbedderDelete: onEmbedderDelete,
+    handleEmbedderLoad: onEmbedderLoad,
     byokStatus,
     byokError,
     handleByokTest,
-    handleByokListModels,
     handleByokClear,
+    handleByokListModels,
+    executorchReady,
+    executorchModelId,
+    handleExecutorchLoad: onExecutorchLoad,
+    handleExecutorchDelete: onExecutorchDelete,
   } = ai
   const { settings, saveSettings } = useSettings()
   const { toast } = useToast()
   const [s, setS] = useState(settings)
-  const [testStatus, setTestStatus] = useState('idle')
-  const [testError, setTestError] = useState('')
-  const [shopifyTestStatus, setShopifyTestStatus] = useState('idle')
-  const [shopifyTestError, setShopifyTestError] = useState('')
+
   const [byokKey, setByokKey] = useState('')
   // SMA-96: cached model list per provider+baseUrl. Shape per key:
   // { status: 'idle' | 'loading' | 'ok' | 'error', models: string[], error: string }
   const [byokModelList, setByokModelList] = useState({})
-  const [showLogs, setShowLogs] = useState(false)
-  const [logTick, setLogTick] = useState(0)
+  const [byokModelSelectVal, setByokModelSelectVal] = useState('')
+  const [byokCustomModel, setByokCustomModel] = useState('')
+  const byokProvider = s.byokProvider || ''
+  const byokModelsLoaded = useRef(false)
+  const byokListCacheKey = `${byokProvider}|${s.byokBaseUrl || ''}`
+  const byokListEntry = byokModelList[byokListCacheKey] || {
+    status: 'idle',
+    models: [],
+    error: '',
+  }
   const [showRestore, setShowRestore] = useState(false)
   const [backupBusy, setBackupBusy] = useState(null)
   const [backupError, setBackupError] = useState('')
   const [includeSecrets, setIncludeSecrets] = useState(false)
   const set = (k, v) => setS((p) => ({ ...p, [k]: v }))
-  const setDebug = (k, v) => setS((p) => ({ ...p, debug: { ...(p.debug || {}), [k]: v } }))
-  const setSmartPasteContext = (k, v) =>
-    setS((p) => ({ ...p, smartPasteContext: { ...(p.smartPasteContext || {}), [k]: v } }))
-
-  // Refresh the modal log view ~5x/sec while open so the buffer stays "live".
-  useEffect(() => {
-    if (!showLogs) return
-    const id = setInterval(() => setLogTick((t) => t + 1), 200)
-    return () => clearInterval(id)
-  }, [showLogs])
-
-  const downloadLogs = () => {
-    const text = logger.toText()
-    const blob = new Blob([text], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `sip-logs-${new Date().toISOString()}.txt`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  const clearLogs = () => {
-    logger.clear()
-    setLogTick((t) => t + 1)
-    toast('Logs cleared', 'success', '🧹')
-  }
-
-  const enableInfoLogging = () => {
-    const next = { ...s, debug: { ...(s.debug || {}), logLevel: 'info' } }
-    setS(next)
-    saveSettings(next)
-    toast('Log level set to info — pipeline traces now captured', 'success', '🔎')
-  }
-
   // Load BYOK key from secure storage when provider changes.
   // Guard against the async resolution overwriting keystrokes typed
   // before getSecret resolves (see SMA-34 test).
-  const byokProvider = s.byokProvider || ''
   useEffect(() => {
     if (!byokProvider) {
       setByokKey('')
@@ -143,37 +99,30 @@ export function Settings({ ai, onStartTour, contactsApi }) {
     }
   }, [byokProvider])
 
-  // SMA-96: derive the current list entry for the active provider+baseUrl
-  // combo and provide a refresher. Manual entry must always stay available,
-  // so this never throws and never blocks the input fallback.
-  const byokListCacheKey = `${byokProvider}|${s.byokBaseUrl || ''}`
-  const byokListEntry = byokModelList[byokListCacheKey] || {
-    status: 'idle',
-    models: [],
-    error: '',
-  }
-  const refreshByokModels = async () => {
-    if (!byokProvider || !byokKey || !handleByokListModels) return
-    setByokModelList((p) => ({
-      ...p,
-      [byokListCacheKey]: { status: 'loading', models: [], error: '' },
-    }))
-    const result = await handleByokListModels({
+  const fetchByokModels = async () => {
+    if (!byokKey || byokModelsLoaded.current) return
+    byokModelsLoaded.current = true
+    const key = `${byokProvider}|${s.byokBaseUrl || ''}`
+    const result = await handleByokListModels?.({
       provider: byokProvider,
       baseUrl: s.byokBaseUrl,
     })
-    setByokModelList((p) => ({
-      ...p,
-      [byokListCacheKey]: result.ok
-        ? { status: 'ok', models: result.models || [], error: '' }
-        : { status: 'error', models: [], error: result.error || 'Failed to list models' },
-    }))
+    if (result?.ok) {
+      setByokModelList((p) => ({
+        ...p,
+        [key]: { status: 'ok', models: result.models || [], error: '' },
+      }))
+    } else {
+      setByokModelList((p) => ({
+        ...p,
+        [key]: { status: 'error', models: [], error: result?.error || 'Failed to fetch models' },
+      }))
+    }
   }
-  const onByokAdvancedToggle = (e) => {
-    if (!e.currentTarget.open) return
-    if (!byokProvider || !byokKey) return
-    if (byokListEntry.status !== 'idle') return
-    refreshByokModels()
+
+  const refreshByokModels = async () => {
+    byokModelsLoaded.current = false
+    await fetchByokModels()
   }
 
   const exportJson = async () => {
@@ -221,127 +170,32 @@ export function Settings({ ai, onStartTour, contactsApi }) {
     }
   }
 
-  const handleTest = async () => {
-    if (!s.sqApiKey) return
-    setTestStatus('testing')
-    try {
-      await fetchSquarespaceProducts(s.sqApiKey)
-      setTestStatus('ok')
-      setTestError('')
-    } catch (e) {
-      setTestStatus('error')
-      setTestError(e.message)
-    }
-  }
-
-  const handleShopifyTest = async () => {
-    if (!s.shopifyShopDomain || !s.shopifyAccessToken) return
-    setShopifyTestStatus('testing')
-    try {
-      await fetchShopifyProducts(s.shopifyShopDomain, s.shopifyAccessToken)
-      setShopifyTestStatus('ok')
-      setShopifyTestError('')
-    } catch (e) {
-      setShopifyTestStatus('error')
-      setShopifyTestError(e.message)
-    }
-  }
-
   return (
     <div>
       <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: 20 }}>Settings</h2>
 
-      {showLogs && (
+      {!isNativePlatform() && (
         <div
-          role="dialog"
-          aria-label="Log viewer"
+          data-testid="web-storage-warning"
           style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,.85)',
             display: 'flex',
-            flexDirection: 'column',
-            zIndex: 40,
-            // Respect device safe-area insets so the header row (Download/Clear/Close)
-            // isn't hidden under the Android status bar when viewport-fit=cover.
-            paddingTop: 'calc(env(safe-area-inset-top) + 16px)',
-            paddingRight: 'calc(env(safe-area-inset-right) + 16px)',
-            paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)',
-            paddingLeft: 'calc(env(safe-area-inset-left) + 16px)',
+            gap: 10,
+            alignItems: 'flex-start',
+            marginBottom: 16,
+            padding: '10px 12px',
+            borderRadius: 8,
+            background: 'rgba(255,170,0,.12)',
+            border: '1px solid rgba(255,170,0,.4)',
+            color: 'var(--text)',
+            fontSize: '.78rem',
+            lineHeight: 1.5,
           }}
         >
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 8,
-              gap: 8,
-            }}
-          >
-            <strong style={{ color: 'var(--text)' }}>
-              Logs ({logger.getSnapshot().length}/1000)
-              {/* logTick keeps this re-rendering on the interval */}
-              <span hidden>{logTick}</span>
-            </strong>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button className="btn btn-ghost btn-sm" onClick={downloadLogs}>
-                Download
-              </button>
-              <button className="btn btn-ghost btn-sm" onClick={clearLogs}>
-                Clear
-              </button>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowLogs(false)}>
-                Close
-              </button>
-            </div>
-          </div>
-          {(s.debug?.logLevel || 'error') !== 'debug' &&
-            (s.debug?.logLevel || 'error') !== 'info' && (
-              <div
-                data-testid="log-viewer-info-hint"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 8,
-                  marginBottom: 8,
-                  padding: '8px 10px',
-                  borderRadius: 8,
-                  background: 'rgba(90,140,255,.1)',
-                  border: '1px solid rgba(90,140,255,.3)',
-                  color: 'var(--text)',
-                  fontSize: '.75rem',
-                  lineHeight: 1.4,
-                }}
-              >
-                <span>
-                  Bump log level to <code>info</code> to capture Smart Paste pipeline traces.
-                </span>
-                <button className="btn btn-ghost btn-sm" onClick={enableInfoLogging}>
-                  Enable info logs
-                </button>
-              </div>
-            )}
-          <pre
-            data-testid="log-viewer-body"
-            style={{
-              flex: 1,
-              overflow: 'auto',
-              background: 'var(--card)',
-              color: 'var(--text)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius)',
-              padding: 12,
-              margin: 0,
-              fontSize: '.72rem',
-              lineHeight: 1.4,
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-all',
-            }}
-          >
-            {logger.toText() || '(buffer empty)'}
-          </pre>
+          <span style={{ fontSize: '1rem', flexShrink: 0 }}>⚠️</span>
+          <span>
+            <strong>API keys are stored in sessionStorage</strong> — unencrypted and cleared when
+            you close this tab. For secure key storage use the <strong>mobile app</strong>.
+          </span>
         </div>
       )}
 
@@ -430,18 +284,10 @@ export function Settings({ ai, onStartTour, contactsApi }) {
       </SettingsSection>
 
       <SettingsSection title="Billing Information">
-        <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginBottom: 10 }}>
-          Shown on every invoice PDF so customers know how to pay you. Bank account, IBAN, and
-          SWIFT/BIC are stored in your device&apos;s secure keychain — not in cleartext.
-        </p>
         <div className="field">
           <label>
             Bank Name
-            <input
-              value={s.bankName || ''}
-              onChange={(e) => set('bankName', e.target.value)}
-              placeholder="e.g. Barclays"
-            />
+            <input value={s.bankName || ''} onChange={(e) => set('bankName', e.target.value)} />
           </label>
         </div>
         <div className="field">
@@ -450,57 +296,40 @@ export function Settings({ ai, onStartTour, contactsApi }) {
             <input
               value={s.bankAccountName || ''}
               onChange={(e) => set('bankAccountName', e.target.value)}
-              placeholder="Name on the account"
             />
           </label>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <div className="field">
-            <label>
-              Account Number
-              <input
-                value={s.bankAccountNumber || ''}
-                onChange={(e) => set('bankAccountNumber', e.target.value)}
-                placeholder="12345678"
-                autoComplete="off"
-              />
-            </label>
-          </div>
-          <div className="field">
-            <label>
-              Sort Code
-              <input
-                value={s.bankSortCode || ''}
-                onChange={(e) => set('bankSortCode', e.target.value)}
-                placeholder="12-34-56"
-                autoComplete="off"
-              />
-            </label>
-          </div>
+        <div className="field">
+          <label>
+            Account Number
+            <input
+              type="password"
+              autoComplete="off"
+              value={s.bankAccountNumber || ''}
+              onChange={(e) => set('bankAccountNumber', e.target.value)}
+            />
+          </label>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <div className="field">
-            <label>
-              IBAN
-              <input
-                value={s.bankIban || ''}
-                onChange={(e) => set('bankIban', e.target.value)}
-                placeholder="GB29NWBK60161331926819"
-                autoComplete="off"
-              />
-            </label>
-          </div>
-          <div className="field">
-            <label>
-              SWIFT / BIC
-              <input
-                value={s.bankSwift || ''}
-                onChange={(e) => set('bankSwift', e.target.value)}
-                placeholder="NWBKGB2L"
-                autoComplete="off"
-              />
-            </label>
-          </div>
+        <div className="field">
+          <label>
+            Sort Code
+            <input
+              value={s.bankSortCode || ''}
+              onChange={(e) => set('bankSortCode', e.target.value)}
+            />
+          </label>
+        </div>
+        <div className="field">
+          <label>
+            IBAN
+            <input value={s.bankIban || ''} onChange={(e) => set('bankIban', e.target.value)} />
+          </label>
+        </div>
+        <div className="field">
+          <label>
+            SWIFT / BIC
+            <input value={s.bankSwift || ''} onChange={(e) => set('bankSwift', e.target.value)} />
+          </label>
         </div>
         <div className="field">
           <label>
@@ -508,40 +337,35 @@ export function Settings({ ai, onStartTour, contactsApi }) {
             <textarea
               value={s.paymentInstructions || ''}
               onChange={(e) => set('paymentInstructions', e.target.value)}
-              placeholder="e.g. Please reference the invoice number on the transfer. Net 14 terms."
-              rows={3}
             />
           </label>
         </div>
       </SettingsSection>
 
       <SettingsSection title="Tax & Compliance">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 10 }}>
-          <div className="field">
-            <label>
-              Tax ID Label
-              <select
-                value={s.taxIdLabel || 'VAT'}
-                onChange={(e) => set('taxIdLabel', e.target.value)}
-              >
-                <option value="VAT">VAT</option>
-                <option value="GST">GST</option>
-                <option value="ABN">ABN</option>
-                <option value="EIN">EIN</option>
-                <option value="TAX ID">Tax ID</option>
-              </select>
-            </label>
-          </div>
-          <div className="field">
-            <label>
-              Number
-              <input
-                value={s.taxIdNumber || ''}
-                onChange={(e) => set('taxIdNumber', e.target.value)}
-                placeholder="GB123456789"
-              />
-            </label>
-          </div>
+        <div className="field">
+          <label>
+            Tax ID Label
+            <select
+              value={s.taxIdLabel || 'VAT'}
+              onChange={(e) => set('taxIdLabel', e.target.value)}
+            >
+              {['VAT', 'GST', 'HST', 'PST', 'ABN', 'EIN', 'TIN', 'Other'].map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="field">
+          <label>
+            Number
+            <input
+              value={s.taxIdNumber || ''}
+              onChange={(e) => set('taxIdNumber', e.target.value)}
+            />
+          </label>
         </div>
         <div className="field">
           <label>
@@ -549,13 +373,9 @@ export function Settings({ ai, onStartTour, contactsApi }) {
             <input
               value={s.companyNumber || ''}
               onChange={(e) => set('companyNumber', e.target.value)}
-              placeholder="Companies House / State registration number"
             />
           </label>
         </div>
-        <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
-          Printed in the PDF footer when set. Leave blank to hide.
-        </p>
       </SettingsSection>
 
       <SettingsSection title="Invoicing">
@@ -637,221 +457,15 @@ export function Settings({ ai, onStartTour, contactsApi }) {
         />
       </SettingsSection>
 
-      <SettingsSection title="Picker">
-        <p className="text-muted" style={{ fontSize: '.78rem', marginBottom: 10, lineHeight: 1.5 }}>
-          How picking items appears when fulfilling orders and invoices.
-        </p>
-        <div role="radiogroup" aria-label="Picker view mode" style={{ display: 'flex', gap: 8 }}>
-          {[
-            { id: 'list', label: 'List', sub: 'Compact, one row per item' },
-            { id: 'card', label: 'Card', sub: 'Swipe through one at a time' },
-          ].map(({ id, label, sub }) => {
-            const active = (s.pickerViewMode || 'list') === id
-            return (
-              <button
-                key={id}
-                type="button"
-                role="radio"
-                aria-checked={active}
-                onClick={() => set('pickerViewMode', id)}
-                style={{
-                  flex: 1,
-                  padding: '10px 8px',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  textAlign: 'center',
-                  background: active ? 'var(--accent)' : 'var(--card-bg)',
-                  border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
-                  color: active ? '#fff' : 'var(--text)',
-                  transition: 'background .15s, border-color .15s',
-                }}
-              >
-                <div style={{ fontWeight: 700, fontSize: '.82rem' }}>{label}</div>
-                <div style={{ fontSize: '.68rem', opacity: active ? 0.85 : 0.6, marginTop: 2 }}>
-                  {sub}
-                </div>
-              </button>
-            )
-          })}
-        </div>
-      </SettingsSection>
-
       <SettingsSection title="Integrations">
-        <fieldset
-          style={{
-            border: '1px solid var(--border)',
-            borderRadius: 8,
-            padding: '10px 12px',
-            marginBottom: 12,
-          }}
-        >
-          <legend style={{ fontSize: '.78rem', padding: '0 6px', color: 'var(--muted)' }}>
-            Active integration
-          </legend>
-          <div
-            role="radiogroup"
-            aria-label="Active integration"
-            style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}
-          >
-            {[
-              { id: 'squarespace', label: 'Squarespace' },
-              { id: 'shopify', label: 'Shopify' },
-              { id: null, label: 'None' },
-            ].map((opt) => {
-              const checked = (s.activeIntegration ?? null) === opt.id
-              return (
-                <label
-                  key={opt.label}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    fontSize: '.82rem',
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="activeIntegration"
-                    checked={checked}
-                    onChange={() => set('activeIntegration', opt.id)}
-                  />
-                  {opt.label}
-                </label>
-              )
-            })}
-          </div>
-          <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 8, marginBottom: 0 }}>
-            Only one provider syncs at a time. Switching triggers a fresh sync that overwrites the
-            catalog.
-          </p>
-        </fieldset>
-
-        <h3 style={{ fontSize: '.92rem', fontWeight: 700, margin: '10px 0 8px' }}>Squarespace</h3>
-        <div className="field">
-          <label>
-            API Key
-            <input
-              value={s.sqApiKey}
-              onChange={(e) => set('sqApiKey', e.target.value)}
-              type="password"
-              placeholder="sq_…"
-            />
-          </label>
-        </div>
-        <div className="field">
-          <label>
-            Store Domain
-            <input
-              value={s.sqDomain}
-              onChange={(e) => set('sqDomain', e.target.value)}
-              placeholder="yourstore.squarespace.com"
-            />
-          </label>
-        </div>
-        <button
-          className="btn btn-ghost btn-sm mb-8"
-          onClick={handleTest}
-          disabled={!s.sqApiKey || testStatus === 'testing'}
-        >
-          {
-            {
-              idle: 'Test Connection',
-              testing: 'Testing…',
-              ok: '✓ Connected',
-              error: '✗ Failed — check key',
-            }[testStatus]
-          }
-        </button>
-        {testError ? (
-          <p
-            style={{ fontSize: '0.75rem', color: '#f87171', marginTop: 6, wordBreak: 'break-all' }}
-          >
-            {testError}
-          </p>
-        ) : null}
-
-        <h3 style={{ fontSize: '.92rem', fontWeight: 700, margin: '20px 0 8px' }}>Shopify</h3>
-        <div className="field">
-          <label>
-            Shop Domain
-            <input
-              value={s.shopifyShopDomain || ''}
-              onChange={(e) => set('shopifyShopDomain', e.target.value.trim())}
-              placeholder="yourstore.myshopify.com"
-            />
-          </label>
-        </div>
-        <div className="field">
-          <label>
-            Admin API Access Token
-            <input
-              value={s.shopifyAccessToken || ''}
-              onChange={(e) => set('shopifyAccessToken', e.target.value)}
-              type="password"
-              placeholder="shpat_…"
-            />
-          </label>
-        </div>
-        <button
-          className="btn btn-ghost btn-sm mb-8"
-          onClick={handleShopifyTest}
-          disabled={
-            !s.shopifyShopDomain || !s.shopifyAccessToken || shopifyTestStatus === 'testing'
-          }
-        >
-          {
-            {
-              idle: 'Test Connection',
-              testing: 'Testing…',
-              ok: '✓ Connected',
-              error: '✗ Failed — check credentials',
-            }[shopifyTestStatus]
-          }
-        </button>
-        {shopifyTestError ? (
-          <p
-            style={{ fontSize: '0.75rem', color: '#f87171', marginTop: 6, wordBreak: 'break-all' }}
-          >
-            {shopifyTestError}
-          </p>
-        ) : null}
+        <IntegrationsSection settings={s} onChange={(k, v) => setS((p) => ({ ...p, [k]: v }))} />
       </SettingsSection>
 
-      {contactsApi ? (
+      {contactsApi && (
         <ContactsImportSection contactsApi={contactsApi} sqApiKey={s.sqApiKey} onToast={toast} />
-      ) : null}
+      )}
 
       <SettingsSection title="AI" dataTour="settings-ai">
-        {/* SMA-123: read-only tier indicator. `pickTier` drives this off
-            catalog size — users can't flip it manually. */}
-        {(() => {
-          const tier = s.searchTier === 'byok' ? 'byok' : 'local'
-          const tierLabel = tier === 'byok' ? 'Cloud (BYOK)' : 'On-device'
-          const tierHelp =
-            tier === 'byok'
-              ? 'Catalog exceeds the on-device threshold — search runs through your BYOK key.'
-              : 'Catalog fits on-device — search runs fully offline.'
-          return (
-            <div
-              data-testid="search-tier-indicator"
-              data-tier={tier}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 2,
-                padding: '8px 12px',
-                borderRadius: 6,
-                marginBottom: 12,
-                background: 'var(--card-bg)',
-                border: '1px solid var(--border)',
-              }}
-            >
-              <div style={{ fontSize: '.72rem', color: 'var(--muted)' }}>Search tier</div>
-              <div style={{ fontSize: '.82rem', fontWeight: 600 }}>{tierLabel}</div>
-              <div style={{ fontSize: '.7rem', color: 'var(--muted)' }}>{tierHelp}</div>
-            </div>
-          )
-        })()}
         {/* ── Mode selector ── */}
         {(() => {
           const aiMode = s.aiMode || 'small'
@@ -1165,6 +779,139 @@ export function Settings({ ai, onStartTour, contactsApi }) {
                   )
                 })()}
 
+              {/* ── Semantic Search ── */}
+              <h3 style={{ fontSize: '.92rem', fontWeight: 700, margin: '24px 0 8px' }}>
+                Semantic Search
+              </h3>
+              <p
+                className="text-muted"
+                style={{ fontSize: '.78rem', marginBottom: 12, lineHeight: 1.5 }}
+              >
+                On-device embedding model (~30MB) · enables semantic product matching when lexical
+                search confidence is low.
+              </p>
+              <div
+                className="card"
+                style={{
+                  marginBottom: 8,
+                }}
+              >
+                <div className="flex-between mb-4">
+                  <span style={{ fontWeight: 600, fontSize: '.88rem' }}>
+                    Universal Sentence Encoder
+                  </span>
+                  <span style={{ fontSize: '.72rem', color: 'var(--muted)' }}>~30 MB</span>
+                </div>
+
+                {embedderDownloading && (
+                  <div style={{ marginBottom: 8 }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        fontSize: '.72rem',
+                        color: 'var(--muted)',
+                        marginBottom: 4,
+                      }}
+                    >
+                      <span>
+                        {embedderProgress == null || embedderProgress === 0
+                          ? 'Connecting…'
+                          : 'Downloading…'}
+                      </span>
+                      <span>
+                        {embedderProgress == null || embedderProgress <= 0
+                          ? ''
+                          : `${Math.round(embedderProgress * 100)}%`}
+                      </span>
+                    </div>
+                    <div
+                      role="progressbar"
+                      aria-label="Downloading embedding model"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      {...(embedderProgress == null || embedderProgress <= 0
+                        ? {}
+                        : { 'aria-valuenow': Math.round(embedderProgress * 100) })}
+                      style={{
+                        height: 4,
+                        background: 'var(--border)',
+                        borderRadius: 2,
+                        overflow: 'hidden',
+                        position: 'relative',
+                      }}
+                    >
+                      {embedderProgress == null || embedderProgress <= 0 ? (
+                        <div
+                          className="sip-progress-indeterminate"
+                          style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            height: '100%',
+                            width: '40%',
+                            background: 'var(--accent)',
+                            borderRadius: 2,
+                          }}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            height: '100%',
+                            width: `${embedderProgress * 100}%`,
+                            background: 'var(--accent)',
+                            borderRadius: 2,
+                            transition: 'width .3s',
+                          }}
+                        />
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {embedderDownloaded && !embedderDownloading && (
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {embedderReady ? (
+                      <span
+                        style={{
+                          fontSize: '.75rem',
+                          color: 'var(--success)',
+                          alignSelf: 'center',
+                        }}
+                      >
+                        ✓ Ready
+                      </span>
+                    ) : (
+                      <button
+                        className="btn btn-primary btn-sm"
+                        style={{ fontSize: '.75rem' }}
+                        disabled={embedderLoading}
+                        onClick={onEmbedderLoad}
+                      >
+                        {embedderLoading ? 'Loading…' : 'Load into memory'}
+                      </button>
+                    )}
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      style={{ fontSize: '.75rem', color: 'var(--danger)' }}
+                      onClick={onEmbedderDelete}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
+
+                {!embedderDownloaded && !embedderDownloading && (
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    style={{ fontSize: '.75rem', alignSelf: 'flex-start' }}
+                    onClick={onEmbedderDownload}
+                  >
+                    Download model
+                  </button>
+                )}
+              </div>
+
               {/* ── BYOK ── */}
               {aiMode === 'byok' &&
                 (() => {
@@ -1278,7 +1025,12 @@ export function Settings({ ai, onStartTour, contactsApi }) {
                             </label>
                           </div>
 
-                          <details style={{ marginBottom: 12 }} onToggle={onByokAdvancedToggle}>
+                          <details
+                            style={{ marginBottom: 12 }}
+                            onToggle={(e) => {
+                              if (e.target.open) fetchByokModels()
+                            }}
+                          >
                             <summary
                               style={{
                                 fontSize: '.75rem',
@@ -1299,83 +1051,80 @@ export function Settings({ ai, onStartTour, contactsApi }) {
                                 />
                               </label>
                             </div>
-                            {(() => {
-                              const { status, models, error } = byokListEntry
-                              const hasList = status === 'ok' && models.length > 0
-                              const currentModel = s.byokModel || ''
-                              const modelInList =
-                                hasList && currentModel && models.includes(currentModel)
-                              const selectValue = modelInList ? currentModel : '__custom'
-                              const showCustom = !hasList || selectValue === '__custom'
-                              return (
+                            {byokListEntry.error ? (
+                              <>
+                                <p
+                                  style={{ fontSize: '.72rem', color: '#f87171', marginBottom: 6 }}
+                                >
+                                  {`Couldn't fetch models — ${byokListEntry.error}`}
+                                </p>
                                 <div className="field">
-                                  <label htmlFor="byok-model-select">Model</label>
+                                  <label>
+                                    Custom model
+                                    <input
+                                      value={byokCustomModel}
+                                      onChange={(e) => {
+                                        setByokCustomModel(e.target.value)
+                                        set('byokModel', e.target.value.trim())
+                                      }}
+                                      placeholder={BYOK_PRESETS[byokProvider]?.defaultModel || ''}
+                                    />
+                                  </label>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="field">
+                                <label>
+                                  Model
                                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                                     <select
-                                      id="byok-model-select"
-                                      aria-label="Model"
-                                      style={{ flex: 1 }}
-                                      disabled={status === 'loading'}
-                                      value={selectValue}
+                                      value={
+                                        byokModelSelectVal || byokListEntry.models[0] || '__custom'
+                                      }
                                       onChange={(e) => {
-                                        const v = e.target.value
-                                        if (v === '__custom') {
-                                          if (modelInList) set('byokModel', '')
-                                        } else {
-                                          set('byokModel', v)
+                                        setByokModelSelectVal(e.target.value)
+                                        if (e.target.value !== '__custom') {
+                                          set('byokModel', e.target.value)
+                                          setByokCustomModel('')
                                         }
                                       }}
+                                      style={{ flex: 1 }}
                                     >
-                                      {hasList
-                                        ? models.map((m) => (
-                                            <option key={m} value={m}>
-                                              {m}
-                                            </option>
-                                          ))
-                                        : null}
+                                      {byokListEntry.models.map((m) => (
+                                        <option key={m} value={m}>
+                                          {m}
+                                        </option>
+                                      ))}
                                       <option value="__custom">Custom…</option>
                                     </select>
                                     <button
                                       type="button"
-                                      className="btn btn-ghost btn-sm"
-                                      disabled={!byokKey || status === 'loading'}
+                                      title="Refresh model list"
+                                      style={{ fontSize: '.72rem', padding: '2px 6px' }}
                                       onClick={refreshByokModels}
-                                      title="Refresh model list from the provider"
                                     >
-                                      {status === 'loading' ? '…' : '↻'}
+                                      ↺
                                     </button>
                                   </div>
-                                  {showCustom && (
-                                    <input
-                                      aria-label="Custom model"
-                                      style={{ marginTop: 6 }}
-                                      value={s.byokModel || ''}
-                                      onChange={(e) => set('byokModel', e.target.value.trim())}
-                                      placeholder={BYOK_PRESETS[byokProvider]?.defaultModel || ''}
-                                    />
-                                  )}
-                                  <p
-                                    data-testid="byok-model-list-status"
-                                    aria-live="polite"
-                                    style={{
-                                      fontSize: '.72rem',
-                                      color: status === 'error' ? '#f87171' : 'var(--muted)',
-                                      marginTop: 4,
-                                      marginBottom: 0,
-                                    }}
-                                  >
-                                    {status === 'loading' && 'Loading models…'}
-                                    {status === 'ok' &&
-                                      `${models.length} model${models.length === 1 ? '' : 's'} from provider`}
-                                    {status === 'error' &&
-                                      `Couldn't fetch models: ${error} — enter one manually`}
-                                    {status === 'idle' &&
-                                      !byokKey &&
-                                      'Enter an API key to load the list'}
-                                  </p>
-                                </div>
-                              )
-                            })()}
+                                </label>
+                                {(byokListEntry.models.length === 0 ||
+                                  byokModelSelectVal === '__custom') && (
+                                  <div className="field" style={{ marginTop: 6 }}>
+                                    <label>
+                                      Custom model
+                                      <input
+                                        value={byokCustomModel}
+                                        onChange={(e) => {
+                                          setByokCustomModel(e.target.value)
+                                          set('byokModel', e.target.value.trim())
+                                        }}
+                                        placeholder={BYOK_PRESETS[byokProvider]?.defaultModel || ''}
+                                      />
+                                    </label>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </details>
 
                           <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
@@ -1438,96 +1187,90 @@ export function Settings({ ai, onStartTour, contactsApi }) {
                     </>
                   )
                 })()}
+
+              {/* ── ExecuTorch (native Android only) ── */}
+              {isNativePlatform() &&
+                (() => {
+                  const m = AI_MODELS['llama_et']
+                  if (!m) return null
+                  const downloaded = !!aiDownloaded[m.id]
+                  const downloading = aiDownloading === m.id
+                  const loaded = executorchReady && executorchModelId === m.id
+
+                  return (
+                    <>
+                      <h3 style={{ fontSize: '.92rem', fontWeight: 700, margin: '24px 0 8px' }}>
+                        Native AI (ExecuTorch)
+                      </h3>
+                      <p
+                        className="text-muted"
+                        style={{ fontSize: '.78rem', marginBottom: 12, lineHeight: 1.5 }}
+                      >
+                        ExecuTorch-powered inference on Android — no WebGPU required.
+                      </p>
+                      <div className="card" style={{ marginBottom: 8 }}>
+                        <div className="flex-between mb-4">
+                          <span style={{ fontWeight: 600, fontSize: '.88rem' }}>{m.label}</span>
+                          <span style={{ fontSize: '.72rem', color: 'var(--muted)' }}>
+                            {m.size}
+                          </span>
+                        </div>
+                        <p style={{ fontSize: '.75rem', color: 'var(--muted)', marginBottom: 8 }}>
+                          {m.description}
+                        </p>
+                        {downloading && (
+                          <p style={{ fontSize: '.75rem', color: 'var(--muted)' }}>Downloading…</p>
+                        )}
+                        {downloaded && !downloading && (
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            {loaded ? (
+                              <span
+                                style={{
+                                  fontSize: '.75rem',
+                                  color: 'var(--success)',
+                                  alignSelf: 'center',
+                                }}
+                              >
+                                ✓ Native AI ready
+                              </span>
+                            ) : (
+                              <button
+                                className="btn btn-primary btn-sm"
+                                style={{ fontSize: '.75rem' }}
+                                disabled={aiLoading}
+                                onClick={() => onExecutorchLoad(m.id)}
+                              >
+                                {aiLoading ? 'Loading…' : 'Load into memory'}
+                              </button>
+                            )}
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              style={{ fontSize: '.75rem', color: 'var(--danger)' }}
+                              onClick={() => onExecutorchDelete(m.id)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        )}
+                        {!downloaded && !downloading && (
+                          <p style={{ fontSize: '.72rem', color: 'var(--muted)' }}>
+                            Model files not yet downloaded — coming soon (SMA-134)
+                          </p>
+                        )}
+                      </div>
+                    </>
+                  )
+                })()}
             </>
           )
         })()}
       </SettingsSection>
 
       <SettingsSection id="smart-paste-ai-context" title="Smart Paste AI Context">
-        <p style={{ fontSize: '.78rem', color: 'var(--muted)', marginBottom: 12, lineHeight: 1.5 }}>
-          Five short phrases about your business. Smart Paste prepends these to every AI call so the
-          model maps messy customer messages onto your real catalog.
-        </p>
-        <div className="field">
-          <label>
-            Product type
-            <textarea
-              rows={2}
-              value={s.smartPasteContext?.productType || ''}
-              onChange={(e) => setSmartPasteContext('productType', e.target.value)}
-              placeholder="e.g. artisan cheese, industrial fasteners, vinyl records, skincare"
-            />
-          </label>
-          <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
-            What you sell, in 3–4 examples the AI can pattern-match against.
-          </p>
-        </div>
-        <div className="field">
-          <label>
-            Shop type
-            <select
-              value={s.smartPasteContext?.shopType || ''}
-              onChange={(e) => setSmartPasteContext('shopType', e.target.value)}
-            >
-              <option value="" disabled>
-                Select how you trade…
-              </option>
-              {renderPresetOptions(s.smartPasteContext?.shopType || '', SHOP_TYPE_OPTIONS)}
-            </select>
-          </label>
-          <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
-            How you trade — helps the AI weight wholesale vs retail phrasing.
-          </p>
-        </div>
-        <div className="field">
-          <label>
-            Customer type
-            <select
-              value={s.smartPasteContext?.customerType || ''}
-              onChange={(e) => setSmartPasteContext('customerType', e.target.value)}
-            >
-              <option value="" disabled>
-                Select who you sell to…
-              </option>
-              {renderPresetOptions(s.smartPasteContext?.customerType || '', CUSTOMER_TYPE_OPTIONS)}
-            </select>
-          </label>
-          <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
-            Who you sell to — sets expectations for quantities and vocabulary.
-          </p>
-        </div>
-        <div className="field">
-          <label>
-            Customer vocabulary / jargon
-            <select
-              value={s.smartPasteContext?.vocabulary || ''}
-              onChange={(e) => setSmartPasteContext('vocabulary', e.target.value)}
-            >
-              <option value="">None / skip</option>
-              {renderPresetOptions(s.smartPasteContext?.vocabulary || '', VOCABULARY_OPTIONS)}
-            </select>
-          </label>
-          <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
-            Shorthand the AI would otherwise fail on. Optional — leave blank if none applies.
-          </p>
-        </div>
-        <div className="field">
-          <label>
-            Language / locale
-            <select
-              value={s.smartPasteContext?.locale || ''}
-              onChange={(e) => setSmartPasteContext('locale', e.target.value)}
-            >
-              <option value="" disabled>
-                Select a language…
-              </option>
-              {renderPresetOptions(s.smartPasteContext?.locale || '', LOCALE_OPTIONS)}
-            </select>
-          </label>
-          <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
-            Languages customers write in — covers codeswitching and regional spellings.
-          </p>
-        </div>
+        <SmartPasteContextSection
+          settings={s}
+          onChange={(k, v) => setS((p) => ({ ...p, [k]: v }))}
+        />
       </SettingsSection>
 
       <SettingsSection title="Backup & restore">
@@ -1649,44 +1392,7 @@ export function Settings({ ai, onStartTour, contactsApi }) {
       </SettingsSection>
 
       <SettingsSection title="Debugging">
-        <p style={{ fontSize: '.78rem', color: 'var(--muted)', marginBottom: 12, lineHeight: 1.5 }}>
-          Capture in-app diagnostic logs. Stays in memory only — nothing is uploaded.
-        </p>
-        <div className="field">
-          <label htmlFor="debug-log-level">
-            Log level
-            <select
-              id="debug-log-level"
-              value={s.debug?.logLevel || 'error'}
-              onChange={(e) => setDebug('logLevel', e.target.value)}
-            >
-              {LOG_LEVELS.map((lvl) => (
-                <option key={lvl} value={lvl}>
-                  {lvl}
-                </option>
-              ))}
-            </select>
-          </label>
-          <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
-            Lower = more entries captured. Default is <code>error</code>. Press Save Settings to
-            apply.
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button className="btn btn-ghost btn-sm" onClick={() => setShowLogs(true)}>
-            View logs
-          </button>
-          <button className="btn btn-ghost btn-sm" onClick={downloadLogs}>
-            Download logs
-          </button>
-          <button
-            className="btn btn-ghost btn-sm"
-            style={{ color: 'var(--danger)' }}
-            onClick={clearLogs}
-          >
-            Clear logs
-          </button>
-        </div>
+        <DebugLogsSection settings={s} saveSettings={setS} toast={toast} />
       </SettingsSection>
 
       <button

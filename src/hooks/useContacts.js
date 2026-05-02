@@ -1,7 +1,8 @@
 import { useCallback, useRef, useState } from 'react'
+import { STORAGE_KEYS } from '../constants/storageKeys.js'
 import { logger } from '../utils/logger.js'
 
-const STORAGE_KEY = 'sip_contacts'
+const STORAGE_KEY = STORAGE_KEYS.SIP_CONTACTS
 
 export function makeContactId() {
   return `contact_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
@@ -71,8 +72,15 @@ export function useContacts() {
 
   const updateContact = useCallback(
     (id, patch) => {
+      const normalisedPatch = { ...patch }
+      if (patch.business !== undefined) {
+        normalisedPatch.businessName = patch.business
+        delete normalisedPatch.business
+      }
       commit(
-        ref.current.map((c) => (c.id === id ? normaliseContact({ ...c, ...patch, id }) : c)),
+        ref.current.map((c) =>
+          c.id === id ? normaliseContact({ ...c, ...normalisedPatch, id }) : c,
+        ),
       )
     },
     [commit],
@@ -111,5 +119,7 @@ export function useContacts() {
     [commit],
   )
 
-  return { contacts, addContact, updateContact, deleteContact, mergeContacts }
+  const getContact = useCallback((id) => ref.current.find((c) => c.id === id) ?? null, [])
+
+  return { contacts, addContact, updateContact, deleteContact, mergeContacts, getContact }
 }

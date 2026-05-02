@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { matchProduct, matchItems, getTopCandidates, invalidateProductIndex } from '../matcher.js'
+import { saveCorrection, clearCorrections } from '../services/correctionStore.js'
 
 const PRODUCTS = [
   { id: 'p1', name: 'Red Widget', price: 5 },
@@ -9,8 +10,29 @@ const PRODUCTS = [
   { id: 'p5', name: 'Hex Nut Assorted', price: 1 },
 ]
 
+const localStorageMock = (() => {
+  let store = {}
+  return {
+    getItem: (key) => store[key] ?? null,
+    setItem: (key, value) => {
+      store[key] = value
+    },
+    removeItem: (key) => {
+      delete store[key]
+    },
+    clear: () => {
+      store = {}
+    },
+  }
+})()
+
+Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock })
+
 describe('matchProduct', () => {
-  beforeEach(() => invalidateProductIndex())
+  beforeEach(() => {
+    invalidateProductIndex()
+    clearCorrections()
+  })
 
   it('returns a high-score hit for an exact name', () => {
     const m = matchProduct('Red Widget', PRODUCTS)
@@ -50,7 +72,10 @@ describe('matchProduct', () => {
 })
 
 describe('matchItems (Fuse-backed)', () => {
-  beforeEach(() => invalidateProductIndex())
+  beforeEach(() => {
+    invalidateProductIndex()
+    clearCorrections()
+  })
 
   it('flags an exact match as auto_match (>=80%)', () => {
     const [r] = matchItems([{ raw: 'red widget', name: 'red widget', qty: 1 }], PRODUCTS)
@@ -84,8 +109,89 @@ describe('matchItems (Fuse-backed)', () => {
   })
 })
 
+describe('correction boost (SMA-176)', () => {
+  beforeEach(() => {
+    invalidateProductIndex()
+    clearCorrections()
+  })
+
+  it('returns correction match before fuzzy when normalized text matches', () => {
+    saveCorrection({
+      originalText: 'red wiget',
+      correctedProductId: 'p1',
+      correctedProductName: 'Red Widget',
+    })
+    const [r] = matchItems([{ raw: 'red wiget', name: 'red wiget', qty: 1 }], PRODUCTS)
+    expect(r.product?.id).toBe('p1')
+    expect(r.source).toBe('correction')
+    expect(r.confidence).toBeGreaterThanOrEqual(80)
+  })
+
+  it('confidence scales with correction count (80 base + 3 per repeat, cap 95)', () => {
+    saveCorrection({
+      originalText: 'blue conn',
+      correctedProductId: 'p2',
+      correctedProductName: 'Blue Connector',
+    })
+    saveCorrection({
+      originalText: 'blue conn',
+      correctedProductId: 'p2',
+      correctedProductName: 'Blue Connector',
+    })
+    saveCorrection({
+      originalText: 'blue conn',
+      correctedProductId: 'p2',
+      correctedProductName: 'Blue Connector',
+    })
+    const [r] = matchItems([{ raw: 'blue conn', name: 'blue conn', qty: 1 }], PRODUCTS)
+    expect(r.confidence).toBe(89)
+    expect(r.source).toBe('correction')
+  })
+
+  it('caps confidence at 95', () => {
+    for (let i = 0; i < 10; i++) {
+      saveCorrection({
+        originalText: 'hex nut',
+        correctedProductId: 'p5',
+        correctedProductName: 'Hex Nut Assorted',
+      })
+    }
+    const [r] = matchItems([{ raw: 'hex nut', name: 'hex nut', qty: 1 }], PRODUCTS)
+    expect(r.confidence).toBe(95)
+    expect(r.source).toBe('correction')
+  })
+
+  it('falls through to fuzzy when corrected product no longer exists', () => {
+    saveCorrection({
+      originalText: 'deleted product',
+      correctedProductId: 'nonexistent-id',
+      correctedProductName: 'Deleted Product',
+    })
+    const [r] = matchItems([{ raw: 'deleted product', name: 'deleted product', qty: 1 }], PRODUCTS)
+    expect(r.product).toBeNull()
+    expect(r.bestGuess).toBeNull()
+    expect(r.confidence).toBe(0)
+    expect(r.source).toBeUndefined()
+  })
+
+  it('skips fuzzy when correction product exists in catalog', () => {
+    saveCorrection({
+      originalText: 'large wrench',
+      correctedProductId: 'p3',
+      correctedProductName: 'Large Wrench Set',
+    })
+    const [r] = matchItems([{ raw: 'large wrench', name: 'large wrench', qty: 1 }], PRODUCTS)
+    expect(r.product?.id).toBe('p3')
+    expect(r.source).toBe('correction')
+    expect(r.bestGuess).toBeNull()
+  })
+})
+
 describe('getTopCandidates', () => {
-  beforeEach(() => invalidateProductIndex())
+  beforeEach(() => {
+    invalidateProductIndex()
+    clearCorrections()
+  })
 
   it('returns up to N candidates ordered by score', () => {
     const results = getTopCandidates('nut', PRODUCTS, 3)
@@ -131,7 +237,10 @@ describe('desc + keyword indexing', () => {
     { id: 'p4', name: 'Oil Filter', desc: 'Compatible with Tacoma 2016+', price: 12 },
   ]
 
-  beforeEach(() => invalidateProductIndex())
+  beforeEach(() => {
+    invalidateProductIndex()
+    clearCorrections()
+  })
 
   it('matches a word that only appears in desc', () => {
     const m = matchProduct('bilstein', CATALOG)

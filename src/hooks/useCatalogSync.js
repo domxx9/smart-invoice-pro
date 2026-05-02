@@ -1,7 +1,24 @@
 import { useState, useCallback } from 'react'
+import { STORAGE_KEYS } from '../constants/storageKeys.js'
 import { SAMPLE_PRODUCTS } from '../constants.js'
 import { fetchSquarespaceProducts } from '../api/squarespace.js'
 import { fetchShopifyProducts } from '../api/shopify.js'
+import { useToast } from '../contexts/ToastContext.jsx'
+
+function classifyError(err) {
+  const msg = err?.message ?? ''
+  if (err instanceof TypeError || /failed to fetch|networkerror/i.test(msg)) return 'network'
+  if (/\b40[13]\b/.test(msg)) return 'auth'
+  if (/\b429\b/.test(msg)) return 'rateLimit'
+  return 'api'
+}
+
+const MESSAGES = {
+  network: 'Sync failed — check your connection.',
+  auth: 'Sync failed — API key invalid — check Settings.',
+  rateLimit: 'Sync rate limited — try again later.',
+  api: 'Sync failed — API error.',
+}
 
 // Full-sync completion is the single source of truth for post-sync side
 // effects like `searchTier` (SMA-123). `onSyncStats` fires with catalog
@@ -14,12 +31,18 @@ export function useCatalogSync({
   shopifyAccessToken,
   onSyncStats,
 }) {
+  const { toast } = useToast()
   const [products, setProducts] = useState(() => {
-    const s = localStorage.getItem('sip_products')
-    return s ? JSON.parse(s) : SAMPLE_PRODUCTS
+    const s = localStorage.getItem(STORAGE_KEYS.SIP_PRODUCTS)
+    try {
+      return s ? JSON.parse(s) : SAMPLE_PRODUCTS
+    } catch {
+      console.warn('sip_products parse error — falling back to sample products')
+      return SAMPLE_PRODUCTS
+    }
   })
   const [lastSynced, setLastSynced] = useState(() => {
-    const ts = localStorage.getItem('sip_products_synced_at')
+    const ts = localStorage.getItem(STORAGE_KEYS.SIP_PRODUCTS_SYNCED_AT)
     return ts ? parseInt(ts, 10) : null
   })
   const [syncStatus, setSyncStatus] = useState('idle')
@@ -29,8 +52,8 @@ export function useCatalogSync({
     setProducts(prods)
     const ts = Date.now()
     setLastSynced(ts)
-    localStorage.setItem('sip_products', JSON.stringify(prods))
-    localStorage.setItem('sip_products_synced_at', String(ts))
+    localStorage.setItem(STORAGE_KEYS.SIP_PRODUCTS, JSON.stringify(prods))
+    localStorage.setItem(STORAGE_KEYS.SIP_PRODUCTS_SYNCED_AT, String(ts))
   }, [])
 
   const handleSyncCatalog = useCallback(async () => {
@@ -67,7 +90,9 @@ export function useCatalogSync({
           // is advisory (tier routing) rather than load-bearing for the fetch.
         }
       }
-    } catch {
+    } catch (err) {
+      const kind = classifyError(err)
+      toast(MESSAGES[kind], kind === 'rateLimit' ? 'warning' : 'error')
       setSyncStatus('error')
     }
   }, [
@@ -77,6 +102,7 @@ export function useCatalogSync({
     shopifyAccessToken,
     saveProducts,
     onSyncStats,
+    toast,
   ])
 
   return {

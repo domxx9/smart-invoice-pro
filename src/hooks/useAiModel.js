@@ -1,4 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { STORAGE_KEYS } from '../constants/storageKeys.js'
+import {
+  isEmbedderDownloaded,
+  handleEmbedderDownload,
+  handleEmbedderDelete,
+  loadEmbedder,
+} from '../ai/embeddings.js'
 import {
   MODELS as AI_MODELS,
   isModelDownloaded,
@@ -9,13 +16,16 @@ import {
   isNativePlatform,
 } from '../gemma.js'
 import { initGemma } from '../gemmaWorker.js'
-import {
-  testConnection as byokTestConnection,
-  listModels as byokListModels,
-} from '../byok.js'
+import { testConnection as byokTestConnection, listModels as byokListModels } from '../byok.js'
 import { getSecret, deleteSecret } from '../secure-storage.js'
 import { runInference as pipelineRunInference } from '../ai/pipeline.js'
 import { logger } from '../utils/logger.js'
+import {
+  isAvailable as executorchAvailable,
+  loadModel as executorchLoadModel,
+  unloadModel as executorchUnloadModel,
+} from '../plugins/executorch.js'
+import { Filesystem, Directory } from '@capacitor/filesystem'
 
 /**
  * Load a model via the worker facade (SMA-39) with a desktop fallback to
@@ -40,15 +50,24 @@ async function loadModelViaFacade(id) {
 }
 
 export function useAiModel(toast, settings) {
-  const [aiModelId, setAiModelId] = useState(() => localStorage.getItem('sip_ai_model') || 'small')
+  const [aiModelId, setAiModelId] = useState(
+    () => localStorage.getItem(STORAGE_KEYS.SIP_AI_MODEL) || 'small',
+  )
   const [aiDownloaded, setAiDownloaded] = useState({})
   const [aiDownloadProgress, setAiDownloadProgress] = useState({})
   const [aiDownloading, setAiDownloading] = useState(null)
   const [aiLoading, setAiLoading] = useState(false)
   const [aiReady, setAiReady] = useState(false)
   const [loadedModelId, setLoadedModelId] = useState(null)
+  const [embedderDownloaded, setEmbedderDownloaded] = useState(false)
+  const [embedderDownloading, setEmbedderDownloading] = useState(false)
+  const [embedderProgress, setEmbedderProgress] = useState(0)
+  const [embedderLoading, setEmbedderLoading] = useState(false)
+  const [embedderReady, setEmbedderReady] = useState(false)
   const [byokStatus, setByokStatus] = useState('idle')
   const [byokError, setByokError] = useState('')
+  const [executorchReady, setExecutorchReady] = useState(false)
+  const [executorchModelId, setExecutorchModelId] = useState(null)
 
   // Keep current settings in a ref so `runInference` stays stable but always
   // reads the latest aiMode / byok* values without stale closures.
@@ -64,7 +83,22 @@ export function useAiModel(toast, settings) {
         results[id] = await isModelDownloaded(id)
       }
       setAiDownloaded(results)
-      const modelToLoad = localStorage.getItem('sip_ai_model') || 'small'
+
+      const embDownloaded = await isEmbedderDownloaded()
+      setEmbedderDownloaded(embDownloaded)
+      if (embDownloaded) {
+        setEmbedderLoading(true)
+        try {
+          await loadEmbedder()
+          setEmbedderReady(true)
+        } catch (e) {
+          logger.error('ai-model', 'auto-init embedder error:', e)
+        } finally {
+          setEmbedderLoading(false)
+        }
+      }
+
+      const modelToLoad = localStorage.getItem(STORAGE_KEYS.SIP_AI_MODEL) || 'small'
       if (results[modelToLoad]) {
         setAiLoading(true)
         try {
@@ -87,7 +121,7 @@ export function useAiModel(toast, settings) {
 
   const handleAiSelect = (id) => {
     setAiModelId(id)
-    localStorage.setItem('sip_ai_model', id)
+    localStorage.setItem(STORAGE_KEYS.SIP_AI_MODEL, id)
   }
 
   const handleAiDownload = async (id) => {
@@ -113,6 +147,43 @@ export function useAiModel(toast, settings) {
     if (loadedModelId === id) {
       setAiReady(false)
       setLoadedModelId(null)
+    }
+  }
+
+  const handleEmbedderDownloadAction = async () => {
+    setEmbedderDownloading(true)
+    setEmbedderProgress(0)
+    try {
+      await handleEmbedderDownload((frac) => setEmbedderProgress(frac))
+      setEmbedderDownloaded(true)
+      toast?.('Semantic Search model downloaded', 'success', '🧠')
+    } catch (e) {
+      if (e.name !== 'AbortError') {
+        logger.error('ai-model', 'embedder download error:', e)
+        toast?.('Download failed — check your connection', 'error')
+      }
+    } finally {
+      setEmbedderDownloading(false)
+    }
+  }
+
+  const handleEmbedderDeleteAction = async () => {
+    await handleEmbedderDelete()
+    setEmbedderDownloaded(false)
+    setEmbedderReady(false)
+  }
+
+  const handleEmbedderLoadAction = async () => {
+    setEmbedderLoading(true)
+    try {
+      await loadEmbedder()
+      setEmbedderReady(true)
+      toast?.('Semantic Search model ready', 'success', '⚡')
+    } catch (e) {
+      logger.error('ai-model', 'embedder load error:', e)
+      toast?.(e?.message || 'Failed to load Semantic Search model', 'error')
+    } finally {
+      setEmbedderLoading(false)
     }
   }
 
@@ -167,15 +238,6 @@ export function useAiModel(toast, settings) {
     [toast],
   )
 
-  const handleByokListModels = useCallback(async ({ provider, baseUrl } = {}) => {
-    if (!provider) return { ok: false, models: [], error: 'Pick a provider first' }
-    const apiKey = await getSecret(`sip_byok_${provider}`)
-    if (!apiKey) return { ok: false, models: [], error: 'Enter an API key first' }
-    const result = await byokListModels({ provider, apiKey, baseUrl })
-    if (result.ok) return { ok: true, models: result.models || [] }
-    return { ok: false, models: [], error: result.error || 'Failed to list models' }
-  }, [])
-
   const handleByokClear = useCallback(async (provider) => {
     if (!provider) return
     await deleteSecret(`sip_byok_${provider}`)
@@ -183,11 +245,79 @@ export function useAiModel(toast, settings) {
     setByokError('')
   }, [])
 
-  const runInference = useCallback(
-    ({ prompt, maxTokens = 512 } = {}) =>
-      pipelineRunInference({ prompt, maxTokens, settings: settingsRef.current }),
-    [],
+  const handleByokListModels = useCallback(async ({ provider, baseUrl } = {}) => {
+    if (!provider) return { ok: false, models: [], error: 'Pick a provider first' }
+    const apiKey = await getSecret(`sip_byok_${provider}`)
+    if (!apiKey) return { ok: false, models: [], error: 'Enter an API key first' }
+    const result = await byokListModels({ provider, apiKey, baseUrl })
+    if (!result.ok) return { ok: false, models: [], error: result.error }
+    return { ok: true, models: result.models }
+  }, [])
+
+  const handleExecutorchLoad = useCallback(
+    async (modelId) => {
+      if (!executorchAvailable()) {
+        toast?.('ExecuTorch not available on this platform', 'error')
+        return
+      }
+      const model = AI_MODELS[modelId]
+      if (!model) return
+      if (!model.url || !model.tokenizerUrl) {
+        toast?.('Model URLs not yet available — pending SMA-134', 'error')
+        return
+      }
+      setAiLoading(true)
+      try {
+        await executorchLoadModel({
+          modelPath: model.filename,
+          tokenizerPath: model.filename.replace('.pte', '_tokenizer.bin'),
+        })
+        setExecutorchReady(true)
+        setExecutorchModelId(modelId)
+        toast?.('Native AI model loaded', 'success', '⚡')
+      } catch (e) {
+        logger.error('ai-model', 'executorch load error:', e)
+        toast?.(e?.message || 'Failed to load native AI model', 'error')
+      } finally {
+        setAiLoading(false)
+      }
+    },
+    [toast],
   )
+
+  const handleExecutorchDelete = useCallback(async (modelId) => {
+    try {
+      await executorchUnloadModel()
+    } catch {
+      /* best-effort */
+    }
+    try {
+      await Filesystem.deleteFile({ path: AI_MODELS[modelId]?.filename, directory: Directory.Data })
+      await Filesystem.deleteFile({
+        path: AI_MODELS[modelId]?.filename.replace('.pte', '_tokenizer.bin'),
+        directory: Directory.Data,
+      })
+    } catch {
+      /* already gone */
+    }
+    setExecutorchReady(false)
+    setExecutorchModelId(null)
+    setAiDownloaded((p) => ({ ...p, [modelId]: false }))
+  }, [])
+
+  // Stable contract: always resolves to { text: string, stopReason: string | null }.
+  // Wraps any legacy bare-string sub-paths and the `aiMode: 'off'` null so callers
+  // (smartPastePipeline et al.) can read result.text / result.stopReason directly.
+  const runInference = useCallback(async ({ prompt, maxTokens = 512 } = {}) => {
+    const result = await pipelineRunInference({
+      prompt,
+      maxTokens,
+      settings: settingsRef.current,
+    })
+    if (result == null) return { text: '', stopReason: null }
+    if (typeof result === 'string') return { text: result, stopReason: null }
+    return { text: result.text ?? '', stopReason: result.stopReason ?? null }
+  }, [])
 
   return {
     aiModelId,
@@ -197,15 +327,27 @@ export function useAiModel(toast, settings) {
     aiLoading,
     aiReady,
     loadedModelId,
+    embedderDownloaded,
+    embedderDownloading,
+    embedderProgress,
+    embedderLoading,
+    embedderReady,
     byokStatus,
     byokError,
+    executorchReady,
+    executorchModelId,
     handleAiSelect,
     handleAiDownload,
     handleAiDelete,
     handleAiLoad,
+    handleEmbedderDownload: handleEmbedderDownloadAction,
+    handleEmbedderDelete: handleEmbedderDeleteAction,
+    handleEmbedderLoad: handleEmbedderLoadAction,
     handleByokTest,
-    handleByokListModels,
     handleByokClear,
+    handleByokListModels,
+    handleExecutorchLoad,
+    handleExecutorchDelete,
     runInference,
   }
 }

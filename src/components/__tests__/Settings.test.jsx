@@ -16,6 +16,7 @@ vi.mock('../../gemma.js', () => ({
   getLoadedModelId: () => null,
   getBackendInfo: () => null,
   cancelDownload: () => {},
+  isNativePlatform: () => false,
 }))
 
 function makeAiStub() {
@@ -37,11 +38,16 @@ function makeAiStub() {
   }
 }
 
+const contactsApiStub = {
+  contacts: [],
+  mergeContacts: vi.fn().mockReturnValue({ added: 0, skipped: 0 }),
+}
+
 function renderSettings() {
   return render(
     <ToastProvider>
       <SettingsProvider>
-        <Settings ai={makeAiStub()} onStartTour={() => {}} />
+        <Settings ai={makeAiStub()} onStartTour={() => {}} contactsApi={contactsApiStub} />
       </SettingsProvider>
     </ToastProvider>,
   )

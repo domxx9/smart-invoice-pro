@@ -17,9 +17,11 @@
 
 import { extractLineItems, safeParseJsonArray } from '../ai/smartPastePipeline.js'
 import { logger } from '../utils/logger.js'
+import { getCorrectionMap } from '../services/correctionStore.js'
 
 export const BYOK_CATALOG_CHUNK_SIZE = 200
 const STAGE_MATCH_MAX_TOKENS = 256
+const MAX_CORRECTIONS = 20
 
 function projectProductRef(p) {
   return {
@@ -32,8 +34,22 @@ function projectProductRef(p) {
 
 function buildByokMatchPrompt({ line, catalogChunk, context }) {
   const ctx = context ? `Business context: ${JSON.stringify(context)}\n` : ''
+  const correctionMap = getCorrectionMap()
+  let correctionsBlock = ''
+  if (correctionMap.size) {
+    const sorted = [...correctionMap.entries()].sort(
+      (a, b) => (b[1].count ?? 0) - (a[1].count ?? 0),
+    )
+    const top = sorted.slice(0, MAX_CORRECTIONS)
+    const lines = top.map(([originalText, { productId, productName }]) => {
+      const name = productName ? ` (${productName})` : ''
+      return `- "${originalText}" → "${productId}"${name}`
+    })
+    correctionsBlock =
+      '## Known product corrections (user-verified mappings)\n' + lines.join('\n') + '\n\n'
+  }
   return [
-    `${ctx}You are matching a customer order line to a product catalog.`,
+    `${ctx}${correctionsBlock}You are matching a customer order line to a product catalog.`,
     `Order line: "${line.text}" (quantity ${line.qty}).`,
     `Candidates (id, name, sku, price):`,
     JSON.stringify(catalogChunk),

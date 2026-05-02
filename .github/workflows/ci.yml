@@ -11,6 +11,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+          tags: tag:ci
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -20,6 +26,31 @@ jobs:
 
       - run: npm run lint
 
+      - run: npm run typecheck
+
       - run: npm test
 
       - run: npm run build
+
+      - run: npm audit --audit-level=high --omit=dev
+
+      - name: Notify Paperclip on failure
+        if: failure()
+        env:
+          PAPERCLIP_API_URL: ${{ secrets.PAPERCLIP_API_URL }}
+          PAPERCLIP_API_KEY: ${{ secrets.PAPERCLIP_API_KEY }}
+          PAPERCLIP_COMPANY_ID: ${{ secrets.PAPERCLIP_COMPANY_ID }}
+          PAPERCLIP_CTO_AGENT_ID: ${{ secrets.PAPERCLIP_CTO_AGENT_ID }}
+          PAPERCLIP_PROJECT_ID: ${{ secrets.PAPERCLIP_PROJECT_ID }}
+        run: |
+          curl -s --fail -X POST \
+            -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+            -H "Content-Type: application/json" \
+            "${PAPERCLIP_API_URL%/}/api/companies/$PAPERCLIP_COMPANY_ID/issues" \
+            -d "$(jq -n \
+              --arg title "CI failure: ${{ github.ref_name }} — build" \
+              --arg desc "**CI run failed.**\n\n- **Branch:** ${{ github.ref_name }}\n- **Commit:** ${{ github.sha }}\n- **Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+              --arg agent "$PAPERCLIP_CTO_AGENT_ID" \
+              --arg project "$PAPERCLIP_PROJECT_ID" \
+              '{title: $title, description: $desc, status: "todo", priority: "high", assigneeAgentId: $agent, projectId: $project}' \
+            )"

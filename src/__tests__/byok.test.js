@@ -52,6 +52,37 @@ describe('resolveConfig', () => {
   it('throws for unknown providers', () => {
     expect(() => resolveConfig({ provider: 'nope' })).toThrow(/Unknown provider/)
   })
+
+  // SMA-236: SSRF prevention — custom baseUrl must be HTTPS
+  it('rejects http:// baseUrl', () => {
+    expect(() => resolveConfig({ provider: 'openai', baseUrl: 'http://attacker.com/v1' })).toThrow(
+      /HTTPS/,
+    )
+  })
+
+  it('rejects file:// baseUrl', () => {
+    expect(() => resolveConfig({ provider: 'openai', baseUrl: 'file:///etc/passwd' })).toThrow(
+      /HTTPS/,
+    )
+  })
+
+  it('rejects data: baseUrl', () => {
+    expect(() => resolveConfig({ provider: 'openai', baseUrl: 'data:text/html,test' })).toThrow(
+      /HTTPS/,
+    )
+  })
+
+  it('rejects bare string with no protocol', () => {
+    expect(() => resolveConfig({ provider: 'openai', baseUrl: 'attacker.com/v1' })).toThrow(
+      /Invalid base URL|HTTPS/,
+    )
+  })
+
+  it('accepts https:// custom baseUrl', () => {
+    expect(() =>
+      resolveConfig({ provider: 'openai', baseUrl: 'https://proxy.example.com/v1' }),
+    ).not.toThrow()
+  })
 })
 
 describe('testConnection', () => {
@@ -83,11 +114,14 @@ describe('testConnection', () => {
     expect(calls[0].init.headers.Authorization).toBeUndefined()
   })
 
-  it('passes the key via query string for Gemini', async () => {
+  it('passes the key via x-goog-api-key header for Gemini', async () => {
     const { fetchImpl, calls } = makeFetch([{ status: 200, body: {} }])
     await testConnection({ provider: 'gemini', apiKey: 'AIza-abc', fetchImpl })
-    expect(calls[0].url).toContain('key=AIza-abc')
-    expect(calls[0].init.headers.Authorization).toBeUndefined()
+    expect(calls[0].url).toBe(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
+    )
+    expect(calls[0].url).not.toContain('key=')
+    expect(calls[0].init.headers['x-goog-api-key']).toBe('AIza-abc')
   })
 
   it('returns the provider error message on non-2xx', async () => {
@@ -168,10 +202,9 @@ describe('listModels (SMA-96)', () => {
     ])
     const r = await listModels({ provider: 'gemini', apiKey: 'AIza-abc', fetchImpl })
     expect(r.ok).toBe(true)
-    expect(calls[0].url).toBe(
-      'https://generativelanguage.googleapis.com/v1beta/models?key=AIza-abc',
-    )
-    expect(calls[0].init.headers?.Authorization).toBeUndefined()
+    expect(calls[0].url).toBe('https://generativelanguage.googleapis.com/v1beta/models')
+    expect(calls[0].url).not.toContain('key=')
+    expect(calls[0].init.headers['x-goog-api-key']).toBe('AIza-abc')
     expect(r.models).toEqual(['gemini-1.5-flash', 'gemini-1.5-pro'])
   })
 
@@ -180,10 +213,7 @@ describe('listModels (SMA-96)', () => {
       {
         status: 200,
         body: {
-          data: [
-            { id: 'claude-3-5-sonnet-latest' },
-            { id: 'claude-3-5-haiku-latest' },
-          ],
+          data: [{ id: 'claude-3-5-sonnet-latest' }, { id: 'claude-3-5-haiku-latest' }],
         },
       },
     ])
@@ -284,9 +314,7 @@ describe('generate', () => {
       {
         status: 200,
         body: {
-          candidates: [
-            { content: { parts: [{ text: 'gemini hi' }] }, finishReason: 'STOP' },
-          ],
+          candidates: [{ content: { parts: [{ text: 'gemini hi' }] }, finishReason: 'STOP' }],
         },
       },
     ])
@@ -297,6 +325,23 @@ describe('generate', () => {
       fetchImpl,
     })
     expect(out).toEqual({ text: 'gemini hi', stopReason: 'STOP' })
+  })
+
+  it('Gemini generate: key in x-goog-api-key header, not in URL', async () => {
+    const { fetchImpl, calls } = makeFetch([
+      {
+        status: 200,
+        body: {
+          candidates: [{ content: { parts: [{ text: 'hi' }] }, finishReason: 'STOP' }],
+        },
+      },
+    ])
+    await generate({ provider: 'gemini', apiKey: 'AIza-test-key', prompt: 'hi', fetchImpl })
+    expect(calls[0].url).toBe(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
+    )
+    expect(calls[0].url).not.toContain('key=')
+    expect(calls[0].init.headers['x-goog-api-key']).toBe('AIza-test-key')
   })
 
   // ── SMA-71: stop reason plumbs through alongside the text ──

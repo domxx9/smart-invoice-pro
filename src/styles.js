@@ -19,6 +19,16 @@ export const CSS = `
 
   body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; min-height: 100dvh; }
 
+  .contact-selector { position: relative; }
+  .contact-selector .chips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem; }
+  .contact-selector .chip { display: flex; align-items: center; background-color: #eee; padding: 0.25rem 0.5rem; border-radius: 0.25rem; color: #000; }
+  .contact-selector .chip span { margin-right: 0.25rem; }
+  .contact-selector .chip button { background: none; border: none; cursor: pointer; padding: 0; color: inherit; }
+  .contact-selector .search-container { position: relative; }
+  .contact-selector .dropdown { position: absolute; top: 100%; left: 0; right: 0; background-color: white; border: 1px solid #ccc; list-style: none; margin: 0; padding: 0; z-index: 1; }
+  .contact-selector .dropdown li { padding: 0.5rem; cursor: pointer; color: #000; }
+  .contact-selector .dropdown li:hover { background-color: #f0f0f0; }
+
   /* Visually hidden content for screen readers only */
   .sr-only { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0,0,0,0) !important; white-space: nowrap !important; border: 0 !important; }
 
