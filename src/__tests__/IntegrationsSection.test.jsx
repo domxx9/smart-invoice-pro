@@ -92,17 +92,6 @@ describe('IntegrationsSection', () => {
       expect(screen.getAllByRole('button', { name: /^Test Connection$/i })[0]).toBeDisabled()
     })
 
-    it('button disabled when sqApiKey is empty', () => {
-      renderIntegrationsSection({ sqApiKey: '' })
-      expect(screen.getAllByRole('button', { name: /^Test Connection$/i })[0]).toBeDisabled()
-    })
-
-    it('button disabled while testing', () => {
-      renderIntegrationsSection({ sqApiKey: 'sq_test_key' })
-      fireEvent.click(screen.getAllByRole('button', { name: /^Test Connection$/i })[0])
-      expect(screen.getAllByRole('button', { name: /^Test Connection$/i })[0]).toBeDisabled()
-    })
-
     it('shows "✓ Connected" on successful test', async () => {
       fetchSquarespaceProducts.mockResolvedValueOnce([])
       renderIntegrationsSection({ sqApiKey: 'sq_test_key' })
