@@ -1,6 +1,5 @@
 import { logger } from '../utils/logger.js'
 
-const PAPERCLIP_URL = import.meta.env.VITE_PAPERCLIP_URL || 'http://localhost:3100'
 const COMPANY_ID = 'c262e348-7044-4326-80ca-496a018bf1e4'
 
 export async function submitPasteFeedback({ rawText, corrections, timestamp }) {
@@ -8,6 +7,8 @@ export async function submitPasteFeedback({ rawText, corrections, timestamp }) {
     logger.info('feedback.skip', { reason: 'VITE_PAPERCLIP_URL not configured' })
     return
   }
+
+  const PAPERCLIP_URL = import.meta.env.VITE_PAPERCLIP_URL
 
   const rows = corrections.map((c) => {
     const line = [`- **"${c.originalText}"**`]
