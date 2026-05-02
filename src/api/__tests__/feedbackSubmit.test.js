@@ -78,4 +78,13 @@ describe('submitPasteFeedback', () => {
     globalThis.fetch = makeFetch({ ok: false, status: 422, errorText: 'Validation error' })
     await expect(submitPasteFeedback(BASE_ARGS)).rejects.toThrow('Feedback submit failed: 422')
   })
+
+  it('skips silently when VITE_PAPERCLIP_URL is not set', async () => {
+    delete import.meta.env.VITE_PAPERCLIP_URL
+    await vi.resetModules()
+    const { submitPasteFeedback: freshSubmit } = await import('../feedbackSubmit.js')
+    globalThis.fetch = vi.fn()
+    await freshSubmit(BASE_ARGS)
+    expect(globalThis.fetch).not.toHaveBeenCalled()
+  })
 })
