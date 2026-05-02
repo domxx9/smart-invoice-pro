@@ -46,6 +46,8 @@ function extractNextPageInfo(linkHeader) {
 }
 
 function buildUrlParams({ pageInfo, query }) {
+  // When paginating, Shopify explicitly rejects page_info alongside any query filters —
+  // it only accepts the cursor itself. So we set one or the other, never both.
   const params = new URLSearchParams()
   params.set('limit', String(PAGE_LIMIT))
   if (pageInfo) {
@@ -247,4 +249,10 @@ export async function fetchShopifyOrders(shopDomain, accessToken, onProgress) {
 }
 
 // Exported for tests — lets us verify the Link-header parser without mocking fetch.
-export const __test = { extractNextPageInfo, flattenProduct, projectOrder, shopifyOrderStatus }
+export const __test = {
+  extractNextPageInfo,
+  flattenProduct,
+  projectOrder,
+  shopifyOrderStatus,
+  buildUrlParams,
+}
