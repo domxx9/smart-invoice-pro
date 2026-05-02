@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { SmartPasteContextSection } from '../SmartPasteContextSection.jsx'
+import { SmartPasteContextSection } from '../components/settings/SmartPasteContextSection.jsx'
 
 describe('SmartPasteContextSection', () => {
   const defaultProps = {
@@ -40,34 +40,30 @@ describe('SmartPasteContextSection', () => {
     expect(screen.getByText('Spanish')).toBeTruthy()
   })
 
-  describe('onChange interaction', () => {
-    it('calls onChange with updater fn that sets productType', () => {
+  describe('onChange(key, value) mutation tests', () => {
+    it('calls onChange with key "smartPasteContext" and updated value when productType changes', () => {
       const onChange = vi.fn()
       render(<SmartPasteContextSection settings={{ smartPasteContext: {} }} onChange={onChange} />)
       fireEvent.change(screen.getByPlaceholderText(/artisan cheese/i), {
         target: { value: 'vinyl records' },
       })
-      expect(onChange).toHaveBeenCalledOnce()
-      const updater = onChange.mock.calls[0][0]
-      expect(typeof updater).toBe('function')
-      const next = updater({ smartPasteContext: { shopType: 'Online store / e-commerce' } })
-      expect(next.smartPasteContext.productType).toBe('vinyl records')
-      expect(next.smartPasteContext.shopType).toBe('Online store / e-commerce')
+      expect(onChange).toHaveBeenCalledWith('smartPasteContext', {
+        productType: 'vinyl records',
+      })
     })
 
-    it('calls onChange with updater fn that sets shopType', () => {
+    it('calls onChange with key "smartPasteContext" when shopType select changes', () => {
       const onChange = vi.fn()
       render(<SmartPasteContextSection settings={{ smartPasteContext: {} }} onChange={onChange} />)
       fireEvent.change(screen.getAllByRole('combobox')[0], {
         target: { value: 'Brick-and-mortar retail' },
       })
-      expect(onChange).toHaveBeenCalledOnce()
-      const updater = onChange.mock.calls[0][0]
-      const next = updater({ smartPasteContext: {} })
-      expect(next.smartPasteContext.shopType).toBe('Brick-and-mortar retail')
+      expect(onChange).toHaveBeenCalledWith('smartPasteContext', {
+        shopType: 'Brick-and-mortar retail',
+      })
     })
 
-    it('updater preserves existing smartPasteContext keys', () => {
+    it('merges new value with existing smartPasteContext keys', () => {
       const onChange = vi.fn()
       render(
         <SmartPasteContextSection
@@ -78,10 +74,10 @@ describe('SmartPasteContextSection', () => {
       fireEvent.change(screen.getAllByRole('combobox')[0], {
         target: { value: 'Online store / e-commerce' },
       })
-      const updater = onChange.mock.calls[0][0]
-      const next = updater({ smartPasteContext: { productType: 'cheese' } })
-      expect(next.smartPasteContext.productType).toBe('cheese')
-      expect(next.smartPasteContext.shopType).toBe('Online store / e-commerce')
+      expect(onChange).toHaveBeenCalledWith('smartPasteContext', {
+        productType: 'cheese',
+        shopType: 'Online store / e-commerce',
+      })
     })
   })
 })

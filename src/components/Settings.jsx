@@ -26,7 +26,7 @@ import {
   backupFilename,
   EXPORT_KIND,
 } from '../utils/dataExport.js'
-import { SmartPasteContextSection } from './SmartPasteContextSection.jsx'
+import { SmartPasteContextSection } from './settings/SmartPasteContextSection.jsx'
 
 export function Settings({ ai, onStartTour, contactsApi }) {
   const {
@@ -1267,7 +1267,10 @@ export function Settings({ ai, onStartTour, contactsApi }) {
       </SettingsSection>
 
       <SettingsSection id="smart-paste-ai-context" title="Smart Paste AI Context">
-        <SmartPasteContextSection settings={s} onChange={setS} />
+        <SmartPasteContextSection
+          settings={s}
+          onChange={(k, v) => setS((p) => ({ ...p, [k]: v }))}
+        />
       </SettingsSection>
 
       <SettingsSection title="Backup & restore">

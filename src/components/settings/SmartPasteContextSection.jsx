@@ -1,19 +1,14 @@
-import { FineTuneExportButton } from './FineTuneExportButton.jsx'
+import { FineTuneExportButton } from '../FineTuneExportButton.jsx'
 import {
   SHOP_TYPE_OPTIONS,
   CUSTOMER_TYPE_OPTIONS,
   VOCABULARY_OPTIONS,
   LOCALE_OPTIONS,
-} from '../constants/smartPasteContextPresets.js'
+} from '../../constants/smartPasteContextPresets.js'
 
 export function SmartPasteContextSection({ settings, onChange }) {
   const setSmartPasteContext = (k, v) =>
-    onChange((p) => ({
-      ...p,
-      smartPasteContext: { ...(p.smartPasteContext || {}), [k]: v },
-    }))
-
-  const s = settings
+    onChange('smartPasteContext', { ...(settings.smartPasteContext || {}), [k]: v })
 
   return (
     <>
@@ -27,7 +22,7 @@ export function SmartPasteContextSection({ settings, onChange }) {
           Product type
           <textarea
             rows={2}
-            value={s.smartPasteContext?.productType || ''}
+            value={settings.smartPasteContext?.productType || ''}
             onChange={(e) => setSmartPasteContext('productType', e.target.value)}
             placeholder="e.g. artisan cheese, industrial fasteners, vinyl records, skincare"
           />
@@ -40,7 +35,7 @@ export function SmartPasteContextSection({ settings, onChange }) {
         <label>
           Shop type
           <select
-            value={s.smartPasteContext?.shopType || ''}
+            value={settings.smartPasteContext?.shopType || ''}
             onChange={(e) => setSmartPasteContext('shopType', e.target.value)}
           >
             <option value="">— select —</option>
@@ -49,9 +44,11 @@ export function SmartPasteContextSection({ settings, onChange }) {
                 {o}
               </option>
             ))}
-            {s.smartPasteContext?.shopType &&
-              !SHOP_TYPE_OPTIONS.includes(s.smartPasteContext.shopType) && (
-                <option value={s.smartPasteContext.shopType}>{s.smartPasteContext.shopType}</option>
+            {settings.smartPasteContext?.shopType &&
+              !SHOP_TYPE_OPTIONS.includes(settings.smartPasteContext.shopType) && (
+                <option value={settings.smartPasteContext.shopType}>
+                  {settings.smartPasteContext.shopType}
+                </option>
               )}
           </select>
         </label>
@@ -63,7 +60,7 @@ export function SmartPasteContextSection({ settings, onChange }) {
         <label>
           Customer type
           <select
-            value={s.smartPasteContext?.customerType || ''}
+            value={settings.smartPasteContext?.customerType || ''}
             onChange={(e) => setSmartPasteContext('customerType', e.target.value)}
           >
             <option value="">— select —</option>
@@ -72,10 +69,10 @@ export function SmartPasteContextSection({ settings, onChange }) {
                 {o}
               </option>
             ))}
-            {s.smartPasteContext?.customerType &&
-              !CUSTOMER_TYPE_OPTIONS.includes(s.smartPasteContext.customerType) && (
-                <option value={s.smartPasteContext.customerType}>
-                  {s.smartPasteContext.customerType}
+            {settings.smartPasteContext?.customerType &&
+              !CUSTOMER_TYPE_OPTIONS.includes(settings.smartPasteContext.customerType) && (
+                <option value={settings.smartPasteContext.customerType}>
+                  {settings.smartPasteContext.customerType}
                 </option>
               )}
           </select>
@@ -88,7 +85,7 @@ export function SmartPasteContextSection({ settings, onChange }) {
         <label>
           Customer vocabulary
           <select
-            value={s.smartPasteContext?.vocabulary || ''}
+            value={settings.smartPasteContext?.vocabulary || ''}
             onChange={(e) => setSmartPasteContext('vocabulary', e.target.value)}
           >
             <option value="">None / skip</option>
@@ -97,10 +94,10 @@ export function SmartPasteContextSection({ settings, onChange }) {
                 {o}
               </option>
             ))}
-            {s.smartPasteContext?.vocabulary &&
-              !VOCABULARY_OPTIONS.includes(s.smartPasteContext.vocabulary) && (
-                <option value={s.smartPasteContext.vocabulary}>
-                  {s.smartPasteContext.vocabulary}
+            {settings.smartPasteContext?.vocabulary &&
+              !VOCABULARY_OPTIONS.includes(settings.smartPasteContext.vocabulary) && (
+                <option value={settings.smartPasteContext.vocabulary}>
+                  {settings.smartPasteContext.vocabulary}
                 </option>
               )}
           </select>
@@ -113,7 +110,7 @@ export function SmartPasteContextSection({ settings, onChange }) {
         <label>
           Language / locale
           <select
-            value={s.smartPasteContext?.locale || ''}
+            value={settings.smartPasteContext?.locale || ''}
             onChange={(e) => setSmartPasteContext('locale', e.target.value)}
           >
             <option value="">— select —</option>
@@ -122,9 +119,11 @@ export function SmartPasteContextSection({ settings, onChange }) {
                 {o}
               </option>
             ))}
-            {s.smartPasteContext?.locale &&
-              !LOCALE_OPTIONS.includes(s.smartPasteContext.locale) && (
-                <option value={s.smartPasteContext.locale}>{s.smartPasteContext.locale}</option>
+            {settings.smartPasteContext?.locale &&
+              !LOCALE_OPTIONS.includes(settings.smartPasteContext.locale) && (
+                <option value={settings.smartPasteContext.locale}>
+                  {settings.smartPasteContext.locale}
+                </option>
               )}
           </select>
         </label>

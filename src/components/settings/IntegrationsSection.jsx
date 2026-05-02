@@ -8,8 +8,6 @@ export function IntegrationsSection({ settings, onChange }) {
   const [shopifyTestStatus, setShopifyTestStatus] = useState('idle')
   const [shopifyTestError, setShopifyTestError] = useState('')
 
-  const set = (k, v) => onChange(k, v)
-
   const handleTest = async () => {
     if (!settings.sqApiKey) return
     setTestStatus('testing')
@@ -74,7 +72,7 @@ export function IntegrationsSection({ settings, onChange }) {
                   type="radio"
                   name="activeIntegration"
                   checked={checked}
-                  onChange={() => set('activeIntegration', opt.id)}
+                  onChange={() => onChange('activeIntegration', opt.id)}
                 />
                 {opt.label}
               </label>
@@ -93,7 +91,7 @@ export function IntegrationsSection({ settings, onChange }) {
           API Key
           <input
             value={settings.sqApiKey || ''}
-            onChange={(e) => set('sqApiKey', e.target.value)}
+            onChange={(e) => onChange('sqApiKey', e.target.value)}
             type="password"
             placeholder="sq_…"
           />
@@ -104,7 +102,7 @@ export function IntegrationsSection({ settings, onChange }) {
           Store Domain
           <input
             value={settings.sqDomain || ''}
-            onChange={(e) => set('sqDomain', e.target.value)}
+            onChange={(e) => onChange('sqDomain', e.target.value)}
             placeholder="yourstore.squarespace.com"
           />
         </label>
@@ -138,7 +136,7 @@ export function IntegrationsSection({ settings, onChange }) {
           Shop Domain
           <input
             value={settings.shopifyShopDomain || ''}
-            onChange={(e) => set('shopifyShopDomain', e.target.value.trim())}
+            onChange={(e) => onChange('shopifyShopDomain', e.target.value.trim())}
             placeholder="yourstore.myshopify.com"
           />
         </label>
@@ -148,7 +146,7 @@ export function IntegrationsSection({ settings, onChange }) {
           Admin API Access Token
           <input
             value={settings.shopifyAccessToken || ''}
-            onChange={(e) => set('shopifyAccessToken', e.target.value)}
+            onChange={(e) => onChange('shopifyAccessToken', e.target.value)}
             type="password"
             placeholder="shpat_…"
           />

@@ -9,8 +9,6 @@ import { fetchShopifyProducts } from '../api/shopify.js'
 vi.mock('../api/squarespace.js')
 vi.mock('../api/shopify.js')
 
-const toast = vi.fn()
-
 function renderIntegrationsSection(settings = {}, onChange = vi.fn()) {
   return render(
     <ToastProvider>
@@ -25,7 +23,6 @@ function renderIntegrationsSection(settings = {}, onChange = vi.fn()) {
             ...settings,
           }}
           onChange={onChange}
-          toast={toast}
         />
       </SettingsProvider>
     </ToastProvider>,
@@ -34,7 +31,6 @@ function renderIntegrationsSection(settings = {}, onChange = vi.fn()) {
 
 beforeEach(() => {
   localStorage.clear()
-  toast.mockClear()
   vi.clearAllMocks()
 })
 
