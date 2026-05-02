@@ -1,4 +1,5 @@
 import { logger } from '../utils/logger.js'
+import { platformFetch } from './platformFetch.js'
 
 const CONTACT_PROJECTION = {
   name: true,
@@ -88,30 +89,20 @@ function mapSquarespaceProfile(profile) {
 
 export async function fetchSquarespaceCustomers(apiKey, onProgress) {
   if (!apiKey) throw new Error('Squarespace API key required to import customers.')
-  const winCap = typeof window !== 'undefined' ? window.Capacitor : null
-  const isNative = winCap?.isNativePlatform?.()
   const all = []
   let cursor = null
 
   do {
-    const qs = cursor ? `?cursor=${cursor}` : ''
-    const url = `https://api.squarespace.com/1.0/commerce/profiles${qs}`
-    const devUrl = `/api/sqsp/1.0/commerce/profiles${qs}`
-    let data
-
-    if (isNative) {
-      const res = await winCap.Plugins.CapacitorHttp.get({
-        url,
-        headers: { Authorization: `Bearer ${apiKey}` },
-      })
-      if (res.status < 200 || res.status >= 300)
-        throw new Error(`Squarespace Profiles API ${res.status} — ${JSON.stringify(res.data)}`)
-      data = res.data
-    } else {
-      const res = await fetch(devUrl, { headers: { Authorization: `Bearer ${apiKey}` } })
-      if (!res.ok) throw new Error(`Squarespace Profiles API ${res.status}: ${res.statusText}`)
-      data = await res.json()
-    }
+    const url = `https://api.squarespace.com/1.0/commerce/profiles${cursor ? `?cursor=${cursor}` : ''}`
+    const devUrl = `/api/sqsp/1.0/commerce/profiles${cursor ? `?cursor=${cursor}` : ''}`
+    const { data } = await platformFetch(
+      url,
+      { Authorization: `Bearer ${apiKey}` },
+      { devUrl },
+    ).catch((err) => {
+      const msg = err.message.replace(/^API /, '')
+      throw new Error(`Squarespace Profiles API ${msg}`)
+    })
 
     const batch = data.profiles ?? data.result ?? []
     if (!Array.isArray(batch))
