@@ -16,7 +16,7 @@ export async function platformFetch(url, headers = {}, opts = {}) {
   if (isNative()) {
     const res = await window.Capacitor.Plugins.CapacitorHttp.get({ url, headers, method, body })
     if (res.status < 200 || res.status >= 300)
-      throw new Error(`API ${res.status} — ${JSON.stringify(res.data)}`)
+      throw new Error(`API ${res.status} — ${JSON.stringify(res.data).slice(0, 200)}`)
     return { data: res.data, raw: res }
   }
 
