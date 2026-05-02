@@ -114,11 +114,14 @@ describe('testConnection', () => {
     expect(calls[0].init.headers.Authorization).toBeUndefined()
   })
 
-  it('passes the key via query string for Gemini', async () => {
+  it('passes the key via x-goog-api-key header for Gemini', async () => {
     const { fetchImpl, calls } = makeFetch([{ status: 200, body: {} }])
     await testConnection({ provider: 'gemini', apiKey: 'AIza-abc', fetchImpl })
-    expect(calls[0].url).toContain('key=AIza-abc')
-    expect(calls[0].init.headers.Authorization).toBeUndefined()
+    expect(calls[0].url).toBe(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
+    )
+    expect(calls[0].url).not.toContain('key=')
+    expect(calls[0].init.headers['x-goog-api-key']).toBe('AIza-abc')
   })
 
   it('returns the provider error message on non-2xx', async () => {
@@ -199,10 +202,9 @@ describe('listModels (SMA-96)', () => {
     ])
     const r = await listModels({ provider: 'gemini', apiKey: 'AIza-abc', fetchImpl })
     expect(r.ok).toBe(true)
-    expect(calls[0].url).toBe(
-      'https://generativelanguage.googleapis.com/v1beta/models?key=AIza-abc',
-    )
-    expect(calls[0].init.headers?.Authorization).toBeUndefined()
+    expect(calls[0].url).toBe('https://generativelanguage.googleapis.com/v1beta/models')
+    expect(calls[0].url).not.toContain('key=')
+    expect(calls[0].init.headers['x-goog-api-key']).toBe('AIza-abc')
     expect(r.models).toEqual(['gemini-1.5-flash', 'gemini-1.5-pro'])
   })
 
@@ -323,6 +325,23 @@ describe('generate', () => {
       fetchImpl,
     })
     expect(out).toEqual({ text: 'gemini hi', stopReason: 'STOP' })
+  })
+
+  it('Gemini generate: key in x-goog-api-key header, not in URL', async () => {
+    const { fetchImpl, calls } = makeFetch([
+      {
+        status: 200,
+        body: {
+          candidates: [{ content: { parts: [{ text: 'hi' }] }, finishReason: 'STOP' }],
+        },
+      },
+    ])
+    await generate({ provider: 'gemini', apiKey: 'AIza-test-key', prompt: 'hi', fetchImpl })
+    expect(calls[0].url).toBe(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
+    )
+    expect(calls[0].url).not.toContain('key=')
+    expect(calls[0].init.headers['x-goog-api-key']).toBe('AIza-test-key')
   })
 
   // ── SMA-71: stop reason plumbs through alongside the text ──
