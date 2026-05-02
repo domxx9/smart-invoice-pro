@@ -1,7 +1,6 @@
 import { calcTotals, fmt, today } from '../helpers.js'
 import { Icon } from './Icon.jsx'
-
-// ─── Revenue sparkline ────────────────────────────────────────────────────────
+import { useInvoice } from '../contexts/InvoiceContext.jsx'
 
 function weeklyRevenue(invoices) {
   const now = Date.now()
@@ -56,9 +55,8 @@ function Sparkline({ data }) {
   )
 }
 
-// ─── Dashboard ────────────────────────────────────────────────────────────────
-
-export function Dashboard({ invoices, onNewInvoice, onOpenInvoice, onQuickAddContact }) {
+export function Dashboard({ onQuickAddContact }) {
+  const { invoices, handleNewInvoice, handleEdit } = useInvoice()
   const paid = invoices.filter((i) => i.status === 'paid')
   const pending = invoices.filter((i) => i.status === 'pending')
   const overdue = pending.filter((i) => i.due && new Date(i.due) < new Date())
@@ -88,7 +86,7 @@ export function Dashboard({ invoices, onNewInvoice, onOpenInvoice, onQuickAddCon
               <Icon name="contacts" /> Contact
             </button>
           ) : null}
-          <button className="btn btn-primary" data-tour="new-invoice" onClick={onNewInvoice}>
+          <button className="btn btn-primary" data-tour="new-invoice" onClick={handleNewInvoice}>
             <Icon name="plus" /> New Invoice
           </button>
         </div>
@@ -143,7 +141,7 @@ export function Dashboard({ invoices, onNewInvoice, onOpenInvoice, onQuickAddCon
           .slice(0, 5)
           .map((inv) => {
             const { total } = calcTotals(inv.items, inv.tax)
-            const open = () => onOpenInvoice?.(inv)
+            const open = () => handleEdit?.(inv)
             return (
               <div
                 key={inv.id}

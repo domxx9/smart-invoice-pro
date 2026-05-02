@@ -1,6 +1,22 @@
 import { useState, useCallback } from 'react'
 import { fetchSquarespaceOrders } from '../api/squarespace.js'
 import { fetchShopifyOrders } from '../api/shopify.js'
+import { useToast } from '../contexts/ToastContext.jsx'
+
+function classifyError(err) {
+  const msg = err?.message ?? ''
+  if (err instanceof TypeError || /failed to fetch|networkerror/i.test(msg)) return 'network'
+  if (/\b40[13]\b/.test(msg)) return 'auth'
+  if (/\b429\b/.test(msg)) return 'rateLimit'
+  return 'api'
+}
+
+const MESSAGES = {
+  network: 'Order sync failed — check your connection.',
+  auth: 'Order sync failed — check your API key in Settings.',
+  rateLimit: 'Order sync rate limited — try again in a moment.',
+  api: 'Order sync failed — API error.',
+}
 
 export function useOrderSync({
   activeIntegration,
@@ -8,9 +24,15 @@ export function useOrderSync({
   shopifyShopDomain,
   shopifyAccessToken,
 }) {
+  const { toast } = useToast()
   const [orders, setOrders] = useState(() => {
     const s = localStorage.getItem('sip_orders')
-    return s ? JSON.parse(s) : []
+    try {
+      return s ? JSON.parse(s) : []
+    } catch {
+      console.warn('sip_orders parse error — falling back to empty list')
+      return []
+    }
   })
   const [lastOrderSync, setLastOrderSync] = useState(() => {
     const ts = localStorage.getItem('sip_orders_synced_at')
@@ -20,7 +42,12 @@ export function useOrderSync({
   const [orderSyncCount, setOrderSyncCount] = useState(0)
   const [picks, setPicks] = useState(() => {
     const s = localStorage.getItem('sip_picks')
-    return s ? JSON.parse(s) : {}
+    try {
+      return s ? JSON.parse(s) : {}
+    } catch {
+      console.warn('sip_picks parse error — falling back to empty picks')
+      return {}
+    }
   })
 
   const savePick = useCallback((orderId, itemIndex, qty) => {
@@ -61,10 +88,12 @@ export function useOrderSync({
       localStorage.setItem('sip_orders', JSON.stringify(fetched))
       localStorage.setItem('sip_orders_synced_at', String(ts))
       setOrderSyncStatus('ok')
-    } catch {
+    } catch (err) {
+      const kind = classifyError(err)
+      toast(MESSAGES[kind], kind === 'rateLimit' ? 'warning' : 'error')
       setOrderSyncStatus('error')
     }
-  }, [activeIntegration, sqApiKey, shopifyShopDomain, shopifyAccessToken])
+  }, [activeIntegration, sqApiKey, shopifyShopDomain, shopifyAccessToken, toast])
 
   return {
     orders,

@@ -11,6 +11,27 @@
  * and the prompt still builds.
  */
 
+import { getCorrectionMap } from '../../services/correctionStore.js'
+
+const MAX_CORRECTIONS = 20
+
+function buildCorrectionsStanza() {
+  const map = getCorrectionMap()
+  if (!map.size) return null
+  const sorted = [...map.entries()].sort((a, b) => (b[1].count ?? 0) - (a[1].count ?? 0))
+  const top = sorted.slice(0, MAX_CORRECTIONS)
+  const lines = top.map(([originalText, { productId, productName }]) => {
+    const safe = JSON.stringify(originalText)
+    const name = productName ? ` (${productName})` : ''
+    return `- ${safe} → "${productId}"${name}`
+  })
+  return [
+    '## Known product corrections (user-verified mappings)',
+    'When you see these terms, the user means the corresponding product:',
+    ...lines,
+  ].join('\n')
+}
+
 const CONTEXT_FIELDS = [
   ['productType', 'Product type'],
   ['shopType', 'Shop type'],
@@ -34,6 +55,7 @@ function buildContextStanza(context) {
 export function buildExtractPrompt({ text, context } = {}) {
   const safeText = typeof text === 'string' ? text : ''
   const stanza = buildContextStanza(context)
+  const correctionsStanza = buildCorrectionsStanza()
 
   // Order follows small-model (Gemma 3 1B) prompting guidance: context and
   // examples at the head to anchor the task shape, customer input next
@@ -44,6 +66,7 @@ export function buildExtractPrompt({ text, context } = {}) {
   // repetitive phrasing and parroting the input for ~22k chars.
   const sections = []
   if (stanza) sections.push(stanza)
+  if (correctionsStanza) sections.push(correctionsStanza)
 
   sections.push(
     [

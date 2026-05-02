@@ -52,6 +52,37 @@ describe('resolveConfig', () => {
   it('throws for unknown providers', () => {
     expect(() => resolveConfig({ provider: 'nope' })).toThrow(/Unknown provider/)
   })
+
+  // SMA-236: SSRF prevention — custom baseUrl must be HTTPS
+  it('rejects http:// baseUrl', () => {
+    expect(() => resolveConfig({ provider: 'openai', baseUrl: 'http://attacker.com/v1' })).toThrow(
+      /HTTPS/,
+    )
+  })
+
+  it('rejects file:// baseUrl', () => {
+    expect(() => resolveConfig({ provider: 'openai', baseUrl: 'file:///etc/passwd' })).toThrow(
+      /HTTPS/,
+    )
+  })
+
+  it('rejects data: baseUrl', () => {
+    expect(() => resolveConfig({ provider: 'openai', baseUrl: 'data:text/html,test' })).toThrow(
+      /HTTPS/,
+    )
+  })
+
+  it('rejects bare string with no protocol', () => {
+    expect(() => resolveConfig({ provider: 'openai', baseUrl: 'attacker.com/v1' })).toThrow(
+      /Invalid base URL|HTTPS/,
+    )
+  })
+
+  it('accepts https:// custom baseUrl', () => {
+    expect(() =>
+      resolveConfig({ provider: 'openai', baseUrl: 'https://proxy.example.com/v1' }),
+    ).not.toThrow()
+  })
 })
 
 describe('testConnection', () => {
@@ -180,10 +211,7 @@ describe('listModels (SMA-96)', () => {
       {
         status: 200,
         body: {
-          data: [
-            { id: 'claude-3-5-sonnet-latest' },
-            { id: 'claude-3-5-haiku-latest' },
-          ],
+          data: [{ id: 'claude-3-5-sonnet-latest' }, { id: 'claude-3-5-haiku-latest' }],
         },
       },
     ])
@@ -284,9 +312,7 @@ describe('generate', () => {
       {
         status: 200,
         body: {
-          candidates: [
-            { content: { parts: [{ text: 'gemini hi' }] }, finishReason: 'STOP' },
-          ],
+          candidates: [{ content: { parts: [{ text: 'gemini hi' }] }, finishReason: 'STOP' }],
         },
       },
     ])

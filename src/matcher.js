@@ -1,5 +1,9 @@
 import Fuse from 'fuse.js'
 import { normalizeText, EXTENDED_STOPWORDS } from './helpers.js'
+import {
+  getCorrectionMap,
+  normalizeText as correctionNormalize,
+} from './services/correctionStore.js'
 
 const FUSE_OPTIONS = {
   keys: [
@@ -122,8 +126,7 @@ function bagRank(queryTokens, ctx, limit) {
   return ranked.slice(0, limit)
 }
 
-const confFromBag = (matched, qTokenCount) =>
-  Math.round((matched / Math.max(qTokenCount, 1)) * 100)
+const confFromBag = (matched, qTokenCount) => Math.round((matched / Math.max(qTokenCount, 1)) * 100)
 
 function singleTokenFuseHit(query, ctx) {
   const [hit] = ctx.fuse.search(query, { limit: 1 })
@@ -152,22 +155,69 @@ export function matchProduct(name, products) {
   }
 }
 
-export function getTopCandidates(name, products, n = 5) {
+export function getTopCandidates(name, products, n = 5, context) {
   const query = (name || '').trim()
   if (!query || !products || !products.length) return []
   const ctx = getIndex(products)
   const qTokens = tokenize(query)
   if (qTokens.length <= 1) {
-    return ctx.fuse.search(query, { limit: n }).map((r) => ctx.originals[r.refIndex])
+    const hits = ctx.fuse.search(query, { limit: n })
+    if (!context) return hits.map((r) => ctx.originals[r.refIndex])
+    return contextRerank(
+      hits.map((r) => ({ product: ctx.originals[r.refIndex], tier: Math.round(r.score * 20) })),
+      context,
+    )
   }
-  return bagRank(qTokens, ctx, n).map((r) => ctx.originals[r.refIndex])
+  const ranked = bagRank(qTokens, ctx, n)
+  if (!context) return ranked.map((r) => ctx.originals[r.refIndex])
+  return contextRerank(
+    ranked.map((r) => ({ product: ctx.originals[r.refIndex], tier: -r.matched })),
+    context,
+  )
+}
+
+function contextRerank(items, { productType, vocabulary }) {
+  const vocabTokens = vocabulary ? tokenize(vocabulary) : []
+  return items
+    .map((item, i) => {
+      let boost = 0
+      const p = item.product
+      if (productType && p.category === productType) boost += 1
+      if (vocabTokens.length > 0) {
+        const pTokens = new Set(tokenize(`${p.name || ''} ${p.desc || ''}`))
+        boost += vocabTokens.filter((t) => pTokens.has(t)).length
+      }
+      return { product: p, tier: item.tier, boost, i }
+    })
+    .sort((a, b) => a.tier - b.tier || b.boost - a.boost || a.i - b.i)
+    .map(({ product }) => product)
 }
 
 export function matchItems(extracted, products) {
+  const correctionMap = getCorrectionMap()
   const ctx = products && products.length ? getIndex(products) : null
   return extracted.map(({ raw, name, qty }) => {
     const query = (name || '').trim()
-    if (!ctx || !query) return { raw, name, qty, product: null, bestGuess: null, confidence: 0 }
+    if (!query) return { raw, name, qty, product: null, bestGuess: null, confidence: 0 }
+
+    const normalized = correctionNormalize(query)
+    const correction = correctionMap.get(normalized)
+    if (correction) {
+      const product = products.find((p) => p.id === correction.productId)
+      if (product) {
+        return {
+          raw,
+          name,
+          qty,
+          product,
+          bestGuess: null,
+          confidence: Math.min(95, 80 + correction.count * 3),
+          source: 'correction',
+        }
+      }
+    }
+
+    if (!ctx) return { raw, name, qty, product: null, bestGuess: null, confidence: 0 }
     const qTokens = tokenize(query)
     let pct = 0
     let original = null
