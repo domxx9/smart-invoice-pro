@@ -14,9 +14,12 @@
  */
 
 import { logger } from '../utils/logger.js'
+import { platformFetch } from './platformFetch.js'
 
 const API_VERSION = '2024-01'
 const PAGE_LIMIT = 250
+
+const isNative = () => typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()
 
 function normalizeShopDomain(shopDomain) {
   if (!shopDomain) throw new Error('Shopify shop domain is required')
@@ -62,27 +65,8 @@ function buildUrl(host, resource, { pageInfo, query }) {
 
 async function shopifyFetch(shopDomain, accessToken, { resource, pageInfo, query }) {
   const host = `https://${normalizeShopDomain(shopDomain)}`
-  const winCap = typeof window !== 'undefined' ? window.Capacitor : undefined
-  const isNative = winCap?.isNativePlatform?.()
+  const url = buildUrl(host, resource, { pageInfo, query })
 
-  if (isNative) {
-    const url = buildUrl(host, resource, { pageInfo, query })
-    const res = await winCap.Plugins.CapacitorHttp.get({
-      url,
-      headers: { 'X-Shopify-Access-Token': accessToken },
-    })
-    if (res.status < 200 || res.status >= 300) {
-      throw new Error(`Shopify API ${res.status} — ${JSON.stringify(res.data)}`)
-    }
-    // Capacitor HTTP returns headers as a flat object; keys can vary in case.
-    const headers = res.headers || {}
-    const link = headers.link ?? headers.Link ?? headers['link'] ?? headers['Link'] ?? ''
-    return { data: res.data, nextPageInfo: extractNextPageInfo(link) }
-  }
-
-  // Browser / dev proxy path. The Vite dev server proxies /api/shopify to the user's
-  // shopify host at request time (see vite.config.js). Native builds use the direct URL.
-  const devBase = `/api/shopify/admin/api/${API_VERSION}/${resource}.json`
   const params = new URLSearchParams()
   params.set('limit', String(PAGE_LIMIT))
   if (pageInfo) {
@@ -92,17 +76,26 @@ async function shopifyFetch(shopDomain, accessToken, { resource, pageInfo, query
       if (v !== undefined && v !== null && v !== '') params.set(k, String(v))
     }
   }
-  const res = await fetch(`${devBase}?${params.toString()}`, {
-    headers: {
+  const devUrl = `/api/shopify/admin/api/${API_VERSION}/${resource}.json?${params.toString()}`
+
+  const { data, raw } = await platformFetch(
+    url,
+    {
       'X-Shopify-Access-Token': accessToken,
-      'X-Shopify-Shop-Domain': normalizeShopDomain(shopDomain),
+      ...(isNative() ? {} : { 'X-Shopify-Shop-Domain': normalizeShopDomain(shopDomain) }),
     },
-  })
-  if (!res.ok) {
-    throw new Error(`Shopify API ${res.status}: ${res.statusText}`)
+    { devUrl },
+  )
+
+  let link = ''
+  if (isNative()) {
+    const headers = raw.headers || {}
+    link = headers.link ?? headers.Link ?? headers['link'] ?? headers['Link'] ?? ''
+  } else {
+    link = raw.headers.get('Link') ?? ''
   }
-  const data = await res.json()
-  return { data, nextPageInfo: extractNextPageInfo(res.headers.get('Link')) }
+
+  return { data, nextPageInfo: extractNextPageInfo(link) }
 }
 
 function stripHtml(html) {
