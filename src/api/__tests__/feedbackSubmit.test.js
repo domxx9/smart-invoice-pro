@@ -1,8 +1,13 @@
-import { describe, it, expect, afterEach, vi } from 'vitest'
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import { submitPasteFeedback } from '../feedbackSubmit.js'
+
+beforeEach(() => {
+  vi.stubEnv('VITE_PAPERCLIP_URL', 'http://localhost:3100')
+})
 
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.unstubAllEnvs()
 })
 
 function makeFetch(spec) {
@@ -80,11 +85,9 @@ describe('submitPasteFeedback', () => {
   })
 
   it('skips silently when VITE_PAPERCLIP_URL is not set', async () => {
-    delete import.meta.env.VITE_PAPERCLIP_URL
-    await vi.resetModules()
-    const { submitPasteFeedback: freshSubmit } = await import('../feedbackSubmit.js')
+    vi.stubEnv('VITE_PAPERCLIP_URL', '')
     globalThis.fetch = vi.fn()
-    await freshSubmit(BASE_ARGS)
+    await submitPasteFeedback(BASE_ARGS)
     expect(globalThis.fetch).not.toHaveBeenCalled()
   })
 })
