@@ -102,7 +102,7 @@ describe('platformFetch', () => {
 
     beforeEach(() => {
       mockCapacitorHttp = {
-        get: vi.fn(),
+        request: vi.fn(),
       }
       vi.stubGlobal('window', {
         Capacitor: {
@@ -118,7 +118,7 @@ describe('platformFetch', () => {
 
     it('returns { data, raw } on 2xx from CapacitorHttp', async () => {
       const mockData = { ok: true, items: [1, 2, 3] }
-      mockCapacitorHttp.get.mockResolvedValue({
+      mockCapacitorHttp.request.mockResolvedValue({
         status: 200,
         data: mockData,
         headers: {},
@@ -131,7 +131,7 @@ describe('platformFetch', () => {
     })
 
     it('truncates error message to ≤200 chars on non-2xx', async () => {
-      mockCapacitorHttp.get.mockResolvedValue({
+      mockCapacitorHttp.request.mockResolvedValue({
         status: 422,
         data: { error: 'A'.repeat(500) },
         headers: {},
@@ -149,7 +149,7 @@ describe('platformFetch', () => {
     })
 
     it('passes method and body to CapacitorHttp.get', async () => {
-      mockCapacitorHttp.get.mockResolvedValue({
+      mockCapacitorHttp.request.mockResolvedValue({
         status: 200,
         data: {},
         headers: {},
@@ -161,7 +161,7 @@ describe('platformFetch', () => {
         { method: 'POST', body: '{"key":"value"}' },
       )
 
-      expect(mockCapacitorHttp.get).toHaveBeenCalledWith({
+      expect(mockCapacitorHttp.request).toHaveBeenCalledWith({
         url: API_URL,
         headers: { 'Content-Type': 'application/json' },
         method: 'POST',
