@@ -1,7 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
 import { CURRENCY_TAX } from '../constants.js'
-import { fetchSquarespaceProducts } from '../api/squarespace.js'
-import { fetchShopifyProducts } from '../api/shopify.js'
 import { getSecret, setSecret } from '../secure-storage.js'
 import { BYOK_PROVIDERS as BYOK_PRESETS } from '../byok.js'
 import {
@@ -16,6 +14,7 @@ import { SettingsSection } from './SettingsSection.jsx'
 import { ContactsImportSection } from './ContactsImportSection.jsx'
 import { PdfTemplateEditor } from './PdfTemplateEditor.jsx'
 import { DebugLogsSection } from './DebugLogsSection.jsx'
+import { IntegrationsSection } from './settings/IntegrationsSection.jsx'
 import { FineTuneExportButton } from './FineTuneExportButton.jsx'
 import { Icon } from './Icon.jsx'
 import { RestoreBackupModal } from './RestoreBackupModal.jsx'
@@ -69,10 +68,7 @@ export function Settings({ ai, onStartTour, contactsApi }) {
   const { settings, saveSettings } = useSettings()
   const { toast } = useToast()
   const [s, setS] = useState(settings)
-  const [testStatus, setTestStatus] = useState('idle')
-  const [testError, setTestError] = useState('')
-  const [shopifyTestStatus, setShopifyTestStatus] = useState('idle')
-  const [shopifyTestError, setShopifyTestError] = useState('')
+
   const [byokKey, setByokKey] = useState('')
   // SMA-96: cached model list per provider+baseUrl. Shape per key:
   // { status: 'idle' | 'loading' | 'ok' | 'error', models: string[], error: string }
@@ -179,32 +175,6 @@ export function Settings({ ai, onStartTour, contactsApi }) {
       setBackupError(e?.message || 'Export failed')
     } finally {
       setBackupBusy(null)
-    }
-  }
-
-  const handleTest = async () => {
-    if (!s.sqApiKey) return
-    setTestStatus('testing')
-    try {
-      await fetchSquarespaceProducts(s.sqApiKey)
-      setTestStatus('ok')
-      setTestError('')
-    } catch (e) {
-      setTestStatus('error')
-      setTestError(e.message)
-    }
-  }
-
-  const handleShopifyTest = async () => {
-    if (!s.shopifyShopDomain || !s.shopifyAccessToken) return
-    setShopifyTestStatus('testing')
-    try {
-      await fetchShopifyProducts(s.shopifyShopDomain, s.shopifyAccessToken)
-      setShopifyTestStatus('ok')
-      setShopifyTestError('')
-    } catch (e) {
-      setShopifyTestStatus('error')
-      setShopifyTestError(e.message)
     }
   }
 
@@ -496,144 +466,7 @@ export function Settings({ ai, onStartTour, contactsApi }) {
       </SettingsSection>
 
       <SettingsSection title="Integrations">
-        <fieldset
-          style={{
-            border: '1px solid var(--border)',
-            borderRadius: 8,
-            padding: '10px 12px',
-            marginBottom: 12,
-          }}
-        >
-          <legend style={{ fontSize: '.78rem', padding: '0 6px', color: 'var(--muted)' }}>
-            Active integration
-          </legend>
-          <div
-            role="radiogroup"
-            aria-label="Active integration"
-            style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}
-          >
-            {[
-              { id: 'squarespace', label: 'Squarespace' },
-              { id: 'shopify', label: 'Shopify' },
-              { id: null, label: 'None' },
-            ].map((opt) => {
-              const checked = (s.activeIntegration ?? null) === opt.id
-              return (
-                <label
-                  key={opt.label}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    fontSize: '.82rem',
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="activeIntegration"
-                    checked={checked}
-                    onChange={() => set('activeIntegration', opt.id)}
-                  />
-                  {opt.label}
-                </label>
-              )
-            })}
-          </div>
-          <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 8, marginBottom: 0 }}>
-            Only one provider syncs at a time. Switching triggers a fresh sync that overwrites the
-            catalog.
-          </p>
-        </fieldset>
-
-        <h3 style={{ fontSize: '.92rem', fontWeight: 700, margin: '10px 0 8px' }}>Squarespace</h3>
-        <div className="field">
-          <label>
-            API Key
-            <input
-              value={s.sqApiKey}
-              onChange={(e) => set('sqApiKey', e.target.value)}
-              type="password"
-              placeholder="sq_…"
-            />
-          </label>
-        </div>
-        <div className="field">
-          <label>
-            Store Domain
-            <input
-              value={s.sqDomain}
-              onChange={(e) => set('sqDomain', e.target.value)}
-              placeholder="yourstore.squarespace.com"
-            />
-          </label>
-        </div>
-        <button
-          className="btn btn-ghost btn-sm mb-8"
-          onClick={handleTest}
-          disabled={!s.sqApiKey || testStatus === 'testing'}
-        >
-          {
-            {
-              idle: 'Test Connection',
-              testing: 'Testing…',
-              ok: '✓ Connected',
-              error: '✗ Failed — check key',
-            }[testStatus]
-          }
-        </button>
-        {testError ? (
-          <p
-            style={{ fontSize: '0.75rem', color: '#f87171', marginTop: 6, wordBreak: 'break-all' }}
-          >
-            {testError}
-          </p>
-        ) : null}
-
-        <h3 style={{ fontSize: '.92rem', fontWeight: 700, margin: '20px 0 8px' }}>Shopify</h3>
-        <div className="field">
-          <label>
-            Shop Domain
-            <input
-              value={s.shopifyShopDomain || ''}
-              onChange={(e) => set('shopifyShopDomain', e.target.value.trim())}
-              placeholder="yourstore.myshopify.com"
-            />
-          </label>
-        </div>
-        <div className="field">
-          <label>
-            Admin API Access Token
-            <input
-              value={s.shopifyAccessToken || ''}
-              onChange={(e) => set('shopifyAccessToken', e.target.value)}
-              type="password"
-              placeholder="shpat_…"
-            />
-          </label>
-        </div>
-        <button
-          className="btn btn-ghost btn-sm mb-8"
-          onClick={handleShopifyTest}
-          disabled={
-            !s.shopifyShopDomain || !s.shopifyAccessToken || shopifyTestStatus === 'testing'
-          }
-        >
-          {
-            {
-              idle: 'Test Connection',
-              testing: 'Testing…',
-              ok: '✓ Connected',
-              error: '✗ Failed — check credentials',
-            }[shopifyTestStatus]
-          }
-        </button>
-        {shopifyTestError ? (
-          <p
-            style={{ fontSize: '0.75rem', color: '#f87171', marginTop: 6, wordBreak: 'break-all' }}
-          >
-            {shopifyTestError}
-          </p>
-        ) : null}
+        <IntegrationsSection settings={s} onChange={(k, v) => setS((p) => ({ ...p, [k]: v }))} />
       </SettingsSection>
 
       {contactsApi && (
