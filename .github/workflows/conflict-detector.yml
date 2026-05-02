@@ -16,16 +16,19 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          MERGEABLE="null"
+          MERGEABLE_STATE="unknown"
           for i in 1 2 3 4 5 6; do
-            MERGEABLE=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}" --jq '.mergeable')
-            [ "$MERGEABLE" != "null" ] && break
+            PR_DATA=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}")
+            MERGEABLE=$(echo "$PR_DATA" | jq -r '.mergeable')
+            MERGEABLE_STATE=$(echo "$PR_DATA" | jq -r '.mergeable_state')
+            # "unknown" means GitHub hasn't computed it yet; null mergeable is the same signal
+            [ "$MERGEABLE_STATE" != "unknown" ] && [ "$MERGEABLE" != "null" ] && break
             sleep 10
           done
-          echo "mergeable=$MERGEABLE" >> "$GITHUB_OUTPUT"
+          echo "mergeable_state=$MERGEABLE_STATE" >> "$GITHUB_OUTPUT"
 
       - name: Create Paperclip conflict sub-issue
-        if: steps.check.outputs.mergeable == 'false'
+        if: steps.check.outputs.mergeable_state == 'dirty'
         env:
           PAPERCLIP_API_URL: ${{ secrets.PAPERCLIP_API_URL }}
           PAPERCLIP_API_KEY: ${{ secrets.PAPERCLIP_API_KEY }}
@@ -84,7 +87,7 @@ jobs:
               } + if $parentId != "" then {parentId: $parentId} else {} end')"
 
       - name: Close resolved conflict issues
-        if: steps.check.outputs.mergeable == 'true'
+        if: steps.check.outputs.mergeable_state != 'dirty' && steps.check.outputs.mergeable_state != 'unknown'
         env:
           PAPERCLIP_API_URL: ${{ secrets.PAPERCLIP_API_URL }}
           PAPERCLIP_API_KEY: ${{ secrets.PAPERCLIP_API_KEY }}
