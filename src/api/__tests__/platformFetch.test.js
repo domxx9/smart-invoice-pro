@@ -148,7 +148,7 @@ describe('platformFetch', () => {
       expect(thrownError.message).toContain('422')
     })
 
-    it('passes method and body to CapacitorHttp.get', async () => {
+    it('passes method and body (as data field) to CapacitorHttp.request', async () => {
       mockCapacitorHttp.request.mockResolvedValue({
         status: 200,
         data: {},
@@ -165,7 +165,7 @@ describe('platformFetch', () => {
         url: API_URL,
         headers: { 'Content-Type': 'application/json' },
         method: 'POST',
-        body: '{"key":"value"}',
+        data: '{"key":"value"}',
       })
     })
   })
