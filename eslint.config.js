@@ -40,9 +40,15 @@ export default [
     },
   },
   {
-    files: ['*.js', 'scripts/**/*.js', 'generate-icons.js'],
+    files: ['*.js', 'scripts/**/*.js', 'generate-icons.js', 'api/**/*.js'],
     languageOptions: {
       globals: { ...globals.node },
+    },
+  },
+  {
+    files: ['src/api/__tests__/**/*.js'],
+    languageOptions: {
+      globals: { ...globals.browser, ...globals.node },
     },
   },
 ]
