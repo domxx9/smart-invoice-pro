@@ -1,3 +1,5 @@
+import { STORAGE_KEYS } from '../constants/storageKeys'
+
 export interface ErrorReportPayload {
   message: string
   stack: string
@@ -21,7 +23,7 @@ function isSecretKey(key: string): boolean {
 }
 
 export function captureAppState(): Record<string, unknown> {
-  const tab = localStorage.getItem('tab') || undefined
+  const tab = localStorage.getItem(STORAGE_KEYS.SIP_ACTIVE_TAB) || undefined
   const snapshot: Record<string, unknown> = { tab }
   for (let i = 0; i < localStorage.length; i++) {
     try {

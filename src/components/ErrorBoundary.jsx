@@ -1,6 +1,7 @@
 import { Component } from 'react'
 import { logger } from '../utils/logger'
 import { reportError, captureAppState } from '../services/errorReporter'
+import { STORAGE_KEYS } from '../constants/storageKeys'
 
 export class ErrorBoundary extends Component {
   constructor(props) {
@@ -24,7 +25,7 @@ export class ErrorBoundary extends Component {
       message: err.message,
       stack: err.stack || '',
       componentStack: this._getComponentStack(),
-      tab: localStorage.getItem('tab') || undefined,
+      tab: localStorage.getItem(STORAGE_KEYS.SIP_ACTIVE_TAB) || undefined,
       userNote: this.state.userNote,
       appStateSnapshot: captureAppState(),
     })
