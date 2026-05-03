@@ -8,11 +8,12 @@
  */
 
 import { BYOK_PROVIDERS } from './byok.js'
-import { STORAGE_KEYS } from './constants/storageKeys.js'
+import { STORAGE_KEYS } from './constants/storageKeys'
 import { isNative } from './api/platformFetch.js'
 
 let _plugin = null
-async function getPlugin() {
+
+async function awaitPlugin() {
   if (_plugin) return _plugin
   const mod = await import('capacitor-secure-storage-plugin')
   _plugin = mod.SecureStoragePlugin
@@ -21,7 +22,7 @@ async function getPlugin() {
 
 export async function setSecret(key, value) {
   if (isNative()) {
-    const plugin = await getPlugin()
+    const plugin = await awaitPlugin()
     await Promise.resolve(plugin.set({ key, value }))
   } else {
     sessionStorage.setItem(key, value)
@@ -30,7 +31,7 @@ export async function setSecret(key, value) {
 
 export async function getSecret(key) {
   if (isNative()) {
-    const plugin = await getPlugin()
+    const plugin = await awaitPlugin()
     try {
       const { value } = await Promise.resolve(plugin.get({ key }))
       return value ?? ''
@@ -45,7 +46,7 @@ export async function getSecret(key) {
 
 export async function deleteSecret(key) {
   if (isNative()) {
-    const plugin = await getPlugin()
+    const plugin = await awaitPlugin()
     try {
       await Promise.resolve(plugin.remove({ key }))
     } catch {
