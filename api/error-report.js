@@ -6,6 +6,11 @@
 export const config = { runtime: 'edge' }
 
 const PROJECT_ID = 'c2d1e1a5-c7e5-4ba8-bb49-debc7ef53f24'
+const MAX_BODY_SIZE = 100 * 1024
+const MAX_MESSAGE_LEN = 500
+const MAX_STACK_LEN = 5000
+const MAX_NOTE_LEN = 1000
+const MAX_SNAPSHOT_KEYS = 50
 const SANITIZE_FIELDS = ['apiKey', 'token', 'password', 'secret', 'authorization', 'cookie']
 
 function sanitize(obj) {
@@ -26,18 +31,31 @@ function buildTitle(message) {
   return full.length > 120 ? full.slice(0, 120) : full
 }
 
+function truncate(str, maxLen) {
+  if (!str || str.length <= maxLen) return str
+  return str.slice(0, maxLen) + '…[truncated]'
+}
+
 function formatDescription(body) {
   const parts = []
-  if (body.message) parts.push(`## Message\n${body.message}`)
-  if (body.stack) parts.push(`## Stack\n\`\`\`\n${body.stack}\n\`\`\``)
-  if (body.componentStack) parts.push(`## Component Stack\n\`\`\`\n${body.componentStack}\n\`\`\``)
+  if (body.message) parts.push(`## Message\n${truncate(body.message, MAX_MESSAGE_LEN)}`)
+  if (body.stack) parts.push(`## Stack\n\`\`\`\n${truncate(body.stack, MAX_STACK_LEN)}\n\`\`\``)
+  if (body.componentStack)
+    parts.push(
+      `## Component Stack\n\`\`\`\n${truncate(body.componentStack, MAX_STACK_LEN)}\n\`\`\``,
+    )
   if (body.tab) parts.push(`## Tab\n${body.tab}`)
-  if (body.userNote) parts.push(`## User Note\n${body.userNote}`)
+  if (body.userNote) parts.push(`## User Note\n${truncate(body.userNote, MAX_NOTE_LEN)}`)
   if (body.userAgent) parts.push(`## User Agent\n${body.userAgent}`)
   if (body.timestamp) parts.push(`## Timestamp\n${body.timestamp}`)
   if (body.appStateSnapshot) {
     const sanitized = sanitize(body.appStateSnapshot)
-    parts.push(`## App State Snapshot\n\`\`\`json\n${JSON.stringify(sanitized, null, 2)}\n\`\`\``)
+    const keys = Object.keys(sanitized)
+    const limited =
+      keys.length > MAX_SNAPSHOT_KEYS
+        ? Object.fromEntries(keys.slice(0, MAX_SNAPSHOT_KEYS).map((k) => [k, sanitized[k]]))
+        : sanitized
+    parts.push(`## App State Snapshot\n\`\`\`json\n${JSON.stringify(limited, null, 2)}\n\`\`\``)
   }
   return parts.join('\n\n')
 }
@@ -50,12 +68,27 @@ export default async function handler(req) {
     })
   }
 
+  const contentLength = req.headers.get('content-length')
+  if (contentLength && parseInt(contentLength, 10) > MAX_BODY_SIZE) {
+    return new Response(JSON.stringify({ success: false, error: 'Payload too large' }), {
+      status: 413,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
   let body
   try {
     body = await req.json()
   } catch {
     return new Response(JSON.stringify({ success: false, error: 'Invalid JSON' }), {
       status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  if (JSON.stringify(body).length > MAX_BODY_SIZE) {
+    return new Response(JSON.stringify({ success: false, error: 'Request body too large' }), {
+      status: 413,
       headers: { 'Content-Type': 'application/json' },
     })
   }

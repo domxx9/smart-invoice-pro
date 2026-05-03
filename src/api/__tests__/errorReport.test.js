@@ -181,6 +181,57 @@ describe('api/error-report.js', () => {
     expect(data.error).toContain('misconfiguration')
   })
 
+  it('returns 413 when body exceeds 100KB (post-parse check)', async () => {
+    globalThis.fetch = makeFetch({})
+    const largeBody = { ...BASE_BODY, appStateSnapshot: { data: 'x'.repeat(200 * 1024) } }
+    const res = await callHandler(largeBody)
+    expect(res.status).toBe(413)
+    const data = await res.json()
+    expect(data.success).toBe(false)
+    expect(data.error).toContain('too large')
+  })
+
+  it('returns 413 when Content-Length header exceeds 100KB', async () => {
+    globalThis.fetch = makeFetch({})
+    const req = new Request('http://localhost/api/error-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': String(200 * 1024) },
+      body: JSON.stringify(BASE_BODY),
+    })
+    const { default: handler } = await import('../../../api/error-report.js')
+    const res = await handler(req)
+    expect(res.status).toBe(413)
+    const data = await res.json()
+    expect(data.success).toBe(false)
+  })
+
+  it('truncates long message in description', async () => {
+    globalThis.fetch = makeFetch({})
+    await callHandler({ ...BASE_BODY, message: 'E'.repeat(600) })
+    const body = JSON.parse(globalThis.fetch.mock.calls[0][1].body)
+    const msgSection = body.description.match(/## Message\n(.*)/)?.[1] ?? ''
+    expect(msgSection.length).toBeLessThan(600)
+    expect(msgSection).toContain('[truncated]')
+  })
+
+  it('truncates long stack in description', async () => {
+    globalThis.fetch = makeFetch({})
+    await callHandler({ ...BASE_BODY, stack: 'S'.repeat(6000) })
+    const body = JSON.parse(globalThis.fetch.mock.calls[0][1].body)
+    expect(body.description).toContain('[truncated]')
+  })
+
+  it('limits appStateSnapshot to 50 keys in description', async () => {
+    globalThis.fetch = makeFetch({})
+    const bigSnapshot = Object.fromEntries(Array.from({ length: 60 }, (_, i) => [`key${i}`, i]))
+    await callHandler({ ...BASE_BODY, appStateSnapshot: bigSnapshot })
+    const body = JSON.parse(globalThis.fetch.mock.calls[0][1].body)
+    const snapshotJson =
+      body.description.match(/## App State Snapshot[\s\S]*?```json\n([\s\S]*?)\n```/)?.[1] ?? '{}'
+    const parsed = JSON.parse(snapshotJson)
+    expect(Object.keys(parsed).length).toBeLessThanOrEqual(50)
+  })
+
   it('falls back to hardcoded COMPANY_ID when env var is unset', async () => {
     delete process.env.PAPERCLIP_COMPANY_ID
     globalThis.fetch = makeFetch({})
