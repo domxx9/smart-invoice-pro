@@ -43,6 +43,7 @@ export async function getSecret(key) {
       return value ?? ''
     } catch {
       // key not found in secure storage
+      return ''
     }
   } else {
     return sessionStorage.getItem(key) || ''
