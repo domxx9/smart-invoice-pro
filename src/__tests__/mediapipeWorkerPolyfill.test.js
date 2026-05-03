@@ -86,23 +86,31 @@ describe('mediapipeWorker — self.import polyfill (SMA-67)', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url) => {
-        expect(url).toBe('https://example.test/glue.js')
-        return new Response(stubScript, { status: 200 })
+        expect(url).toBe(
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai/wasm/genai_wasm_internal.js',
+        )
+        return new Response(stubScript, {
+          status: 200,
+          headers: { 'content-type': 'application/javascript' },
+        })
       }),
     )
 
     // Run the real polyfill block (not a stub) against a sandbox `self`.
-    // Inside indirect eval we want `self` to be the sandbox, so alias it to
-    // globalThis — that's how a real worker realm exposes it.
+    // Include WASM_GLUE_SRI and TRUSTED_ORIGINS so the polyfill block has access.
     const polyfillBlock = extractPolyfillBlock(WORKER_SRC)
     const wrapped = `
       globalThis.self = self;
+      const WASM_GLUE_SRI = '';
+      const TRUSTED_ORIGINS = new Set(['https://cdn.jsdelivr.net']);
       ${polyfillBlock}
       return self.import;
     `
     const polyfillImport = new Function('self', wrapped)(globalThis)
 
-    await polyfillImport('https://example.test/glue.js')
+    await polyfillImport(
+      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai/wasm/genai_wasm_internal.js',
+    )
 
     expect(typeof globalThis.ModuleFactory).toBe('function')
     expect(globalThis.ModuleFactory()).toBe(42)
@@ -124,13 +132,340 @@ describe('mediapipeWorker — self.import polyfill (SMA-67)', () => {
     const polyfillBlock = extractPolyfillBlock(WORKER_SRC)
     const wrapped = `
       globalThis.self = self;
+      const WASM_GLUE_SRI = '';
+      const TRUSTED_ORIGINS = new Set(['https://cdn.jsdelivr.net']);
       ${polyfillBlock}
       return self.import;
     `
     const polyfillImport = new Function('self', wrapped)(globalThis)
 
-    await expect(polyfillImport('https://example.test/missing.js')).rejects.toThrow(/404/)
+    await expect(polyfillImport('https://cdn.jsdelivr.net/missing.js')).rejects.toThrow(/404/)
 
     delete globalThis.self
+  })
+
+  // ─── SMA-210 Security Guards ────────────────────────────────────────────────
+
+  describe('origin allowlist (SMA-210)', () => {
+    it('allows trusted jsDelivr origin', async () => {
+      const stubScript = 'var ModuleFactory = function(){ return 42 };'
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (url) => {
+          expect(url).toBe(
+            'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai/wasm/genai_wasm_internal.js',
+          )
+          return new Response(stubScript, {
+            status: 200,
+            headers: { 'content-type': 'application/javascript' },
+          })
+        }),
+      )
+
+      const polyfillBlock = extractPolyfillBlock(WORKER_SRC)
+      const wrapped = `
+        globalThis.self = self;
+        const WASM_GLUE_SRI = '';
+        const TRUSTED_ORIGINS = new Set(['https://cdn.jsdelivr.net']);
+        ${polyfillBlock}
+        return self.import;
+      `
+      const polyfillImport = new Function('self', wrapped)(globalThis)
+
+      await polyfillImport(
+        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai/wasm/genai_wasm_internal.js',
+      )
+      expect(globalThis.ModuleFactory()).toBe(42)
+      delete globalThis.ModuleFactory
+      delete globalThis.self
+    })
+
+    it('blocks untrusted origin with SMA-210 error', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          async () =>
+            new Response('x', {
+              status: 200,
+              headers: { 'content-type': 'application/javascript' },
+            }),
+        ),
+      )
+
+      const polyfillBlock = extractPolyfillBlock(WORKER_SRC)
+      const wrapped = `
+        globalThis.self = self;
+        const WASM_GLUE_SRI = '';
+        const TRUSTED_ORIGINS = new Set(['https://cdn.jsdelivr.net']);
+        ${polyfillBlock}
+        return self.import;
+      `
+      const polyfillImport = new Function('self', wrapped)(globalThis)
+
+      await expect(polyfillImport('https://evil.com/malware.js')).rejects.toThrow(
+        /not in the trusted CDN allowlist.*SMA-210/,
+      )
+
+      delete globalThis.self
+    })
+  })
+
+  describe('content-type validation (SMA-210)', () => {
+    it('allows valid JavaScript MIME types', async () => {
+      const validTypes = [
+        'application/javascript',
+        'text/javascript',
+        'application/ecmascript',
+        'text/ecmascript',
+      ]
+      for (const ct of validTypes) {
+        vi.stubGlobal(
+          'fetch',
+          vi.fn(
+            async () => new Response('var x = 1', { status: 200, headers: { 'content-type': ct } }),
+          ),
+        )
+
+        const polyfillBlock = extractPolyfillBlock(WORKER_SRC)
+        const wrapped = `
+          globalThis.self = self;
+          const WASM_GLUE_SRI = '';
+          const TRUSTED_ORIGINS = new Set(['https://cdn.jsdelivr.net']);
+          ${polyfillBlock}
+          return self.import;
+        `
+        const polyfillImport = new Function('self', wrapped)(globalThis)
+
+        await polyfillImport(
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai/wasm/genai_wasm_internal.js',
+        )
+
+        const fetchCall = vi.mocked(fetch).mock.calls[vi.mocked(fetch).mock.calls.length - 1]
+        expect(fetchCall[0]).toBe(
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai/wasm/genai_wasm_internal.js',
+        )
+
+        delete globalThis.self
+        vi.mocked(fetch).mockClear()
+      }
+    })
+
+    it('blocks non-JavaScript content-type with SMA-210 error', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          async () =>
+            new Response('<html>evil</html>', {
+              status: 200,
+              headers: { 'content-type': 'text/html' },
+            }),
+        ),
+      )
+
+      const polyfillBlock = extractPolyfillBlock(WORKER_SRC)
+      const wrapped = `
+        globalThis.self = self;
+        const WASM_GLUE_SRI = '';
+        const TRUSTED_ORIGINS = new Set(['https://cdn.jsdelivr.net']);
+        ${polyfillBlock}
+        return self.import;
+      `
+      const polyfillImport = new Function('self', wrapped)(globalThis)
+
+      await expect(
+        polyfillImport(
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai/wasm/genai_wasm_internal.js',
+        ),
+      ).rejects.toThrow('expected JavaScript MIME')
+
+      delete globalThis.self
+    })
+  })
+
+  describe('SRI hash verification (SMA-210)', () => {
+    it('passes when computed hash matches WASM_GLUE_SRI', async () => {
+      const code = 'var ModuleFactory = function(){ return 99 };'
+      const validHash =
+        'sha256-' +
+        btoa(
+          String.fromCharCode(
+            ...new Uint8Array(
+              await crypto.subtle.digest('SHA-256', new TextEncoder().encode(code)),
+            ),
+          ),
+        )
+
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          async () =>
+            new Response(code, {
+              status: 200,
+              headers: { 'content-type': 'application/javascript' },
+            }),
+        ),
+      )
+
+      const polyfillBlock = extractPolyfillBlock(WORKER_SRC)
+      const wrapped = `
+        globalThis.self = self;
+        const WASM_GLUE_SRI = '${validHash}';
+        const TRUSTED_ORIGINS = new Set(['https://cdn.jsdelivr.net']);
+        ${polyfillBlock}
+        return self.import;
+      `
+      const polyfillImport = new Function('self', wrapped)(globalThis)
+
+      await polyfillImport(
+        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai/wasm/genai_wasm_internal.js',
+      )
+      expect(globalThis.ModuleFactory()).toBe(99)
+      delete globalThis.ModuleFactory
+      delete globalThis.self
+    })
+
+    it('throws when computed hash does not match WASM_GLUE_SRI', async () => {
+      const fakeFetch = async () =>
+        new Response('var x = 1', {
+          status: 200,
+          headers: { 'content-type': 'application/javascript' },
+        })
+      const fakeCrypto = { subtle: { digest: async () => new Uint8Array([99]) } }
+
+      const polyfillBlock = extractPolyfillBlock(WORKER_SRC)
+      const testCode = `
+        const globalThis = self;
+        const WASM_GLUE_SRI = 'sha256-incorrect';
+        const TRUSTED_ORIGINS = new Set(['https://cdn.jsdelivr.net']);
+        const fetch = fakeFetch;
+        const crypto = fakeCrypto;
+        ${polyfillBlock}
+        return self.import;
+      `
+      const polyfillImport = new Function('self', 'fakeFetch', 'fakeCrypto', testCode)(
+        {},
+        fakeFetch,
+        fakeCrypto,
+      )
+
+      await expect(
+        polyfillImport(
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai/wasm/genai_wasm_internal.js',
+        ),
+      ).rejects.toThrow('SRI mismatch')
+    })
+
+    it('skips SRI check when WASM_GLUE_SRI is empty (dev mode)', async () => {
+      const code = 'var ModuleFactory = function(){ return 77 };'
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          async () =>
+            new Response(code, {
+              status: 200,
+              headers: { 'content-type': 'application/javascript' },
+            }),
+        ),
+      )
+
+      const polyfillBlock = extractPolyfillBlock(WORKER_SRC)
+      const wrapped = `
+        globalThis.self = self;
+        const WASM_GLUE_SRI = '';
+        const TRUSTED_ORIGINS = new Set(['https://cdn.jsdelivr.net']);
+        ${polyfillBlock}
+        return self.import;
+      `
+      const polyfillImport = new Function('self', wrapped)(globalThis)
+
+      await polyfillImport(
+        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai/wasm/genai_wasm_internal.js',
+      )
+      expect(globalThis.ModuleFactory()).toBe(77)
+      delete globalThis.ModuleFactory
+      delete globalThis.self
+    })
+
+    it('throws descriptive error when crypto.subtle is unavailable', async () => {
+      const fakeFetch = async () =>
+        new Response('var x = 1', {
+          status: 200,
+          headers: { 'content-type': 'application/javascript' },
+        })
+      const fakeCrypto = { subtle: undefined }
+
+      const polyfillBlock = extractPolyfillBlock(WORKER_SRC)
+      const testCode = `
+        const globalThis = self;
+        const WASM_GLUE_SRI = 'sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
+        const TRUSTED_ORIGINS = new Set(['https://cdn.jsdelivr.net']);
+        const fetch = fakeFetch;
+        const crypto = fakeCrypto;
+        ${polyfillBlock}
+        return self.import;
+      `
+      const polyfillImport = new Function('self', 'fakeFetch', 'fakeCrypto', testCode)(
+        {},
+        fakeFetch,
+        fakeCrypto,
+      )
+
+      await expect(
+        polyfillImport(
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai/wasm/genai_wasm_internal.js',
+        ),
+      ).rejects.toThrow('crypto.subtle')
+    })
+  })
+
+  describe('fetch security options (SMA-210)', () => {
+    it('sets credentials:omit on the fetch request', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          async () =>
+            new Response('var x = 1', {
+              status: 200,
+              headers: { 'content-type': 'application/javascript' },
+            }),
+        ),
+      )
+
+      const polyfillBlock = extractPolyfillBlock(WORKER_SRC)
+      const wrapped = `
+        globalThis.self = self;
+        const WASM_GLUE_SRI = '';
+        const TRUSTED_ORIGINS = new Set(['https://cdn.jsdelivr.net']);
+        ${polyfillBlock}
+        return self.import;
+      `
+      const polyfillImport = new Function('self', wrapped)(globalThis)
+      await polyfillImport(
+        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai/wasm/genai_wasm_internal.js',
+      )
+
+      const lastCall = vi.mocked(fetch).mock.calls[vi.mocked(fetch).mock.calls.length - 1]
+      expect(lastCall[1]).toMatchObject({ credentials: 'omit' })
+
+      delete globalThis.self
+    })
+  })
+
+  describe('URL validation (SMA-210)', () => {
+    it('throws on malformed URL', async () => {
+      const polyfillBlock = extractPolyfillBlock(WORKER_SRC)
+      const wrapped = `
+        globalThis.self = self;
+        const WASM_GLUE_SRI = '';
+        const TRUSTED_ORIGINS = new Set(['https://cdn.jsdelivr.net']);
+        ${polyfillBlock}
+        return self.import;
+      `
+      const polyfillImport = new Function('self', wrapped)(globalThis)
+
+      await expect(polyfillImport(':::not-a-url:::')).rejects.toThrow(/invalid URL/)
+
+      delete globalThis.self
+    })
   })
 })
