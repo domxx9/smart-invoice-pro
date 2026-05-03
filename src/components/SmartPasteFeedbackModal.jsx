@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { submitPasteFeedback } from '../api/feedbackSubmit.js'
-import { STORAGE_KEYS } from '../constants/storageKeys.js'
+import { STORAGE_KEYS } from '../constants/storageKeys'
 
 const FINETUNE_STORAGE_KEY = STORAGE_KEYS.SIP_FINETUNE_EXPORT_V1
 

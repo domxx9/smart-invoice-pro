@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { STORAGE_KEYS } from '../constants/storageKeys.js'
+import { STORAGE_KEYS } from '../constants/storageKeys'
 import {
   isEmbedderDownloaded,
   handleEmbedderDownload,

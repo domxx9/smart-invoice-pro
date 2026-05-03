@@ -8,7 +8,7 @@
  */
 
 import { BYOK_PROVIDERS } from './byok.js'
-import { STORAGE_KEYS } from './constants/storageKeys.js'
+import { STORAGE_KEYS } from './constants/storageKeys'
 import { isNative } from './api/platformFetch.js'
 
 let _plugin = null

@@ -20,7 +20,7 @@
 
 import { SCHEMA_VERSION, EXPORT_KIND, KNOWN_STORAGE_KEYS } from './dataExport.js'
 import { setSecret } from '../secure-storage.js'
-import { STORAGE_KEYS } from '../constants/storageKeys.js'
+import { STORAGE_KEYS } from '../constants/storageKeys'
 
 const EXPECTED_TYPES = {
   invoices: 'array',

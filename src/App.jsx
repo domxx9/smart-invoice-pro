@@ -26,7 +26,7 @@ import { PullToRefresh } from './components/PullToRefresh.jsx'
 import { Icon } from './components/Icon.jsx'
 import { BurgerMenu } from './components/BurgerMenu.jsx'
 import { useMenu } from './hooks/useMenu.js'
-import { STORAGE_KEYS } from './constants/storageKeys.js'
+import { STORAGE_KEYS } from './constants/storageKeys'
 
 export default function App() {
   const [tab, setTab] = useState(

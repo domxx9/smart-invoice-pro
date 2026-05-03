@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import { STORAGE_KEYS } from '../constants/storageKeys.js'
+import { STORAGE_KEYS } from '../constants/storageKeys'
 import { logger } from '../utils/logger.js'
 
 const STORAGE_KEY = STORAGE_KEYS.SIP_CONTACTS
