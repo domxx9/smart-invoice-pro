@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { blankInvoice, nextId, today } from '../helpers.js'
 import { assertTransition } from '../invoiceLifecycle'
 import { useToast } from '../contexts/ToastContext'
-import { STORAGE_KEYS } from '../constants/storageKeys.js'
+import { STORAGE_KEYS } from '../constants/storageKeys'
 
 export function useInvoiceState({ defaultTax, onPaid, onOpenEditor }) {
   const { toast } = useToast()

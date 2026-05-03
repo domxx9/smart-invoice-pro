@@ -15,7 +15,7 @@
 
 import { getSecret } from '../secure-storage.js'
 import pkg from '../../package.json'
-import { STORAGE_KEYS } from '../constants/storageKeys.js'
+import { STORAGE_KEYS } from '../constants/storageKeys'
 
 export const SCHEMA_VERSION = 1
 export const EXPORT_KIND = 'smart-invoice-pro-backup'

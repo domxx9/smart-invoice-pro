@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { STORAGE_KEYS } from '../constants/storageKeys.js'
+import { STORAGE_KEYS } from '../constants/storageKeys'
 import { SAMPLE_PRODUCTS } from '../constants.js'
 import { fetchSquarespaceProducts } from '../api/squarespace.js'
 import { fetchShopifyProducts } from '../api/shopify.js'

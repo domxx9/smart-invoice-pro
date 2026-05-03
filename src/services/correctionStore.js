@@ -1,4 +1,4 @@
-import { STORAGE_KEYS } from '../constants/storageKeys.js'
+import { STORAGE_KEYS } from '../constants/storageKeys'
 
 const STORAGE_KEY = STORAGE_KEYS.SIP_CORRECTION_HISTORY_V1
 

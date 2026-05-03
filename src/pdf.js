@@ -419,7 +419,7 @@ export function getPDFFilename(inv) {
 }
 
 export async function pdfFileExists(filename) {
-  if (!window.Capacitor?.isNativePlatform?.()) return false
+  if (!isNative()) return false
   try {
     const { Filesystem, Directory } = await import('@capacitor/filesystem')
     await Filesystem.stat({ path: filename, directory: Directory.Documents })

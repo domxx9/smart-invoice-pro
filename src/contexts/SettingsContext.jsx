@@ -3,7 +3,7 @@ import { setCurrency, setInvoicePrefix, setInvoicePadding } from '../helpers.js'
 import { setSecret, getSecret, migrateKeysFromLocalStorage } from '../secure-storage.js'
 import { logger } from '../utils/logger.js'
 import { ToastContext } from './ToastContext.jsx'
-import { STORAGE_KEYS } from '../constants/storageKeys.js'
+import { STORAGE_KEYS } from '../constants/storageKeys'
 
 const SettingsContext = createContext(null)
 

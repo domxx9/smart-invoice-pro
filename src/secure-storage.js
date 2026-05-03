@@ -8,21 +8,28 @@
  */
 
 import { BYOK_PROVIDERS } from './byok.js'
-import { STORAGE_KEYS } from './constants/storageKeys.js'
+import { STORAGE_KEYS } from './constants/storageKeys'
 import { isNative } from './api/platformFetch.js'
 
 let _plugin = null
+let _methodsCache = null
+
 async function getPlugin() {
-  if (_plugin) return _plugin
+  if (_methodsCache) return _methodsCache
   const mod = await import('capacitor-secure-storage-plugin')
   _plugin = mod.SecureStoragePlugin
-  return _plugin
+  _methodsCache = {
+    set: (args) => Promise.resolve(_plugin.set(args)),
+    get: (args) => Promise.resolve(_plugin.get(args)),
+    remove: (args) => Promise.resolve(_plugin.remove(args)),
+  }
+  return _methodsCache
 }
 
 export async function setSecret(key, value) {
   if (isNative()) {
     const plugin = await getPlugin()
-    await Promise.resolve(plugin.set({ key, value }))
+    await plugin.set({ key, value })
   } else {
     sessionStorage.setItem(key, value)
   }
@@ -32,7 +39,7 @@ export async function getSecret(key) {
   if (isNative()) {
     const plugin = await getPlugin()
     try {
-      const { value } = await Promise.resolve(plugin.get({ key }))
+      const { value } = await plugin.get({ key })
       return value ?? ''
     } catch {
       // key not found in secure storage
@@ -47,7 +54,7 @@ export async function deleteSecret(key) {
   if (isNative()) {
     const plugin = await getPlugin()
     try {
-      await Promise.resolve(plugin.remove({ key }))
+      await plugin.remove({ key })
     } catch {
       // key didn't exist — nothing to remove
     }
@@ -56,12 +63,6 @@ export async function deleteSecret(key) {
   }
 }
 
-/**
- * One-time migration: move API keys out of the sip_settings localStorage
- * blob and any sip_byok_* localStorage keys into secure storage, then
- * remove them from localStorage so they are never persisted in plaintext
- * again.
- */
 export async function migrateKeysFromLocalStorage() {
   const raw = localStorage.getItem(STORAGE_KEYS.SIP_SETTINGS)
   if (raw) {
@@ -75,7 +76,7 @@ export async function migrateKeysFromLocalStorage() {
         localStorage.setItem(STORAGE_KEYS.SIP_SETTINGS, JSON.stringify(cleaned))
       }
     } catch {
-      // corrupted settings — skip migration
+      // corrupted settings — skip
     }
   }
 
