@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { CSS } from './styles.js'
 import { SAMPLE_INVOICES } from './constants.js'
 import { ToastProvider, useToast } from './contexts/ToastContext.jsx'
@@ -29,9 +29,14 @@ import { useMenu } from './hooks/useMenu.js'
 import { STORAGE_KEYS } from './constants/storageKeys.js'
 
 export default function App() {
-  const [tab, setTab] = useState(() =>
-    localStorage.getItem(STORAGE_KEYS.SIP_DRAFT_EDIT) ? 'invoices' : 'dashboard',
+  const [tab, setTab] = useState(
+    () =>
+      localStorage.getItem(STORAGE_KEYS.SIP_ACTIVE_TAB) ||
+      (localStorage.getItem(STORAGE_KEYS.SIP_DRAFT_EDIT) ? 'invoices' : 'dashboard'),
   )
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.SIP_ACTIVE_TAB, tab)
+  }, [tab])
   return (
     <ErrorBoundary>
       <style>{CSS}</style>

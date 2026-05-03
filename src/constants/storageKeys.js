@@ -20,4 +20,5 @@ export const STORAGE_KEYS = Object.freeze({
   SIP_SETTINGS: 'sip_settings',
   SIP_FINETUNE_EXPORT_V1: 'sip_finetune_export_v1',
   SIP_CORRECTION_HISTORY_V1: 'sip_correction_history_v1',
+  SIP_ACTIVE_TAB: 'sip_active_tab',
 })
