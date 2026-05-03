@@ -14,6 +14,7 @@
   ],
   "rewrites": [
     { "source": "/api/sqsp/:path*", "destination": "https://api.squarespace.com/:path*" },
+    { "source": "/api/error-report", "destination": "/api/error-report" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
