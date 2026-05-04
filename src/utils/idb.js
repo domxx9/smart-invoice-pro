@@ -1,3 +1,5 @@
+import { logger } from './logger.js'
+
 export function openDB() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open('sip_embeddings', 1)
@@ -22,7 +24,7 @@ export async function getEmbedding(key) {
       req.onerror = () => reject(req.error)
     })
   } catch (e) {
-    console.error('IndexedDB get error:', e)
+    logger.error('IndexedDB get error:', e)
     return null
   }
 }
@@ -38,6 +40,6 @@ export async function setEmbedding(key, vec) {
       req.onerror = () => reject(req.error)
     })
   } catch (e) {
-    console.error('IndexedDB set error:', e)
+    logger.error('IndexedDB set error:', e)
   }
 }

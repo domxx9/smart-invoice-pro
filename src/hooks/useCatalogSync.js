@@ -4,6 +4,7 @@ import { SAMPLE_PRODUCTS } from '../constants.js'
 import { fetchSquarespaceProducts } from '../api/squarespace.js'
 import { fetchShopifyProducts } from '../api/shopify.js'
 import { useToast } from '../contexts/ToastContext.jsx'
+import { logger } from '../utils/logger.js'
 
 function classifyError(err) {
   const msg = err?.message ?? ''
@@ -37,7 +38,7 @@ export function useCatalogSync({
     try {
       return s ? JSON.parse(s) : SAMPLE_PRODUCTS
     } catch {
-      console.warn('sip_products parse error — falling back to sample products')
+      logger.warn('sip_products parse error — falling back to sample products')
       return SAMPLE_PRODUCTS
     }
   })

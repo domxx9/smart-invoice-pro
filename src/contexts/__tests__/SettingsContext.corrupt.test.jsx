@@ -111,7 +111,7 @@ describe('SettingsContext — hydration race fixes', () => {
     )
   })
 
-  it('warns via console.warn when saveSettings called before hydration completes', async () => {
+  it('warns via logger.warn when saveSettings called before hydration completes', async () => {
     let resolveMigration
     vi.spyOn(secureStorage, 'migrateKeysFromLocalStorage').mockReturnValue(
       new Promise((res) => {
@@ -120,7 +120,7 @@ describe('SettingsContext — hydration race fixes', () => {
     )
     vi.spyOn(secureStorage, 'getSecret').mockResolvedValue('')
 
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {})
 
     function EarlySaver() {
       const { saveSettings, settings } = useSettings()
