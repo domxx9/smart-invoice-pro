@@ -1,5 +1,6 @@
 const PAPERCLIP_URL = process.env.PAPERCLIP_URL || 'http://localhost:3100'
-const COMPANY_ID = 'c262e348-7044-4326-80ca-496a018bf1e4'
+const COMPANY_ID = process.env.PAPERCLIP_COMPANY_ID || 'c262e348-7044-4326-80ca-496a018bf1e4'
+const VALID_PRIORITIES = new Set(['critical', 'high', 'medium', 'low'])
 
 const MAX_MESSAGE_LEN = 500
 const MAX_STACK_LEN = 5000
@@ -75,7 +76,7 @@ export default async function handler(req) {
     title: body.message ? `Error: ${body.message.slice(0, 80)}` : 'Unknown error',
     description,
     status: 'backlog',
-    priority: body.priority || 'medium',
+    priority: VALID_PRIORITIES.has(body.priority) ? body.priority : 'medium',
     labelIds: [],
   }
 
