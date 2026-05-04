@@ -1,4 +1,5 @@
 import { STORAGE_KEYS } from '../constants/storageKeys'
+import { logger } from '../utils/logger.js'
 
 const STORAGE_KEY = STORAGE_KEYS.SIP_CORRECTION_HISTORY_V1
 
@@ -22,7 +23,7 @@ function saveEntries(entries) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(entries))
   } catch {
-    console.warn('correctionStore: localStorage write failed, corrections not persisted')
+    logger.warn('correctionStore: localStorage write failed, corrections not persisted')
   }
 }
 

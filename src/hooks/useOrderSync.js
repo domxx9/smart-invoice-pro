@@ -3,6 +3,7 @@ import { STORAGE_KEYS } from '../constants/storageKeys'
 import { fetchSquarespaceOrders } from '../api/squarespace.js'
 import { fetchShopifyOrders } from '../api/shopify.js'
 import { useToast } from '../contexts/ToastContext.jsx'
+import { logger } from '../utils/logger.js'
 
 function classifyError(err) {
   const msg = err?.message ?? ''
@@ -31,7 +32,7 @@ export function useOrderSync({
     try {
       return s ? JSON.parse(s) : []
     } catch {
-      console.warn('sip_orders parse error — falling back to empty list')
+      logger.warn('sip_orders parse error — falling back to empty list')
       return []
     }
   })
@@ -46,7 +47,7 @@ export function useOrderSync({
     try {
       return s ? JSON.parse(s) : {}
     } catch {
-      console.warn('sip_picks parse error — falling back to empty picks')
+      logger.warn('sip_picks parse error — falling back to empty picks')
       return {}
     }
   })

@@ -136,7 +136,7 @@ export function SettingsProvider({ children }) {
   const saveSettings = useCallback(
     async (s) => {
       if (!hydrated) {
-        console.warn(
+        logger.warn(
           'SettingsContext: saveSettings called before hydration complete — secrets will not persist to secure storage',
         )
       }
