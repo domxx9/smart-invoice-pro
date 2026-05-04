@@ -45,4 +45,10 @@ export default [
       globals: { ...globals.node },
     },
   },
+  {
+    files: ['api/**/*.js'],
+    languageOptions: {
+      globals: { ...globals.node },
+    },
+  },
 ]

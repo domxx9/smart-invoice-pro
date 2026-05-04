@@ -104,6 +104,8 @@ describe('error-report truncation', () => {
 
   describe('body size guard', () => {
     it('returns 413 when Content-Length exceeds 100KB', async () => {
+      process.env.PAPERCLIP_URL = 'http://localhost:3100'
+      vi.stubEnv('PAPERCLIP_URL', 'http://localhost:3100')
       const handler = (await import('../error-report.js')).default
       const longBody = { message: 'x'.repeat(200_000) }
       const req = new Request('http://localhost/api/error-report', {
@@ -118,6 +120,9 @@ describe('error-report truncation', () => {
     })
 
     it('returns 200 when Content-Length is within limit', async () => {
+      vi.resetModules()
+      process.env.PAPERCLIP_URL = 'http://localhost:3100'
+      vi.stubEnv('PAPERCLIP_URL', 'http://localhost:3100')
       const handler = (await import('../error-report.js')).default
       const validBody = { message: 'Test error' }
       const req = new Request('http://localhost/api/error-report', {
